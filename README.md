@@ -9,6 +9,8 @@ Python half:
 
 1. Ensure Python and development libraries are installed. You may prefer pypy for performance. On Debian, this would be `sudo apt install pypy3 pypy3-dev`.
 2. Create a virtualenv inside of the project directory by running `virtualenv oop`. To use a specific python executable (such as pypy), specify it with the `--python-` option.
+
+	If your operating system is running an older version of python, you may wish to use conda instead of virtualenv, because conda makes it easy to install custom python versions.
 3. Activate the virtualenv with `source ./oop/bin/activate`.
 4. Install dependencies by `pip3 install -r requirements.txt`.
 
