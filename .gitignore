@@ -1,0 +1,5 @@
+/pintool/obj-*
+pin.log
+.venv
+*~*
+*\#*

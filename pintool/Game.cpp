@@ -36,14 +36,20 @@ void ParsePregame(const string &path) {
 	}
 }
 
-void InstrumentMethodCanditate(INS ins, void *) {
-	if (INS.)
+void InstrumentInstruction(INS ins, void *) {
+	// We want to instrument:
+	// + Calls to candidate methods.
+	// + Calls to memory allocation procedures (malloc, free, new, new[], delete, delete[])
+	// + Upward motion of the stack pointer.
+
+	// First, candidate methods:
+	if ()
 }
 
 int main(int argc, char **argv) {
 	ParsePregame("./pregame-output"); // TODO: command line option for filename
 	PIN_Init(argc, argv);
-	INS_AddInstrumentFunction(InstrumentMethodCandidate, NULL);
+	INS_AddInstrumentFunction(InstrumentInstruction, NULL);
 	// TODO: do we need to do anything explicit to close the file when we're done with it? Normally RAII would take care of that, but I'm concerned that the StartProgram call somehow transports us to a whole other dimension maybe the cleanup for `main` never happens
 
 	// PIN_AddFiniFunction(, NULL);
