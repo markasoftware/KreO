@@ -1,28 +1,28 @@
-import argparse
+import sys
+import json5
 
-parser = argparse.ArgumentParser(description='Perform initial static analysis on a binary')
-parser.add_argument('-o', '--output', default='pregame-output', type=argparse.FileType('w', encoding='latin-1'),
-                    help='Where to write the output, which must be passed to dynamic analysis')
-parser.add_argument('--emulated-cfg', action='store_true',
-                    help='If set, use an emulated CFG instead of a "fast" CFG. Usually does not help.')
-parser.add_argument('binary', # can't do type=open because angr.project wants a string
-                    help='Path to the binary to analyze')
-
-args = parser.parse_args()
+config = json5.load(open(sys.argv[1]))
+if not 'cfg-mode' in config:
+    config['cfg-mode'] = 'fast'
+if not 'method-candidate-file' in config:
+    config['method-candidate-file'] = 'emulated'
 
 print('Loading angr...')
 import angr
 
 print('Loading binary...')
 # TODO: determine whether we should set the base addr, and if not, how to access it later to correct all the 
-project = angr.Project(args.binary, auto_load_libs=False)
+project = angr.Project(config['binary'], auto_load_libs=False)
 
-if args.emulated_cfg:
+if config['cfg-mode'] == 'emulated':
     print('Analyzing CFG (Emulated)...')
     cfg = project.analyses.CFGEmulated()
-else:
+elif config['cfg-mode'] == 'fast':
     print('Analyzing CFG (fast)...')
     cfg = project.analyses.CFGFast()
+else:
+    print('Warning: unknown CFG mode! Use emulated or fast.')
+    exit(1)
 
 print('Analyzing calling conventions...')
 project.analyses.CompleteCallingConventions(cfg=cfg)
@@ -40,10 +40,6 @@ method_candidates = cfg.functions
 
 print('Printing output to file...')
 
-args.output.write('[binary]\n')
-args.output.write(args.binary + '\n')
-args.output.write('[method-candidates]\n')
-args.output.write(str(len(method_candidates)))
 # adjust all addresses to be relative to base address
-args.output.write('\n'.join(map(lambda addr: addr - project.loader.min_addr, method_candidates)) + '\n')
+open(config['method-candidate-file'], 'w').write('\n'.join(map(lambda addr: addr - project.loader.min_addr, method_candidates)) + '\n')
 print('DONE successfully!')

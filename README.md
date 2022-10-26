@@ -32,9 +32,13 @@ There are three steps:
 2. Dynamic analysis, where the program is actually run.
 3. Final static analysis, where un-executed code paths are analyzed using constant propagation. The raw output from the dynamic analysis step is also be processed.
 
-To perform initial static analysis, run `python3 pregame.py - /path/to/binary` (or pass `-h` to see
-extra options). Next, run `./game`, which uses the output from the pregame to determine what to do.
-The game can be run multiple times to collect additional data. Finally, run `python3 postgame.py` to
-perform the final analysis. The results will be placed in a file named `results.json`.
+Because there are three separate scripts, and not all are in the same language, configuration is controlled by a JSON file instead of command-line arguments. All three parts take as their only argument a path to the JSON configuration, which in turn contains paths to other intermediate files created by stages 1 and 2.
 
-All three parts can take the command-line argument `-h` to see extra configuration options (eg, to override where they should place their output and where input should be read in from the preceding stage).
+An example configuration file with commented documentation is available at `arguments.example.json`.
+
+Now, for how to actually run the stages:
+1. `python3 pregame.py config.json`
+2. `python3 game.py config.json` (it's also possible to run pin directly, read the file)
+3. `python postgame.py config.json`
+
+The final output will be placed at the `final-output` path specified in the configuration!
