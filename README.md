@@ -41,4 +41,4 @@ Now, for how to actually run the stages:
 2. `PIN_ROOT=/path/to/downloaded/pin-folder python game.py config.json` (it's also possible to run pin directly, read `game.py` to learn how)
 3. `python postgame.py config.json`
 
-The final output will be placed at the `final-output` path specified in the configuration!
+The final output will be placed at the `finalOutput` path specified in the configuration!
