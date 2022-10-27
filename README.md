@@ -37,8 +37,8 @@ Because there are three separate scripts, and not all are in the same language, 
 An example configuration file with commented documentation is available at `arguments.example.json`.
 
 Now, for how to actually run the stages:
-1. `python3 pregame.py config.json`
-2. `python3 game.py config.json` (it's also possible to run pin directly, read the file)
+1. `python pregame.py config.json`
+2. `PIN_ROOT=/path/to/downloaded/pin-folder python game.py config.json` (it's also possible to run pin directly, read `game.py` to learn how)
 3. `python postgame.py config.json`
 
 The final output will be placed at the `final-output` path specified in the configuration!

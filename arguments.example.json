@@ -1,20 +1,20 @@
 // Config file is in JSON5 format, supporting comments and hex numbers.
 {
-    "binary": "/path/to/your-executable",
+    "binaryPath": "/path/to/your-executable",
     // We try to automatically detect memory allocation and deallocation procedures, but often fail. Use the following config options to specify manually. `new` and `delete` are the most important.
 
     // All addresses are relative to the image base offset!
     // procedures which allocate an amount of memory given by their first argument. Put malloc, new, and new[] here:
     // TODO: do we need to instrument calloc or is that done by malloc internally?
-    // "malloc-procedures": [0x182, 0x1919],
+    // "mallocProcedures": [0x182, 0x1919],
     // free, delete, delete[]:
-    // "free-procedures": [0x134, 0x839],
-    // should only be one realloc procedure, but for consistency, let's array it:
-    // "realloc-procedures": [0x9838],
+    // "freeProcedures": [0x134, 0x839],
 
-    // "cfg-mode": "fast", // can also be "emulated" for more accurate results.
+    // "cfgMode": "fast", // can also be "emulated" for more accurate results.
 
-    // "enable-alias-analysis": true,
+    // "enableAliasAnalysis": true,
 
-    // "method-candidate-file": "method-candidates"
+    // "methodCandidatesPath": "method-candidates",
+    // "objectTracesPath": "object-traces",
+    // TODO: maybe allow a "base folder" that all the other paths are inside of, to help separate executables?
 }

@@ -1,23 +1,27 @@
 import sys
 import json5
 
+if len(sys.argv) != 2:
+    print('Usage: python pregame.py /path/to/config.json')
+    exit(1)
+
 config = json5.load(open(sys.argv[1]))
 if not 'cfg-mode' in config:
     config['cfg-mode'] = 'fast'
-if not 'method-candidate-file' in config:
-    config['method-candidate-file'] = 'emulated'
+if not 'methodCandidatesPah' in config:
+    config['methodCandidatesPath'] = 'method-candidates'
 
 print('Loading angr...')
 import angr
 
 print('Loading binary...')
 # TODO: determine whether we should set the base addr, and if not, how to access it later to correct all the 
-project = angr.Project(config['binary'], auto_load_libs=False)
+project = angr.Project(config['binaryPath'], auto_load_libs=False)
 
-if config['cfg-mode'] == 'emulated':
+if config['cfgMode'] == 'emulated':
     print('Analyzing CFG (Emulated)...')
     cfg = project.analyses.CFGEmulated()
-elif config['cfg-mode'] == 'fast':
+elif config['cfgMode'] == 'fast':
     print('Analyzing CFG (fast)...')
     cfg = project.analyses.CFGFast()
 else:
@@ -41,5 +45,5 @@ method_candidates = cfg.functions
 print('Printing output to file...')
 
 # adjust all addresses to be relative to base address
-open(config['method-candidate-file'], 'w').write('\n'.join(map(lambda addr: addr - project.loader.min_addr, method_candidates)) + '\n')
+open(config['methodCandidatesPath'], 'w').write('\n'.join(map(lambda addr: addr - project.loader.min_addr, method_candidates)) + '\n')
 print('DONE successfully!')
