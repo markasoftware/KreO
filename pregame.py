@@ -6,8 +6,8 @@ if len(sys.argv) != 2:
     exit(1)
 
 config = json5.load(open(sys.argv[1]))
-if not 'cfg-mode' in config:
-    config['cfg-mode'] = 'fast'
+if not 'cfgMode' in config:
+    config['cfgMode'] = 'fast'
 if not 'methodCandidatesPah' in config:
     config['methodCandidatesPath'] = 'method-candidates'
 
@@ -45,5 +45,5 @@ method_candidates = cfg.functions
 print('Printing output to file...')
 
 # adjust all addresses to be relative to base address
-open(config['methodCandidatesPath'], 'w').write('\n'.join(map(lambda addr: addr - project.loader.min_addr, method_candidates)) + '\n')
+open(config['methodCandidatesPath'], 'w').write('\n'.join(map(lambda addr: str(addr - project.loader.min_addr), method_candidates)) + '\n')
 print('DONE successfully!')

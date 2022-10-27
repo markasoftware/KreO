@@ -13,4 +13,4 @@ if not 'PIN_ROOT' in os.environ:
 
 # TODO: make it better at figuring out where the pintool is cross-platform!
 pin_executable_path = os.environ['PIN_ROOT'] + '/pin'
-os.execvp(pin_executable_path, [pin_executable_path, '-t', sys.argv[0] + '/pintool/obj-intel64/Game.so', '--', config['binaryPath']])
+os.execvp(pin_executable_path, [pin_executable_path, '-t', os.path.dirname(sys.argv[0]) + '/pintool/obj-intel64/Game.so', '--', config['binaryPath']])

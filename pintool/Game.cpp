@@ -9,7 +9,6 @@
 #include <cassert>
 
 #include "pin.H"
-#include "vendor/json5/json5_input.hpp"
 
 using namespace std;
 
@@ -29,18 +28,13 @@ struct ObjectTraceEntry {
 	// TODO: look into calledMethods, what exactly is it for?
 };
 
-struct Config {
-	string methodCandidatesPath = "method-candidates";
-	string objectTracesPath = "object-traces";
-	vector<ADDRINT> mallocProcedures;
-	vector<ADDRINT> freeProcedures;
-
-	JSON5_MEMBERS(methodCandidatesPath, objectTracesPath, mallocProcedures, freeProcedures);
-};
-
 KNOB<string> configPath(KNOB_MODE_WRITEONCE, "pintool", "config", "config.json", "Path to configuration json file (same as for pregame and postgame).");
+KNOB<string> methodCandidatesPath(KNOB_MODE_WRITEONCE, "pintool", "method-candidates", "method-candidates", "Path to method candidates file.");
+KNOB<string> objectTracesPath(KNOB_MODE_WRITEONCE, "pintool", "object-traces", "object-traces", "Path to object traces output file.");
+// TODO: make these knobs:
+vector<ADDRINT> mallocProcedures;
+vector<ADDRINT> freeProcedures;
 
-Config config;
 unordered_set<ADDRINT> methodCandidateAddrs;
 // TODO: potential optimization: Don't store finishedObjectTraces separately from activeObjectTraces; instead just have a single map<ADDRINT, vector<TraceEntry>>, and then insert special trace objects indicating when memory has been deallocated, allowing to easily split them at the end. Problem then is that multiple "splits" may be inserted, so theoretically an old trace whose memory keeps getting allocated and deallocated could be problematic...but does that even happen?
 vector<vector<ObjectTraceEntry>> finishedObjectTraces;
@@ -52,11 +46,9 @@ ADDRINT lowestActiveObjectPtr = (ADDRINT)-1; // speeds up stack pointer analysis
 ADDRINT lowAddr; // base offset of the executable image what the fuck si going on why is it so laggy oercuheorcuheorchuoercuh
 
 void ParsePregame() {
-	json5::from_file(configPath.Value(), config);
-
 	// TODO
 
-	ifstream methodCandidatesStream(config.methodCandidatesPath);
+	ifstream methodCandidatesStream(methodCandidatesPath.Value());
 	ADDRINT methodCandidate;
 	while (methodCandidatesStream >> methodCandidate >> ws) {
 		methodCandidateAddrs.insert(methodCandidate);
@@ -74,11 +66,15 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
 	for (; it != lastTrace && it->first < regionEnd; it++) {
 		// TODO: double check that this doesn't copy the object trace.
 		// (but i did investigate a bit and i'm pretty sure it doesn't copy, because it seems on gcc at least that `map` internally stores `pair`s at tree leaves)
-		finishedObjectTraces.push_back(std::move(it->second));
-		it->second = {};
+		if (!it->second.empty()) {
+			finishedObjectTraces.push_back(std::move(it->second));
+			it->second = {};
+		}
 	}
 
-	if (it == lastTrace) {
+	activeObjectTraces.erase(firstTrace, it);
+
+	if (activeObjectTraces.empty()) {
 		lowestActiveObjectPtr = (ADDRINT)-1;
 	} else {
 		lowestActiveObjectPtr = activeObjectTraces.begin()->first;
@@ -136,14 +132,20 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objptr) {
 		return;
 	}
 	// we're a method candidate! Add to the trace and shadow stack.
-	assert(lastRetAddr != (ADDRINT)-1);
+
+	// should always appear just after a `call` (or should it?)
+	//assert(lastRetAddr != (ADDRINT)-1);
 	ObjectTraceEntry entry = {
 		.procedure = procAddr,
 		.isCall = true,
 	};
 	activeObjectTraces[objptr].push_back(entry);
-	methodStack.push_back( {lastRetAddr, procAddr} );
-	stackEntryCount[lastRetAddr]++; // I wonder if there's a faster way to increment, since [] isn't as fast as possible
+	if (lastRetAddr == (ADDRINT)-1) {
+		cerr << "WARNING: Method executed, but not after a `call`!" << endl;
+	} else {
+		methodStack.push_back( {lastRetAddr, procAddr} );
+		stackEntryCount[lastRetAddr]++; // I wonder if there's a faster way to increment, since [] isn't as fast as possible
+	}
 	lastRetAddr = (ADDRINT)-1;
 }
 
@@ -160,6 +162,7 @@ void RetCallback(ADDRINT returnAddr) {
 		do {
 			stackTop = methodStack.back();
 			methodStack.pop_back();
+			stackEntryCount[stackTop.first]--;
 			activeObjectTraces[stackTop.first].push_back({
 					.procedure = stackTop.second,
 					.isCall = false,
@@ -202,7 +205,7 @@ void InstrumentInstruction(INS ins, void *) {
 	// + Return instructions, to add to the trace.
 	// + Upward motion of the stack pointer, to track allocated memory and perhaps end traces.
 
-	// I can't think of any case when multiple of these would apply, so let's assert that it can't happen.
+	// interactions between these instructions are probably possible, but until we think about it more let's not allow unintended interactions.
 	bool alreadyInstrumented = false;
 
 	if (IsPossibleStackIncrease(ins)) {
@@ -211,8 +214,8 @@ void InstrumentInstruction(INS ins, void *) {
 
 		INS_InsertIfCall(ins, IPOINT_AFTER, (AFUNPTR)StackChangePredicateCallback,
 				 IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
-		INS_InsertCall(ins, IPOINT_AFTER, (AFUNPTR)EndObjectTracesInRegion,
-			       IARG_ADDRINT, 0, IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
+		INS_InsertThenCall(ins, IPOINT_AFTER, (AFUNPTR)EndObjectTracesInRegion,
+				   IARG_ADDRINT, 0, IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
 	}
 
 	if (INS_IsRet(ins)) { // TODO: do we need to handle farret?
@@ -233,7 +236,7 @@ void InstrumentInstruction(INS ins, void *) {
 		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)CallCallback,
 			       IARG_ADDRINT, INS_NextAddress(ins), IARG_END);
 	}
-	if (methodCandidateAddrs.count(INS_Address(ins)) == 1) {
+	if (methodCandidateAddrs.count(INS_Address(ins) - lowAddr) == 1) {
 		assert(!alreadyInstrumented); // TODO: it's possible for this to fail if the first instr in a method is `call`. Not the end of the world; we just need to double check that analysis functions are called in the order they're inserted, and that we have the right order here.
 		alreadyInstrumented = true;
 
@@ -251,18 +254,18 @@ void InstrumentImage(IMG img, void *) {
 	vector<RTN> freeRtns;
 	if (IMG_IsMainExecutable(img)) {
 		lowAddr = IMG_LowAddress(img);
-		for (size_t i = 0; i < config.mallocProcedures.size(); i++) {
+		for (size_t i = 0; i < mallocProcedures.size(); i++) {
 			// create routine if does not exist
-			ADDRINT mallocAddr = config.mallocProcedures[i];
+			ADDRINT mallocAddr = mallocProcedures[i];
 			if (!RTN_Valid(RTN_FindByAddress(mallocAddr + lowAddr))) {
 				string name = "malloc_custom_" + to_string(i);
 				RTN_CreateAt(mallocAddr + lowAddr, name);
 			}
 			mallocRtns.push_back(RTN_FindByAddress(mallocAddr + lowAddr));
 		}
-		for (size_t i = 0; i < config.freeProcedures.size(); i++) {
+		for (size_t i = 0; i < freeProcedures.size(); i++) {
 			// create routine if does not exist
-			ADDRINT freeAddr = config.freeProcedures[i];
+			ADDRINT freeAddr = freeProcedures[i];
 			if (!RTN_Valid(RTN_FindByAddress(freeAddr + lowAddr))) {
 				string name = "free_custom_" + to_string(i);
 				RTN_CreateAt(freeAddr + lowAddr, name);
@@ -304,6 +307,7 @@ void InstrumentImage(IMG img, void *) {
 }
 
 void Fini(INT32 code, void *) {
+	cerr << "Program run completed, writing object traces to disk..." << endl;
 	// end all in-progress traces, then print all to disk.
 
 	for (auto &pair : activeObjectTraces) {
@@ -312,7 +316,7 @@ void Fini(INT32 code, void *) {
 		}
 	}
 
-	ofstream os(config.objectTracesPath);
+	ofstream os(objectTracesPath.Value());
 	// TODO: use a more structured trace format.
 	for (const vector<ObjectTraceEntry> &trace : finishedObjectTraces) {
 		for (const ObjectTraceEntry &entry : trace) {
@@ -320,6 +324,7 @@ void Fini(INT32 code, void *) {
 		}
 		os << endl;
 	}
+	cerr << "Done! Exiting normally." << endl;
 }
 
 int main(int argc, char **argv) {
