@@ -49,8 +49,8 @@ vector<ShadowStackEntry> methodStack; // "shadow stack". Each entry is (return a
 unordered_map<ADDRINT, int> stackEntryCount; // number of times each return address appears in the method stack.
 unordered_map<ADDRINT, ADDRINT> heapAllocations; // map starts of regions to (one past the) ends of regions.
 map<ADDRINT, ADDRINT> mappedRegions; // ^^^, but for mapped areas of memory (images). Used to determine valid object ptrs
-ADDRINT lowestActiveObjPtr = (ADDRINT)-1; // speeds up stack pointer analysis
 ADDRINT lowAddr; // base offset of the executable image what the fuck si going on why is it so laggy oercuheorcuheorchuoercuh
+unordered_map<ADDRINT, string> procedureSymbolNames; // can't use RTN methods during Fini, so we explicitly store all the symbol names here (for debugging)
 
 void ParsePregame() {
 	// TODO
@@ -73,14 +73,6 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
 		// (i did investigate a bit and i'm pretty sure it doesn't copy, because it seems on gcc at least that `map` internally stores `pair`s at tree leaves, so I don't think this'll copy anything)
 		cerr << "Deallocated, flushing trace for " << hex << it->first << endl;
 		finishedObjectTraces.push_back(std::move(it->second));
-	}
-
-	activeObjectTraces.erase(firstTrace, it);
-
-	if (activeObjectTraces.empty()) {
-		lowestActiveObjPtr = (ADDRINT)-1;
-	} else {
-		lowestActiveObjPtr = activeObjectTraces.begin()->first;
 	}
 }
 
@@ -118,15 +110,16 @@ void FreeCallback(ADDRINT freedRegionStart) {
 
 // a stack pointer change is interesting if it moves the pointer to the lowest known address, or moves it up past an active object trace.
 // Possible microoptimization: For `add` operations on the stack pointer, only check if it's increased past an active object pointer, and for `sub` operations, only check if it's decreased below the lowest known.
-ADDRINT lastStackPointer;
-void StackIncreaseBeforeCallback(ADDRINT stackPointer) {
-	lastStackPointer = stackPointer;
+// TODO: somehow track the lowest active objPtr in the stack. Could be done by checking if an objptr is above the stack during method calls. That way we don't have to call EndObjectTracesInRegion so frequently.
+ADDRINT lastStackPtr;
+void StackIncreaseBeforeCallback(ADDRINT stackPtr) {
+	lastStackPtr = stackPtr;
 }
-bool StackIncreasePredicate(ADDRINT stackPointer) {
-	return stackPointer > lowestActiveObjPtr;
+bool StackIncreasePredicate(ADDRINT stackPtr) {
+	return stackPtr > lastStackPtr;
 }
-void StackIncreaseCallback(ADDRINT stackPointer) {
-	EndObjectTracesInRegion(lastStackPointer, stackPointer);
+void StackIncreaseCallback(ADDRINT stackPtr) {
+	EndObjectTracesInRegion(lastStackPtr, stackPtr);
 }
 
 
@@ -136,13 +129,16 @@ void CallCallback(ADDRINT retAddr) {
 }
 // determine if an ADDRINT is a plausible object pointer.
 bool IsPossibleObjPtr(ADDRINT ptr) {
-	// currently, just check if it's in a mapped memory region.
-	// Theoretically, can be more precise by tracking, for example, if it's in a section that makes sense for objects to live in, and further by checking for example that if it's in the heap it's been allocated by malloc. But this stuff often is platform-specific and could break under obfuscation.
-	auto it = mappedRegions.upper_bound(ptr);
- // TODO: check the time complexity of this! Based on different sources, it seems it could either be O(1), O(log n), or O(n)!
-	return it != mappedRegions.end() && it != mappedRegions.begin() && ptr < (--it)->second;
-	// TODO: blacklisting: If a method is called once with an invalid object pointer, then it
-	// needs to be permanently blacklisted. I think the Lego paper describes this.
+	// TODO: something smarter! But checking if it's in an allocated region is not good enough because the regions can change without triggering an image load, eg with brk syscall.
+	return ptr >= lowAddr;
+
+ // 	// currently, just check if it's in a mapped memory region.
+ // 	// Theoretically, can be more precise by tracking, for example, if it's in a section that makes sense for objects to live in, and further by checking for example that if it's in the heap it's been allocated by malloc. But this stuff often is platform-specific and could break under obfuscation.
+ // 	auto it = mappedRegions.upper_bound(ptr);
+ // // TODO: check the time complexity of this! Based on different sources, it seems it could either be O(1), O(log n), or O(n)!
+ // 	return it != mappedRegions.begin() && --it != mappedRegions.begin() && ptr < it->second;
+ // 	// TODO: blacklisting: If a method is called once with an invalid object pointer, then it
+ // 	// needs to be permanently blacklisted. I think the Lego paper describes this.
 }
 void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objPtr) {
 	if (!IsPossibleObjPtr(objPtr)) {
@@ -166,7 +162,7 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objPtr) {
 				.procedure = procAddr,
 				.objPtr = objPtr
 			});
-		stackEntryCount[lastRetAddr]++; // I wonder if there's a faster way to increment, since [] isn't as fast as possible
+		stackEntryCount[lastRetAddr]++;
 	}
 	lastRetAddr = (ADDRINT)-1;
 }
@@ -185,6 +181,10 @@ void RetCallback(ADDRINT returnAddr) {
 			stackTop = methodStack.back();
 			methodStack.pop_back();
 			stackEntryCount[stackTop.returnAddr]--;
+			// TODO: this shouldn't cause a new object trace to be created, because the memory shouldn't be deallocated between the call and the return...but what if it does?
+			if (activeObjectTraces.count(stackTop.objPtr) == 0) {
+				cerr << "WARNING: Return being inserted into a brand new trace??? " << hex << stackTop.objPtr << endl;
+			}
 			activeObjectTraces[stackTop.objPtr].push_back({
 					.procedure = stackTop.procedure,
 					.isCall = false,
@@ -283,6 +283,13 @@ void InstrumentImage(IMG img, void *) {
 	if (IMG_IsMainExecutable(img)) {
 		lowAddr = IMG_LowAddress(img);
 
+		// store all procedures with symbols into the global map for debugging use.
+		for (SEC sec = IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec)) {
+			for(RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
+				procedureSymbolNames[RTN_Address(rtn)] = RTN_Name(rtn);
+			}
+		}
+
 		for (size_t i = 0; i < mallocProcedures.size(); i++) {
 			// create routine if does not exist
 			ADDRINT mallocAddr = mallocProcedures[i];
@@ -356,6 +363,9 @@ void Fini(INT32 code, void *) {
 	// TODO: use a more structured trace format.
 	for (const vector<ObjectTraceEntry> &trace : finishedObjectTraces) {
 		for (const ObjectTraceEntry &entry : trace) {
+			if (procedureSymbolNames.count(lowAddr + entry.procedure)) {
+				os << procedureSymbolNames[lowAddr + entry.procedure] << " ";
+			}
 			os << entry.procedure << " " << entry.isCall << endl;
 		}
 		os << endl;
@@ -366,6 +376,7 @@ void Fini(INT32 code, void *) {
 int main(int argc, char **argv) {
 	ParsePregame();
 
+	PIN_InitSymbols(); // this might be deprecated? Can't find it in docs anymore.
 	PIN_Init(argc, argv);
 	IMG_AddInstrumentFunction(InstrumentImage, NULL);
 	IMG_AddUnloadFunction(InstrumentUnloadImage, NULL);
