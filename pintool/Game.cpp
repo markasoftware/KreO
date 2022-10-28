@@ -28,6 +28,12 @@ struct ObjectTraceEntry {
 	// TODO: look into calledMethods, what exactly is it for?
 };
 
+struct ShadowStackEntry {
+	ADDRINT returnAddr;
+	ADDRINT procedure;
+	ADDRINT objPtr;
+};
+
 KNOB<string> configPath(KNOB_MODE_WRITEONCE, "pintool", "config", "config.json", "Path to configuration json file (same as for pregame and postgame).");
 KNOB<string> methodCandidatesPath(KNOB_MODE_WRITEONCE, "pintool", "method-candidates", "method-candidates", "Path to method candidates file.");
 KNOB<string> objectTracesPath(KNOB_MODE_WRITEONCE, "pintool", "object-traces", "object-traces", "Path to object traces output file.");
@@ -39,7 +45,7 @@ unordered_set<ADDRINT> methodCandidateAddrs;
 // TODO: potential optimization: Don't store finishedObjectTraces separately from activeObjectTraces; instead just have a single map<ADDRINT, vector<TraceEntry>>, and then insert special trace objects indicating when memory has been deallocated, allowing to easily split them at the end. Problem then is that multiple "splits" may be inserted, so theoretically an old trace whose memory keeps getting allocated and deallocated could be problematic...but does that even happen?
 vector<vector<ObjectTraceEntry>> finishedObjectTraces;
 map<ADDRINT, vector<ObjectTraceEntry>> activeObjectTraces;
-vector<pair<ADDRINT, ADDRINT>> methodStack; // "shadow stack". Each entry is (return addr, method addr)
+vector<ShadowStackEntry> methodStack; // "shadow stack". Each entry is (return addr, method addr)
 unordered_map<ADDRINT, int> stackEntryCount; // number of times each return address appears in the method stack.
 unordered_map<ADDRINT, ADDRINT> heapAllocations; // map starts of regions to (one past the) ends of regions.
 map<ADDRINT, ADDRINT> mappedRegions; // ^^^, but for mapped areas of memory (images). Used to determine valid object ptrs
@@ -63,13 +69,10 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
 	auto firstTrace = activeObjectTraces.lower_bound(regionStart);
 	auto lastTrace = activeObjectTraces.end();
 	auto it = firstTrace;
-	for (; it != lastTrace && it->first < regionEnd; it++) {
-		// TODO: double check that this doesn't copy the object trace.
-		// (but i did investigate a bit and i'm pretty sure it doesn't copy, because it seems on gcc at least that `map` internally stores `pair`s at tree leaves)
-		if (!it->second.empty()) {
-			finishedObjectTraces.push_back(std::move(it->second));
-			it->second = {};
-		}
+	for (; it != lastTrace && it->first < regionEnd; it = activeObjectTraces.erase(it)) {
+		// (i did investigate a bit and i'm pretty sure it doesn't copy, because it seems on gcc at least that `map` internally stores `pair`s at tree leaves, so I don't think this'll copy anything)
+		cerr << "Deallocated, flushing trace for " << hex << it->first << endl;
+		finishedObjectTraces.push_back(std::move(it->second));
 	}
 
 	activeObjectTraces.erase(firstTrace, it);
@@ -141,10 +144,11 @@ bool IsPossibleObjPtr(ADDRINT ptr) {
 	// TODO: blacklisting: If a method is called once with an invalid object pointer, then it
 	// needs to be permanently blacklisted. I think the Lego paper describes this.
 }
-void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objptr) {
-	if (!IsPossibleObjPtr(objptr)) {
+void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objPtr) {
+	if (!IsPossibleObjPtr(objPtr)) {
 		return;
 	}
+	cerr << "Method called on possible objPtr: " << hex << objPtr << endl;
 	// we're a method candidate! Add to the trace and shadow stack.
 
 	// should always appear just after a `call` (or should it?)
@@ -153,11 +157,15 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objptr) {
 		.procedure = procAddr,
 		.isCall = true,
 	};
-	activeObjectTraces[objptr].push_back(entry);
+	activeObjectTraces[objPtr].push_back(entry);
 	if (lastRetAddr == (ADDRINT)-1) {
 		cerr << "WARNING: Method executed without call! Likely not a method. At 0x" << hex << procAddr << endl;
 	} else {
-		methodStack.push_back( {lastRetAddr, procAddr} );
+		methodStack.push_back({
+				.returnAddr = lastRetAddr,
+				.procedure = procAddr,
+				.objPtr = objPtr
+			});
 		stackEntryCount[lastRetAddr]++; // I wonder if there's a faster way to increment, since [] isn't as fast as possible
 	}
 	lastRetAddr = (ADDRINT)-1;
@@ -172,16 +180,16 @@ void RetCallback(ADDRINT returnAddr) {
 	if (stackEntryCount[returnAddr] != 0) {
 		// if the return is in the stack somewhere, find exactly where!
 		// pop off the top of stack until we find something matching our return address. 
-		pair<ADDRINT, ADDRINT> stackTop;
+		ShadowStackEntry stackTop;
 		do {
 			stackTop = methodStack.back();
 			methodStack.pop_back();
-			stackEntryCount[stackTop.first]--;
-			activeObjectTraces[stackTop.first].push_back({
-					.procedure = stackTop.second,
+			stackEntryCount[stackTop.returnAddr]--;
+			activeObjectTraces[stackTop.objPtr].push_back({
+					.procedure = stackTop.procedure,
 					.isCall = false,
 				});
-		} while (stackTop.first != returnAddr && !methodStack.empty());
+		} while (stackTop.returnAddr != returnAddr && !methodStack.empty());
 	}
 }
 
