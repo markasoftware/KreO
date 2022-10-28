@@ -32,6 +32,7 @@ print('Analyzing calling conventions...')
 project.analyses.CompleteCallingConventions(cfg=cfg)
 print('Narrowing down to method candidates...')
 # TODO: The calling convention detector seems to suck. Until it's better, let's consider all the functions
+# TODO: function detector seems to suck too! Maybe this whole project sucks!
 method_candidates = cfg.functions
 
 # for addr in cfg.functions:

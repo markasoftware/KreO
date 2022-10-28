@@ -42,7 +42,8 @@ map<ADDRINT, vector<ObjectTraceEntry>> activeObjectTraces;
 vector<pair<ADDRINT, ADDRINT>> methodStack; // "shadow stack". Each entry is (return addr, method addr)
 unordered_map<ADDRINT, int> stackEntryCount; // number of times each return address appears in the method stack.
 unordered_map<ADDRINT, ADDRINT> heapAllocations; // map starts of regions to (one past the) ends of regions.
-ADDRINT lowestActiveObjectPtr = (ADDRINT)-1; // speeds up stack pointer analysis
+map<ADDRINT, ADDRINT> mappedRegions; // ^^^, but for mapped areas of memory (images). Used to determine valid object ptrs
+ADDRINT lowestActiveObjPtr = (ADDRINT)-1; // speeds up stack pointer analysis
 ADDRINT lowAddr; // base offset of the executable image what the fuck si going on why is it so laggy oercuheorcuheorchuoercuh
 
 void ParsePregame() {
@@ -59,8 +60,7 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
 	// lower_bound means that the argument is the lower bound and that the returned iterator points to an element at least as great as the argument.
 	// And, as you'd expect, upper_bound points /after/ the position you really want, to make it easy to use in the end condition of a loop..
 
-	// microoptimization; we know there's nothing negative in there
-	auto firstTrace = regionStart == 0 ? activeObjectTraces.begin() : activeObjectTraces.lower_bound(regionStart);
+	auto firstTrace = activeObjectTraces.lower_bound(regionStart);
 	auto lastTrace = activeObjectTraces.end();
 	auto it = firstTrace;
 	for (; it != lastTrace && it->first < regionEnd; it++) {
@@ -75,9 +75,9 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
 	activeObjectTraces.erase(firstTrace, it);
 
 	if (activeObjectTraces.empty()) {
-		lowestActiveObjectPtr = (ADDRINT)-1;
+		lowestActiveObjPtr = (ADDRINT)-1;
 	} else {
-		lowestActiveObjectPtr = activeObjectTraces.begin()->first;
+		lowestActiveObjPtr = activeObjectTraces.begin()->first;
 	}
 }
 
@@ -107,11 +107,23 @@ void FreeCallback(ADDRINT freedRegionStart) {
 	}
 #endif
 
-	EndObjectTracesInRegion(freedRegionStart, heapAllocations[freedRegionStart]);
+	auto freedRegionIt = heapAllocations.find(freedRegionStart);
+	ADDRINT freedRegionEnd = freedRegionIt->second;
+	EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
+	heapAllocations.erase(freedRegionIt);
 }
 
-bool StackChangePredicateCallback(ADDRINT stackPointer) {
-	return stackPointer > lowestActiveObjectPtr;
+// a stack pointer change is interesting if it moves the pointer to the lowest known address, or moves it up past an active object trace.
+// Possible microoptimization: For `add` operations on the stack pointer, only check if it's increased past an active object pointer, and for `sub` operations, only check if it's decreased below the lowest known.
+ADDRINT lastStackPointer;
+void StackIncreaseBeforeCallback(ADDRINT stackPointer) {
+	lastStackPointer = stackPointer;
+}
+bool StackIncreasePredicate(ADDRINT stackPointer) {
+	return stackPointer > lowestActiveObjPtr;
+}
+void StackIncreaseCallback(ADDRINT stackPointer) {
+	EndObjectTracesInRegion(lastStackPointer, stackPointer);
 }
 
 
@@ -120,15 +132,17 @@ void CallCallback(ADDRINT retAddr) {
 	lastRetAddr = retAddr;
 }
 // determine if an ADDRINT is a plausible object pointer.
-bool IsObjPtr(ADDRINT objptr) {
-	return true; // TODO: Check whether it points to an allocated memory region. But that's a
-		     // bit tricky: Could be stack, heap, static variable, probably some other
-		     // places I'm missing.
-	// TODO: possible improvement: If a method is called once with an invalid object pointer,
-	// then it needs to be permanently blacklisted. I think the Lego paper describes this.
+bool IsPossibleObjPtr(ADDRINT ptr) {
+	// currently, just check if it's in a mapped memory region.
+	// Theoretically, can be more precise by tracking, for example, if it's in a section that makes sense for objects to live in, and further by checking for example that if it's in the heap it's been allocated by malloc. But this stuff often is platform-specific and could break under obfuscation.
+	auto it = mappedRegions.upper_bound(ptr);
+ // TODO: check the time complexity of this! Based on different sources, it seems it could either be O(1), O(log n), or O(n)!
+	return it != mappedRegions.end() && it != mappedRegions.begin() && ptr < (--it)->second;
+	// TODO: blacklisting: If a method is called once with an invalid object pointer, then it
+	// needs to be permanently blacklisted. I think the Lego paper describes this.
 }
 void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objptr) {
-	if (!IsObjPtr(objptr)) {
+	if (!IsPossibleObjPtr(objptr)) {
 		return;
 	}
 	// we're a method candidate! Add to the trace and shadow stack.
@@ -141,7 +155,7 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objptr) {
 	};
 	activeObjectTraces[objptr].push_back(entry);
 	if (lastRetAddr == (ADDRINT)-1) {
-		cerr << "WARNING: Method executed, but not after a `call`!" << endl;
+		cerr << "WARNING: Method executed without call! Likely not a method. At 0x" << hex << procAddr << endl;
 	} else {
 		methodStack.push_back( {lastRetAddr, procAddr} );
 		stackEntryCount[lastRetAddr]++; // I wonder if there's a faster way to increment, since [] isn't as fast as possible
@@ -175,8 +189,6 @@ void RetCallback(ADDRINT returnAddr) {
 // INSTRUMENTERS //
 ///////////////////
 
-// does the given instruction possibly move the stack pointer up?
-// heuristic: Does the instruction write to the stack and is not a subtraction?
 bool IsPossibleStackIncrease(INS ins) {
 	// TODO: check for other instructions we might want to exclude, or handle specially
 	// (branches can't modify sp, right?)
@@ -184,11 +196,11 @@ bool IsPossibleStackIncrease(INS ins) {
 	// There /is/ one instruction which modifies the stack pointer which we intentionally
 	// exclude here -- `ret`. While it moves the stack pointer up by one, it shouldn't matter
 	// unless you are jumping to an object pointer -- and in that case, we have larger problems!
-	
+
 	if (INS_IsSub(ins)) {
 		return false;
 	}
-
+	
 	UINT32 operandCount = INS_OperandCount(ins);
 	for (UINT32 opIdx = 0; opIdx < operandCount; opIdx++) {
 		if (INS_OperandWritten(ins, opIdx)
@@ -212,10 +224,12 @@ void InstrumentInstruction(INS ins, void *) {
 		assert(!alreadyInstrumented);
 		alreadyInstrumented = true;
 
-		INS_InsertIfCall(ins, IPOINT_AFTER, (AFUNPTR)StackChangePredicateCallback,
+		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)StackIncreaseBeforeCallback,
+			       IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
+		INS_InsertIfCall(ins, IPOINT_AFTER, (AFUNPTR)StackIncreasePredicate,
 				 IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
-		INS_InsertThenCall(ins, IPOINT_AFTER, (AFUNPTR)EndObjectTracesInRegion,
-				   IARG_ADDRINT, 0, IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
+		INS_InsertThenCall(ins, IPOINT_AFTER, (AFUNPTR)StackIncreaseCallback,
+				   IARG_REG_VALUE, REG_STACK_PTR, IARG_END);
 	}
 
 	if (INS_IsRet(ins)) { // TODO: do we need to handle farret?
@@ -236,12 +250,13 @@ void InstrumentInstruction(INS ins, void *) {
 		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)CallCallback,
 			       IARG_ADDRINT, INS_NextAddress(ins), IARG_END);
 	}
-	if (methodCandidateAddrs.count(INS_Address(ins) - lowAddr) == 1) {
+	ADDRINT insRelAddr = INS_Address(ins) - lowAddr;
+	if (methodCandidateAddrs.count(insRelAddr) == 1) {
 		assert(!alreadyInstrumented); // TODO: it's possible for this to fail if the first instr in a method is `call`. Not the end of the world; we just need to double check that analysis functions are called in the order they're inserted, and that we have the right order here.
 		alreadyInstrumented = true;
 
 		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)MethodCandidateCallback,
-			       IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END); // TODO: are we really allowed to put FUNCARG on a non-routine instrumentation?
+			       IARG_ADDRINT, insRelAddr, IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END); // TODO: are we really allowed to put FUNCARG on a non-routine instrumentation?
 	}
 }
 
@@ -249,11 +264,17 @@ void InstrumentImage(IMG img, void *) {
 	// most of the work here is finding potential malloc and free procedures and instrumenting
 	// them appropriately.
 
+	// track mapped memory regions
+	for (UINT32 i = 0; i < IMG_NumRegions(img); i++) {
+		mappedRegions[IMG_RegionLowAddress(img, i)] = IMG_RegionHighAddress(img, i)+1;
+	}
+
 	// TODO: what if the user specifies a routine that's already detected automatically? Want to make sure we don't add it twice, but RTN isn't suitable for use in a set, so we need some manual way to prevent duplicates! (just compare addresses?)
 	vector<RTN> mallocRtns;
 	vector<RTN> freeRtns;
 	if (IMG_IsMainExecutable(img)) {
 		lowAddr = IMG_LowAddress(img);
+
 		for (size_t i = 0; i < mallocProcedures.size(); i++) {
 			// create routine if does not exist
 			ADDRINT mallocAddr = mallocProcedures[i];
@@ -306,6 +327,13 @@ void InstrumentImage(IMG img, void *) {
 	}
 }
 
+void InstrumentUnloadImage(IMG img, void *) {
+	// remove regions from mapped memory tracker
+	for (UINT32 i = 0; i < IMG_NumRegions(img); i++) {
+		mappedRegions.erase(IMG_RegionLowAddress(img, i));
+	}
+}
+
 void Fini(INT32 code, void *) {
 	cerr << "Program run completed, writing object traces to disk..." << endl;
 	// end all in-progress traces, then print all to disk.
@@ -332,6 +360,7 @@ int main(int argc, char **argv) {
 
 	PIN_Init(argc, argv);
 	IMG_AddInstrumentFunction(InstrumentImage, NULL);
+	IMG_AddUnloadFunction(InstrumentUnloadImage, NULL);
 	INS_AddInstrumentFunction(InstrumentInstruction, NULL);
 	PIN_AddFiniFunction(Fini, NULL);
 	PIN_StartProgram();
