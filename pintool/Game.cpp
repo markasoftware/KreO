@@ -92,13 +92,20 @@ void MallocAfterCallback(ADDRINT regionStart) {
 	}
 #endif
 
+	cerr << "Malloc @ " << hex << regionStart << endl;
 	heapAllocations[regionStart] = regionStart + mallocSize;
 }
 
 void FreeCallback(ADDRINT freedRegionStart) {
+	cerr << "Free @ " << hex << freedRegionStart << endl;
+	if (freedRegionStart == 0) { // for whatever reason, real programs seem to be doing this??
+		cerr << "WARNING: Freed nullptr?" << endl;
+		return;
+	}
 #ifndef SUPPRESS_MALLOC_ERRORS
 	if (heapAllocations.find(freedRegionStart) == heapAllocations.end()) {
 		cerr << "PINTOOL WARNING: Invalid pointer freed! Check the program-under-test." << endl;
+		return;
 	}
 #endif
 
@@ -130,6 +137,7 @@ void CallCallback(ADDRINT retAddr) {
 // determine if an ADDRINT is a plausible object pointer.
 bool IsPossibleObjPtr(ADDRINT ptr) {
 	// TODO: something smarter! But checking if it's in an allocated region is not good enough because the regions can change without triggering an image load, eg with brk syscall.
+	// here's a reasonable idea: Either in a mapped memory region OR in an explicitly mallocated heap zone.
 	return ptr >= lowAddr;
 
  // 	// currently, just check if it's in a mapped memory region.
@@ -311,18 +319,14 @@ void InstrumentImage(IMG img, void *) {
 	}
 
 	RTN discoveredMalloc = RTN_FindByName(img, MALLOC_SYMBOL); // TODO: look more into what the malloc symbol is named on different platforms.
-	RTN discoveredFree = RTN_FindByName(img, FREE_SYMBOL);
+	RTN discoveredFree = RTN_FindByName(img, FREE_SYMBOL); // TODO: it seems that `free` in one library calls `free` in another library (at least on gnu libc linux), because 
 	if (RTN_Valid(discoveredMalloc)) {
-#ifdef PINTOOL_DEBUG
 		// TODO: figure out if we can hook into pin's logging system?
 		cerr << "Found malloc procedure by symbol!" << endl;
-#endif
 		mallocRtns.push_back(discoveredMalloc);
 	}
 	if (RTN_Valid(discoveredFree)) {
-#ifdef PINTOOL_DEBUG
 		cerr << "Found free procedure by symbol!" << endl;
-#endif
 		freeRtns.push_back(discoveredFree);
 	}
 	for (RTN mallocRtn : mallocRtns) {
@@ -376,7 +380,7 @@ void Fini(INT32 code, void *) {
 int main(int argc, char **argv) {
 	ParsePregame();
 
-	PIN_InitSymbols(); // this might be deprecated? Can't find it in docs anymore.
+	PIN_InitSymbols(); // this /is/ necessary for debug symbols, but somehow it doesn't have an entry in the PIN documentation? (though its name is referenced in a few places).
 	PIN_Init(argc, argv);
 	IMG_AddInstrumentFunction(InstrumentImage, NULL);
 	IMG_AddUnloadFunction(InstrumentUnloadImage, NULL);
