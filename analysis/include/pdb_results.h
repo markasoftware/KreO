@@ -6,12 +6,12 @@
 #include <optional>
 
 #include <boost/json.hpp>
-#include "pdb_output_analyzer.h"
+#include "pdb_analyzer.h"
 
 class PdbResults {
  public:
   PdbResults(std::shared_ptr<std::map<uint32_t, ClassInfo>> ci,
-             std::shared_ptr<std::map<uint32_t, FieldList>> fl);
+             std::shared_ptr<std::map<uint32_t, MethodList>> fl);
 
   std::optional<uint32_t> FindClassIndex(const std::string &classname);
   /// @brief Combines elements in the class info and field list maps that have
@@ -29,5 +29,5 @@ class PdbResults {
 
  private:
   std::shared_ptr<std::map<uint32_t, ClassInfo>> ci_;
-  std::shared_ptr<std::map<uint32_t, FieldList>> fl_;
+  std::shared_ptr<std::map<uint32_t, MethodList>> ml_;
 };

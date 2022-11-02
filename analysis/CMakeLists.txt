@@ -14,7 +14,7 @@ include_directories(include)
 add_executable(analyze_pdb_dump src/analyze_pdb_dump.cpp)
 
 target_sources(analyze_pdb_dump PRIVATE
-    src/pdb_output_analyzer.cpp
+    src/pdb_analyzer.cpp
     src/pdb_results.cpp
     src/ctags_reader.cpp)
 

@@ -4,9 +4,9 @@
 #include <sstream>
 
 PdbResults::PdbResults(std::shared_ptr<std::map<uint32_t, ClassInfo>> ci,
-                       std::shared_ptr<std::map<uint32_t, FieldList>> fl)
+                       std::shared_ptr<std::map<uint32_t, MethodList>> fl)
     : ci_(ci),
-      fl_(fl) {}
+      ml_(fl) {}
 
 std::optional<uint32_t> PdbResults::FindClassIndex(
     const std::string &classname) {
@@ -32,11 +32,11 @@ void PdbResults::CombineClasses() {
       // Get associated field list
       uint32_t removed_fl_index = it->second.field_list;
 
-      auto removed_fl_it = fl_->find(removed_fl_index);
+      auto removed_fl_it = ml_->find(removed_fl_index);
 
-      if (removed_fl_it != fl_->end()) {
-        if (fl_->count(existing_ci_it->second)) {
-          auto &index_list = (*fl_)[existing_ci_it->second].method_index_list;
+      if (removed_fl_it != ml_->end()) {
+        if (ml_->count(existing_ci_it->second)) {
+          auto &index_list = (*ml_)[existing_ci_it->second].method_index_list;
 
           for (const auto &removed_fl_it_element :
                removed_fl_it->second.method_index_list) {
@@ -54,10 +54,10 @@ void PdbResults::CombineClasses() {
             }
           }
         } else {
-          (*fl_)[existing_ci_it->second] = removed_fl_it->second;
+          (*ml_)[existing_ci_it->second] = removed_fl_it->second;
         }
 
-        fl_->erase(removed_fl_it);
+        ml_->erase(removed_fl_it);
       }
 
       it = ci_->erase(it);
@@ -73,8 +73,8 @@ std::ostream &operator<<(std::ostream &os, const PdbResults &results) {
   for (const auto &it : *results.ci_) {
     os << '\t' << it.second.class_name;
 
-    const auto &fl = results.fl_->find(it.second.field_list);
-    if (fl != results.fl_->end()) {
+    const auto &fl = results.ml_->find(it.second.field_list);
+    if (fl != results.ml_->end()) {
       os << ": " << fl->second << "}";
     }
 
@@ -107,14 +107,14 @@ boost::json::value PdbResults::ToJson() const {
 
     class_info["demangled_name"] = it.second.class_name;
 
-    const auto &fl_it = fl_->find(it.second.field_list);
-    if (fl_it != fl_->end()) {
+    const auto &fl_it = ml_->find(it.second.field_list);
+    if (fl_it != ml_->end()) {
       boost::json::object methods;
       for (const auto &field_it : fl_it->second.method_index_list) {
         boost::json::object method;
-        method["demangled_name"] = field_it.first;
+        method["demangled_name"] = field_it.name;
         std::stringstream ss;
-        ss << std::hex << field_it.second;
+        ss << std::hex << field_it.virtual_address;
         methods["0x" + ss.str()] = method;
       }
 
