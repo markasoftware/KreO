@@ -1,127 +1,8 @@
+#include "pdb_output_analyzer.h"
+
 #include <fstream>
-#include <iostream>
-#include <map>
-#include <memory>
-#include <set>
 #include <sstream>
 #include <string>
-#include <string_view>
-#include <vector>
-
-struct ClassInfo {
-  uint32_t field_list{};
-  std::string class_name;
-
-  friend std::ostream &operator<<(std::ostream &os, const ClassInfo &ci) {
-    os << "{'" << ci.class_name << "' field_list: " << ci.field_list << "}";
-    return os;
-  }
-};
-
-struct FieldList {
-  std::vector<std::pair<std::string, uint32_t>> method_index_list;
-
-  friend std::ostream &operator<<(std::ostream &os, const FieldList fl) {
-    os << "{";
-    bool first = true;
-    for (const auto it : fl.method_index_list) {
-      if (!first) {
-        os << ", ";
-      } else {
-        first = false;
-      }
-      os << "{" << it.first << ", " << it.second << "}";
-    }
-    os << "}";
-    return os;
-  }
-};
-
-class PdbResults {
- public:
-  PdbResults(std::shared_ptr<std::map<uint32_t, ClassInfo>> ci,
-             std::shared_ptr<std::map<uint32_t, FieldList>> fl)
-      : ci_(ci),
-        fl_(fl) {}
-
-  uint32_t FindClassIndex(const std::string &classname) {
-    for (const auto &it : *ci_) {
-      if (classname == it.second.class_name) {
-        return it.first;
-      }
-    }
-  }
-
-  /// @brief Combines elements in the class info and field list maps that have
-  /// the same class name (dbc file sometimes produces identical class
-  /// structures that share field list elements for some reason). This should
-  /// really be investigated. For example, std::exception is listed twice as a
-  /// type.
-  void Compress() {
-    std::map<std::string, uint32_t> classes;
-    for (auto it = ci_->begin(); it != ci_->end();) {
-      auto existing_ci_it = classes.find(it->second.class_name);
-
-      if (existing_ci_it != classes.end()) {
-        // Get associated field list
-        uint32_t removed_fl_index = it->second.field_list;
-
-        auto removed_fl_it = fl_->find(removed_fl_index);
-
-        if (removed_fl_it != fl_->end()) {
-          if (fl_->count(existing_ci_it->second)) {
-            auto &index_list = (*fl_)[existing_ci_it->second].method_index_list;
-
-            for (const auto &removed_fl_it_element :
-                 removed_fl_it->second.method_index_list) {
-              auto Find = [=]() {
-                for (const auto &it : index_list) {
-                  if (it == removed_fl_it_element) {
-                    return true;
-                  }
-                }
-                return false;
-              };
-
-              if (!Find()) {
-                index_list.push_back(removed_fl_it_element);
-              }
-            }
-          } else {
-            (*fl_)[existing_ci_it->second] = removed_fl_it->second;
-          }
-
-          fl_->erase(removed_fl_it);
-        }
-
-        it = ci_->erase(it);
-      } else {
-        classes.insert(std::pair(it->second.class_name, it->second.field_list));
-        it++;
-      }
-    }
-  }
-
-  friend std::ostream &operator<<(std::ostream &os, const PdbResults &results) {
-    os << "{" << std::endl;
-    for (const auto &it : *results.ci_) {
-      os << '\t' << it.second.class_name;
-
-      const auto &fl = results.fl_->find(it.second.field_list);
-      if (fl != results.fl_->end()) {
-        os << ": " << fl->second << "}";
-      }
-
-      os << std::endl;
-    }
-    os << "}";
-    return os;
-  }
-
- private:
-  std::shared_ptr<std::map<uint32_t, ClassInfo>> ci_;
-  std::shared_ptr<std::map<uint32_t, FieldList>> fl_;
-};
 
 static constexpr std::string_view kTypesId{"*** TYPES"};
 
@@ -137,12 +18,14 @@ static constexpr std::string_view kFieldListTypeId{"field list type "};
 static constexpr std::string_view kClassNameId{"class name = "};
 static constexpr std::string_view kFieldIndexId{"index = "};
 static constexpr std::string_view kNameId{"name = "};
+static constexpr std::string_view kUniqueName{"unique name = "};
 
 static constexpr std::string_view kBlank{""};
 
 /// @brief checks to see if string contains substr, returning true if str
 /// contains substr, false otherwise.
-bool Contains(const std::string &str, const std::string_view &substr) {
+static inline bool Contains(const std::string &str,
+                            const std::string_view &substr) {
   return str.find(substr) != std::string::npos;
 }
 
@@ -165,7 +48,8 @@ bool Contains(const std::string &str, const std::string_view &substr) {
 /// @param last_line The last line that was read from the stream
 /// @return True if a new type was found, false if not (the fstream reached the
 /// end of the file or some other issue with the file stream).
-bool IterateToNewType(std::fstream &stream, const std::string &last_line) {
+static bool IterateToNewType(std::fstream &stream,
+                             const std::string &last_line) {
   std::string line = last_line;
 
   do {
@@ -179,30 +63,20 @@ bool IterateToNewType(std::fstream &stream, const std::string &last_line) {
 
 /// @brief Strict checking of std::getline. Calls std::getline and throws
 /// runtime_error if std::getline failed.
-void MustGetLine(std::fstream &stream, std::string &out_str,
-                 const std::string &error_str) {
+static void MustGetLine(std::fstream &stream, std::string &out_str,
+                        const std::string &error_str) {
   if (!std::getline(stream, out_str)) {
     throw std::runtime_error("MustGetLine failed, " + error_str);
   }
 }
 
-int main(int argv, char *argc[]) {
-  if (argv != 2) {
-    std::cerr
-        << "Usage: ./analyze_pdb_dump <path-to-pdb-dump-file>\n\tWhere "
-           "<path-to-pdb-dump-file> is a file generated by running cvdump.exe "
-           "with the '-t' option on a msvc executable's pdb file, piping "
-           "stdout to a dump file."
-        << std::endl;
-    return EXIT_FAILURE;
-  }
-
-  std::string pdb_file(argc[1]);
-
-  std::fstream fstream(pdb_file);
+std::pair<std::shared_ptr<std::map<uint32_t, ClassInfo>>,
+          std::shared_ptr<std::map<uint32_t, FieldList>>>
+AnalyzePdbDump(const std::string &fname) {
+  std::fstream fstream(fname);
 
   if (!fstream.is_open()) {
-    return EXIT_FAILURE;
+    throw std::runtime_error("failed to open file named " + fname);
   }
 
   std::string line;
@@ -216,7 +90,7 @@ int main(int argv, char *argc[]) {
     }
   }
   if (!types_found) {
-    return EXIT_FAILURE;
+    throw std::runtime_error("failed to find start of types");
   }
 
   auto class_info = std::make_shared<std::map<uint32_t, ClassInfo>>();
@@ -274,6 +148,21 @@ int main(int argv, char *argc[]) {
           throw std::runtime_error("getting class name failed");
         }
         ci.class_name = ci.class_name.substr(0, ci.class_name.size() - 1);
+      }
+
+      // Extract unique name
+      {
+        auto loc = line.find(kUniqueName);
+        if (loc == std::string::npos) {
+          throw std::runtime_error("couldn't find unique class name");
+        }
+
+        std::stringstream ss(line.substr(loc + kUniqueName.size()));
+        if (!(ss >> ci.mangled_class_name)) {
+          throw std::runtime_error("getting mangled class name failed");
+        }
+        ci.mangled_class_name =
+            ci.mangled_class_name.substr(0, ci.mangled_class_name.size() - 1);
       }
 
       // Insert class info to class info map
@@ -354,15 +243,5 @@ int main(int argv, char *argc[]) {
     }
   }
 
-  // for (const auto &it : *class_info) {
-  //   std::cout << it.second << std::endl;
-  // }
-
-  PdbResults results(class_info, field_list_info);
-
-  results.Compress();
-
-  std::cout << results << std::endl;
-
-  return EXIT_SUCCESS;
+  return std::pair(class_info, field_list_info);
 }
