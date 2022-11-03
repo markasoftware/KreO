@@ -1,0 +1,3 @@
+[submodule "analysis/demumble"]
+	path = analysis/demumble
+	url = https://github.com/nico/demumble.git
