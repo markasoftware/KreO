@@ -12,8 +12,9 @@
 #include "pdb_analyzer.h"
 #include "pdb_results.h"
 
+// ============================================================================
 int main(int argv, char *argc[]) {
-  if (argv != 3) {
+  if (argv != 2 && argv != 3) {
     std::cerr
         << "Usage: ./analyze_pdb_dump <path-to-pdb-dump-file> "
            "<path-to-ctags-file>\n\tWhere "
@@ -26,23 +27,27 @@ int main(int argv, char *argc[]) {
   }
 
   std::string pdb_file(argc[1]);
-  std::string ctags_json(argc[2]);
+
+  std::optional<std::string> ctags_json{std::nullopt};
+  if (argv == 3) {
+    ctags_json = std::string(argc[2]);
+  }
 
   // Analyze PDB dump
   PdbAnalyzer analyzer;
   analyzer.AnalyzePdbDump(pdb_file);
 
   PdbResults results(analyzer.get_class_info(), analyzer.get_method_list());
-  results.CombineClasses();
+  // results.CombineClasses();
 
   // Read in ctags output
-  CtagsReader reader;
-  reader.Read(ctags_json);
+  if (ctags_json.has_value()) {
+    CtagsReader reader;
+    reader.Read(*ctags_json);
 
-  // Remove all classes that aren't in the ctags output
-  // results.RemoveAllBut(reader.GenerateCtagsObjectList());
-
-  // std::cout << results << std::endl;
+    // Remove all classes that aren't in the ctags output
+    results.RemoveAllBut(reader.GenerateCtagsObjectList());
+  }
 
   std::cout << boost::json::serialize(results.ToJson()) << std::endl;
 

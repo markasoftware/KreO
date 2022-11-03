@@ -18,8 +18,8 @@ struct ClassInfo {
 
   friend std::ostream &operator<<(std::ostream &os, const ClassInfo &ci) {
     os << "{'" << ci.mangled_class_name << "' class name: " << ci.class_name
-       << ", virtual address: " << ci.virtual_address
-       << ", field_list: " << ci.field_list << "}";
+       << ", virtual address: " << ci.virtual_address << ", field list: 0x"
+       << std::hex << ci.field_list << std::dec << "}";
     return os;
   }
 };
@@ -32,6 +32,12 @@ struct MethodInfo {
   friend bool operator==(const MethodInfo &mi1, const MethodInfo &mi2) {
     return mi1.name == mi2.name && mi1.type_id == mi2.type_id &&
            mi1.virtual_address == mi2.virtual_address;
+  }
+
+  friend std::ostream &operator<<(std::ostream &os, const MethodInfo &mi) {
+    os << "{'" << mi.name << "' type id: " << std::hex << mi.type_id << std::dec
+       << ", virtual address: 0x" << mi.virtual_address << "}";
+    return os;
   }
 };
 
@@ -47,9 +53,22 @@ struct MethodList {
       } else {
         first = false;
       }
-      // os << "{" << it.first << ", " << it.second << "}";
+      os << it;
     }
     os << "}";
+    return os;
+  }
+};
+
+struct HeaderData {
+  std::string name;
+  virtual_address_t virtual_size{};
+  virtual_address_t virtual_address{};
+
+  friend std::ostream &operator<<(std::ostream &os, const HeaderData &hd) {
+    os << "{name: " << hd.name << ", virtual size: 0x" << std::hex
+       << hd.virtual_size << ", virtual address: 0x" << hd.virtual_address
+       << std::dec << "}";
     return os;
   }
 };
@@ -62,11 +81,47 @@ class PdbAnalyzer {
     return ci_;
   }
 
-  std::shared_ptr<std::map<type_id_t, MethodList>> get_method_list() const {
+  std::shared_ptr<std::map<std::string, MethodList>> get_method_list() const {
     return ml_;
   }
 
  private:
+  static constexpr virtual_address_t kDefaultBaseAddress{0x00400000};
+
+  static constexpr std::string_view kTypesSection{"*** TYPES"};
+  static constexpr std::string_view kSectionHeadersSection{
+      "*** SECTION HEADERS"};
+  static constexpr std::string_view kOriginalSectionHeaders{
+      "*** ORIGINAL SECTION HEADERS"};
+  static constexpr std::string_view kPublicsSection{"*** PUBLICS"};
+  static constexpr std::string_view kSymbolsSection{"*** SYMBOLS"};
+  static constexpr std::string_view kClassId{"LF_CLASS"};
+  static constexpr std::string_view kGlobals{"*** GLOBALS"};
+  static constexpr std::string_view kFieldListId{"LF_FIELDLIST"};
+
+  static constexpr std::string_view kModuleSection{"** Module: "};
+
+  static constexpr std::string_view kSectionHeaderNum{"SECTION HEADER #"};
+
+  static constexpr std::string_view kForwardRef{", FORWARD REF, "};
+  static constexpr std::string_view kStaticId{", STATIC, "};
+  static constexpr std::string_view kOneMethod{"= LF_ONEMETHOD, "};
+
+  static constexpr std::string_view kFieldListTypeId{"field list type "};
+
+  static constexpr std::string_view kClassNameId{"class name = "};
+  static constexpr std::string_view kFieldIndexId{"index = "};
+  static constexpr std::string_view kNameId{"name = "};
+  static constexpr std::string_view kUniqueName{"unique name = "};
+
+  static constexpr std::string_view kBlank{""};
+
+  static constexpr std::string_view kThisCall{"__thiscall"};
+
+  static constexpr std::string_view kGproc32{"S_GPROC32"};
+
+  static constexpr std::string_view kNoType{"T_NOTYPE"};
+
   /// @brief Identify all types in the pdb file
   /// @param stream
   void FindTypes(std::fstream &fstream);
@@ -75,18 +130,22 @@ class PdbAnalyzer {
   void FindSectionHeaders(std::fstream &fstream);
 
   /// @brief Identify all publics in the pdb file
-  void FindPublics(std::fstream &fstream);
+  void FindSymbols(std::fstream &fstream);
 
   static void SeekToSectionHeader(std::fstream &fstream,
                                   const std::string_view &header);
 
   static void GetHexValueAfterString(const std::string &line,
-                                     const std::string_view str,
+                                     const std::string_view &str,
                                      uint32_t &out_value);
 
   static void GetStrValueAfterString(const std::string &line,
-                                     const std::string_view str,
+                                     const std::string_view &str,
                                      std::string &out_str);
+
+  static void GetQuotedStrAfterString(const std::string &line,
+                                      const std::string_view &str,
+                                      std::string &out_str);
 
   /// @brief checks to see if string contains substr, returning true if str
   /// contains substr, false otherwise.
@@ -120,5 +179,9 @@ class PdbAnalyzer {
                           const std::string &error_str);
 
   std::shared_ptr<std::map<type_id_t, ClassInfo>> ci_;
-  std::shared_ptr<std::map<type_id_t, MethodList>> ml_;
+  std::shared_ptr<std::map<std::string, MethodList>> ml_;
+
+  std::map<int, HeaderData> h_data_;
+
+  std::map<type_id_t, virtual_address_t> type_id_to_virtual_address_map_;
 };

@@ -6,33 +6,6 @@
 #include <sstream>
 #include <string>
 
-#include "llvm/Demangle/Demangle.h"
-
-static constexpr std::string_view kTypesSection{"*** TYPES"};
-static constexpr std::string_view kSectionHeadersSection{"*** SECTION HEADERS"};
-static constexpr std::string_view kOriginalSectionHeaders{
-    "*** ORIGINAL SECTION HEADERS"};
-static constexpr std::string_view kPublicsSection{"*** PUBLICS"};
-static constexpr std::string_view kClassId{"LF_CLASS"};
-static constexpr std::string_view kFieldListId{"LF_FIELDLIST"};
-
-static constexpr std::string_view kSectionHeaderNum{"SECTION HEADER #"};
-
-static constexpr std::string_view kForwardRef{", FORWARD REF, "};
-static constexpr std::string_view kStaticId{", STATIC, "};
-static constexpr std::string_view kOneMethod{"= LF_ONEMETHOD, "};
-
-static constexpr std::string_view kFieldListTypeId{"field list type "};
-
-static constexpr std::string_view kClassNameId{"class name = "};
-static constexpr std::string_view kFieldIndexId{"index = "};
-static constexpr std::string_view kNameId{"name = "};
-static constexpr std::string_view kUniqueName{"unique name = "};
-
-static constexpr std::string_view kBlank{""};
-
-static constexpr std::string_view kThisCall{"__thiscall"};
-
 // ============================================================================
 void PdbAnalyzer::AnalyzePdbDump(const std::string &fname) {
   std::fstream fstream(fname);
@@ -46,7 +19,7 @@ void PdbAnalyzer::AnalyzePdbDump(const std::string &fname) {
   fstream.seekg(std::fstream::beg);
   FindSectionHeaders(fstream);
   fstream.seekg(std::fstream::beg);
-  FindPublics(fstream);
+  FindSymbols(fstream);
 }
 
 // ============================================================================
@@ -55,7 +28,6 @@ void PdbAnalyzer::FindTypes(std::fstream &fstream) {
   SeekToSectionHeader(fstream, kTypesSection);
 
   ci_ = std::make_shared<std::map<uint32_t, ClassInfo>>();
-  ml_ = std::make_shared<std::map<uint32_t, MethodList>>();
 
   std::string line;
 
@@ -100,46 +72,6 @@ void PdbAnalyzer::FindTypes(std::fstream &fstream) {
 
       // Insert class info to class info map
       ci_->insert(std::pair(type_index, ci));
-    } else if (Contains(line, kFieldListId)) {
-      MethodList ml;
-
-      // Extract method type index
-      type_id_t method_type_index{};
-      GetHexValueAfterString(line, kBlank, method_type_index);
-
-      // Extract list contents
-      while (true) {
-        MustGetLine(fstream, line, "failed to get line from field list");
-
-        if (Contains(line, kOneMethod)) {
-          // Comment at end of line indicates additional content associated with
-          // list element on next line
-          while (line.find_last_of(',') == line.size() - 2) {
-            std::string next_line;
-            MustGetLine(fstream, next_line, "failed to get next method line");
-            line += next_line;
-          }
-
-          // Check if it is a static method, continue if it is
-          if (Contains(line, kStaticId)) {
-            continue;
-          }
-
-          MethodInfo mi;
-
-          GetHexValueAfterString(line, kFieldIndexId, mi.type_id);
-
-          GetQuotedStrAfterString(line, kNameId, mi.name);
-
-          ml.method_index_list.push_back(mi);
-        } else if (line == kBlank) {
-          break;
-        }
-      }
-
-      if (ml.method_index_list.size() > 0) {
-        ml_->insert(std::pair(method_type_index, ml));
-      }
     } else if (line == kBlank) {
       break;
     }
@@ -207,133 +139,102 @@ void PdbAnalyzer::FindSectionHeaders(std::fstream &fstream) {
 }
 
 // ============================================================================
-void PdbAnalyzer::FindPublics(std::fstream &fstream) {
-  SeekToSectionHeader(fstream, kPublicsSection);
+void PdbAnalyzer::FindSymbols(std::fstream &fstream) {
+  ml_ = std::make_shared<std::map<std::string, MethodList>>();
+
+  SeekToSectionHeader(fstream, kSymbolsSection);
 
   std::string line;
-  MustGetLine(
-      fstream, line, "failed to seek past blank line between header and data");
-  MustGetLine(
-      fstream, line, "failed to seek past blank line between header and data");
 
-  while (line != kBlank) {
-    std::vector<std::string> strs;
-    {
+  auto SeekToNextEmptyLine = [&]() {
+    while (line != kBlank) {
+      MustGetLine(fstream,
+                  line,
+                  "failed to get new line when searching for non blank line");
+    }
+  };
+
+  auto SeekToNextSymbol = [&]() {
+    while (line != kGlobals) {
+      MustGetLine(fstream,
+                  line,
+                  "failed to get new line when searching for new symbol");
+
       std::stringstream ss(line);
-      std::string next_str;
-      while (ss >> next_str) {
-        strs.push_back(next_str);
+      std::string first_str;
+      ss >> first_str;
+      if (first_str.size() == 8 && first_str[0] == '(' && first_str[7] == ')') {
+        break;
       }
-    }
-    // Extract section id and address within section
-    int section_id{};
-    {
-      std::stringstream ss(strs[1].substr(1, 4));
-      if (!(ss >> section_id)) {
-        throw std::runtime_error("failed to get section id");
-      }
-    }
+    };
+  };
 
-    virtual_address_t local_address{};
-    {
-      std::stringstream ss;
-      ss << std::hex << strs[1].substr(6, 8);
-      if (!(ss >> local_address)) {
-        throw std::runtime_error("failed to get local address");
-      }
-    }
+  SeekToNextSymbol();
 
-    // Compute offset virtual address
-    virtual_address_t offset_address = local_address +
-                                       h_data_[section_id].virtual_address +
-                                       kDefaultBaseAddress;
+  while (line != kGlobals) {
+    if (line.find(kGproc32) != std::string::npos) {
+      MethodInfo mi;
 
-    // Extract demangled name (if any)
-    // TODO make not path dependent
-    // std::string demumble_cmd = "./demumble " + strs[4];
-    // FILE *res_fd = popen(demumble_cmd.c_str(), "r");
-    // if (!res_fd) {
-    //   throw std::runtime_error("popen failed");
-    // }
-    // char buffer[1024];
-    // char *line_p = fgets(buffer, sizeof(buffer), res_fd);
-    // pclose(res_fd);
+      std::stringstream ss(
+          line.substr(line.find(kGproc32) + kGproc32.size() + 1));
 
-    // Associated name with method
-    // std::cout << buffer << ", " << std::hex << offset_address << std::dec
-    //           << std::endl;
+      std::string address_info;
+      ss >> address_info;
 
-    // Find class name in name
-    // std::string dmangled_name(buffer);
-
-    std::string mangled_name = strs[4];
-
-    size_t n_mangled{};
-    char *unmangled_name = llvm::microsoftDemangle(
-        mangled_name.c_str(),
-        &n_mangled,
-        NULL,
-        NULL,
-        NULL,
-        (llvm::MSDemangleFlags)(
-            // (int)llvm::MSDF_NoCallingConvention |
-            (int)llvm::MSDF_NoAccessSpecifier | (int)llvm::MSDF_NoReturnType |
-            (int)llvm::MSDF_NoMemberType | (int)llvm::MSDF_NoVariableType));
-    if (unmangled_name != nullptr) {
-      std::stringstream ss(unmangled_name);
-      std::cout << "^^^" << unmangled_name << std::endl;
-      free(unmangled_name);
-      // Get class and method name
-      std::string calling_convention;
-      std::string class_name;
-      std::string method_name;
-
-      ss >> calling_convention;
-
-      if (calling_convention != kThisCall || !(ss >> class_name) ||
-          !(ss >> method_name)) {
-        MustGetLine(fstream, line, "failed to get public element");
-        continue;
+      int section_id{};
+      {
+        std::stringstream ss(address_info.substr(1, 4));
+        if (!(ss >> section_id)) {
+          throw std::runtime_error("failed to get section id");
+        }
       }
 
-      std::cout << mangled_name << ", " << class_name << ", " << method_name
-                << std::endl;
+      virtual_address_t local_address{};
+      {
+        std::stringstream ss;
+        ss << std::hex << address_info.substr(6, 8);
+        if (!(ss >> local_address)) {
+          throw std::runtime_error("failed to get local address");
+        }
+      }
+
+      std::string type_str;
+      if (!(ss >> type_str) || !(ss >> type_str) || !(ss >> type_str) ||
+          !(ss >> type_str)) {
+        throw std::runtime_error("failed to get type");
+      }
+
+      if (type_str.find(kNoType) != std::string::npos) {
+        mi.type_id = 0;
+      } else {
+        std::stringstream ss;
+        ss << std::hex << type_str;
+        if (!(ss >> mi.type_id)) {
+          throw std::runtime_error("failed to get type as int");
+        }
+      }
+
+      ss >> mi.name;
+
+      virtual_address_t method_address = local_address +
+                                         h_data_[section_id].virtual_address +
+                                         kDefaultBaseAddress;
+
+      mi.virtual_address = method_address;
+
+      // Find class associated with method info.
+      for (const auto &it : *ci_) {
+        if (mi.name.find(it.second.class_name) == 0) {
+          if (ml_->find(it.second.class_name) == ml_->end()) {
+            ml_->insert(std::pair(it.second.class_name, MethodList()));
+          }
+          (*ml_)[it.second.class_name].method_index_list.push_back(mi);
+          break;
+        }
+      }
     }
 
-    // auto pos = mangled_name.find_first_of('?');
-    // if (pos != 0) {
-    //   // not a method
-    //   MustGetLine(fstream, line, "failed to get public element");
-    //   continue;
-    // }
-    // mangled_name = mangled_name.substr(pos + 1);
-
-    // pos = mangled_name.find_first_of('@');
-    // if (pos == std::string::npos) {
-    //   throw std::runtime_error("demangling failed for mangled name " +
-    //   strs[4]);
-    // }
-    // std::string method_name = mangled_name.substr(0, pos);
-
-    // mangled_name = mangled_name.substr(pos);
-    // pos = mangled_name.find_first_of('@');
-    // if (pos != 0) {
-    //   throw std::runtime_error("demangling failed for mangled name " +
-    //   strs[4]);
-    // }
-    // mangled_name = mangled_name.substr(pos + 1);
-
-    // pos = mangled_name.find_first_of("@@");
-    // if (pos == std::string::npos) {
-    //   throw std::runtime_error("demangling failed for mangled name " +
-    //   strs[4]);
-    // }
-    // std::string class_name = mangled_name.substr(0, pos);
-
-    // std::cout << strs[4] << ", " << method_name << ", " << class_name
-    //           << std::endl;
-
-    MustGetLine(fstream, line, "failed to get public element");
+    SeekToNextSymbol();
   }
 }
 

@@ -37,26 +37,12 @@
     },
     {
         "_type": "tag",
-        "name": "ClassInfo",
-        "path": "analyze_pdb_dump.cpp",
-        "pattern": "/^struct ClassInfo {$/",
+        "name": "MyClass",
+        "path": "../../examples/one.cpp",
+        "pattern": "/^\tclass MyClass {$/",
         "file": true,
-        "kind": "struct"
-    },
-    {
-        "_type": "tag",
-        "name": "FieldList",
-        "path": "analyze_pdb_dump.cpp",
-        "pattern": "/^struct FieldList {$/",
-        "file": true,
-        "kind": "struct"
-    },
-    {
-        "_type": "tag",
-        "name": "PdbResults",
-        "path": "analyze_pdb_dump.cpp",
-        "pattern": "/^class PdbResults {$/",
-        "file": true,
-        "kind": "class"
+        "kind": "class",
+        "scope": "CoolSpace",
+        "scopeKind": "namespace"
     }
 ]

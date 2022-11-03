@@ -8,7 +8,6 @@ find_package(
 
 set(CMAKE_BUILD_TYPE Debug)
 
-include_directories(../json5/include)
 include_directories(include)
 
 add_executable(analyze_pdb_dump src/analyze_pdb_dump.cpp)

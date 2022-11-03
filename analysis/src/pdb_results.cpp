@@ -1,13 +1,16 @@
 #include "pdb_results.h"
 
+#include <iostream>
 #include <ostream>
 #include <sstream>
 
+// ============================================================================
 PdbResults::PdbResults(std::shared_ptr<std::map<uint32_t, ClassInfo>> ci,
-                       std::shared_ptr<std::map<uint32_t, MethodList>> fl)
+                       std::shared_ptr<std::map<std::string, MethodList>> fl)
     : ci_(ci),
       ml_(fl) {}
 
+// ============================================================================
 std::optional<uint32_t> PdbResults::FindClassIndex(
     const std::string &classname) {
   for (const auto &it : *ci_) {
@@ -18,25 +21,21 @@ std::optional<uint32_t> PdbResults::FindClassIndex(
   return std::nullopt;
 }
 
-/// @brief Combines elements in the class info and field list maps that have
-/// the same class name (dbc file sometimes produces identical class
-/// structures that share field list elements for some reason). This should
-/// really be investigated. For example, std::exception is listed twice as a
-/// type.
+// ============================================================================
 void PdbResults::CombineClasses() {
-  std::map<std::string, uint32_t> classes;
+  std::set<std::string> classes;
   for (auto it = ci_->begin(); it != ci_->end();) {
     auto existing_ci_it = classes.find(it->second.class_name);
 
     if (existing_ci_it != classes.end()) {
       // Get associated field list
-      uint32_t removed_fl_index = it->second.field_list;
+      std::string removed_fl_cn = it->second.class_name;
 
-      auto removed_fl_it = ml_->find(removed_fl_index);
+      auto removed_fl_it = ml_->find(removed_fl_cn);
 
       if (removed_fl_it != ml_->end()) {
-        if (ml_->count(existing_ci_it->second)) {
-          auto &index_list = (*ml_)[existing_ci_it->second].method_index_list;
+        if (ml_->count(*existing_ci_it)) {
+          auto &index_list = (*ml_)[*existing_ci_it].method_index_list;
 
           for (const auto &removed_fl_it_element :
                removed_fl_it->second.method_index_list) {
@@ -54,7 +53,7 @@ void PdbResults::CombineClasses() {
             }
           }
         } else {
-          (*ml_)[existing_ci_it->second] = removed_fl_it->second;
+          (*ml_)[*existing_ci_it] = removed_fl_it->second;
         }
 
         ml_->erase(removed_fl_it);
@@ -62,18 +61,19 @@ void PdbResults::CombineClasses() {
 
       it = ci_->erase(it);
     } else {
-      classes.insert(std::pair(it->second.class_name, it->second.field_list));
+      classes.insert(it->second.class_name);
       it++;
     }
   }
 }
 
+// ============================================================================
 std::ostream &operator<<(std::ostream &os, const PdbResults &results) {
   os << "{" << std::endl;
   for (const auto &it : *results.ci_) {
     os << '\t' << it.second.class_name;
 
-    const auto &fl = results.ml_->find(it.second.field_list);
+    const auto &fl = results.ml_->find(it.second.class_name);
     if (fl != results.ml_->end()) {
       os << ": " << fl->second << "}";
     }
@@ -84,6 +84,7 @@ std::ostream &operator<<(std::ostream &os, const PdbResults &results) {
   return os;
 }
 
+// ============================================================================
 void PdbResults::RemoveAllBut(const std::set<std::string> &classes) {
   for (auto it = ci_->begin(); it != ci_->end();) {
     if (!classes.count(it->second.class_name)) {
@@ -94,37 +95,73 @@ void PdbResults::RemoveAllBut(const std::set<std::string> &classes) {
   }
 }
 
+// ============================================================================
 boost::json::value PdbResults::ToJson() const {
   boost::json::object obj;
-  // obj["structures"]
 
   boost::json::object structures;
-
-  // structures["classname"] = class structure
 
   for (const auto &it : *ci_) {
     boost::json::object class_info;
 
     class_info["demangled_name"] = it.second.class_name;
+    std::stringstream type_id_ss;
+    type_id_ss << std::hex << it.first;
+    class_info["type_id"] = type_id_ss.str();
 
-    const auto &fl_it = ml_->find(it.second.field_list);
+    const auto &fl_it = ml_->find(it.second.class_name);
+    int size = 0;
+    std::string constructor_name = it.second.class_name;
+    size_t loc = 0;
+    while ((loc = constructor_name.find("::")) != std::string::npos) {
+      constructor_name = constructor_name.substr(loc + 2);
+    }
+
     if (fl_it != ml_->end()) {
       boost::json::object methods;
       for (const auto &field_it : fl_it->second.method_index_list) {
         boost::json::object method;
+
         method["demangled_name"] = field_it.name;
-        std::stringstream ss;
-        ss << std::hex << field_it.virtual_address;
-        methods["0x" + ss.str()] = method;
+
+        std::stringstream va_ss;
+        va_ss << std::hex << field_it.virtual_address;
+
+        method["ea"] = "0x" + va_ss.str();
+        method["import"] = false;
+        method["name"] = field_it.name;
+
+        if (field_it.name == it.second.class_name + "::" + constructor_name) {
+          method["type"] = "ctor";
+        } else if (field_it.name ==
+                   it.second.class_name + "::~" + constructor_name) {
+          method["type"] = "dtor";
+        } else {
+          method["type"] = "meth";
+        }
+
+        std::stringstream type_id_ss;
+        type_id_ss << std::hex << field_it.type_id;
+        method["type_id"] = "0x" + type_id_ss.str();
+
+        methods["0x" + va_ss.str()] = method;
       }
 
       class_info["methods"] = methods;
+
+      size = fl_it->second.method_index_list.size();
     }
+
+    class_info["name"] = it.second.class_name;
+    class_info["size"] = size;
+    class_info["vftables"] = boost::json::object();
 
     structures[it.second.mangled_class_name] = class_info;
   }
 
   obj["structures"] = structures;
+  obj["vcalls"] = boost::json::object();
+  obj["version"] = kVersion.data();
 
   return obj;
 }

@@ -1,19 +1,20 @@
 #pragma once
 
+#include <boost/json.hpp>
 #include <map>
-#include <set>
 #include <memory>
 #include <optional>
+#include <set>
 
-#include <boost/json.hpp>
 #include "pdb_analyzer.h"
 
 class PdbResults {
  public:
   PdbResults(std::shared_ptr<std::map<uint32_t, ClassInfo>> ci,
-             std::shared_ptr<std::map<uint32_t, MethodList>> fl);
+             std::shared_ptr<std::map<std::string, MethodList>> fl);
 
   std::optional<uint32_t> FindClassIndex(const std::string &classname);
+
   /// @brief Combines elements in the class info and field list maps that have
   /// the same class name (dbc file sometimes produces identical class
   /// structures that share field list elements for some reason). This should
@@ -28,6 +29,8 @@ class PdbResults {
   boost::json::value ToJson() const;
 
  private:
+  static constexpr std::string_view kVersion{"1.0.0"};
+
   std::shared_ptr<std::map<uint32_t, ClassInfo>> ci_;
-  std::shared_ptr<std::map<uint32_t, MethodList>> ml_;
+  std::shared_ptr<std::map<std::string, MethodList>> ml_;
 };

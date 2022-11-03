@@ -38,3 +38,4 @@ sortedcontainers==2.4.0
 sympy==1.11.1
 unicorn==1.0.2rc4
 z3-solver==4.10.2.0
+json5==0.9.10

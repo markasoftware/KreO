@@ -3,6 +3,7 @@
 
 #include "json_loader.h"
 
+// ============================================================================
 int main(int argc, char* argv[]) {
   if (argc != 3) {
     std::cerr << "Usage: ./edit_distance <path-to-ground-truth-json> "

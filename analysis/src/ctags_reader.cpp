@@ -2,6 +2,7 @@
 
 #include "json_loader.h"
 
+// ============================================================================
 void CtagsReader::Read(const std::string &fname) {
   auto json = JsonLoader::LoadData(fname);
 
