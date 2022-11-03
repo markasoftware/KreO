@@ -29901,7 +29901,7 @@ DBIOpenDbg(, dbgtypeOmapToSrc,) failed.
 
 DBIOpenDbg(, dbgtypePdata,) failed.
 
-** SECTION HEADERS
+*** SECTION HEADERS
 
 
 SECTION HEADER #1

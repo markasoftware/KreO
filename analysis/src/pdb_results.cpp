@@ -107,7 +107,7 @@ boost::json::value PdbResults::ToJson() const {
     class_info["demangled_name"] = it.second.class_name;
     std::stringstream type_id_ss;
     type_id_ss << std::hex << it.first;
-    class_info["type_id"] = type_id_ss.str();
+    class_info["type_id"] = "0x" + type_id_ss.str();
 
     const auto &fl_it = ml_->find(it.second.class_name);
     int size = 0;
