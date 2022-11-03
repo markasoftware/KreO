@@ -233,9 +233,14 @@ void InstrumentInstruction(INS ins, void *) {
 	// + Return instructions, to add to the trace.
 	// + Upward motion of the stack pointer, to track allocated memory and perhaps end traces.
 
-	// interactions between these instructions are probably possible, but until we think about it more let's not allow unintended interactions.
-	bool alreadyInstrumented = false;
+	ADDRINT insRelAddr = INS_Address(ins) - lowAddr;
+	if (methodCandidateAddrs.count(insRelAddr) == 1) {
+		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)MethodCandidateCallback,
+			       IARG_ADDRINT, insRelAddr, IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END); // TODO: are we really allowed to put FUNCARG on a non-routine instrumentation?
+	}
 
+	// The following types of instructions should be mutually exclusive.
+	bool alreadyInstrumented = false;
 	if (IsPossibleStackIncrease(ins)) {
 		assert(!alreadyInstrumented);
 		alreadyInstrumented = true;
@@ -265,14 +270,6 @@ void InstrumentInstruction(INS ins, void *) {
 
 		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)CallCallback,
 			       IARG_ADDRINT, INS_NextAddress(ins), IARG_END);
-	}
-	ADDRINT insRelAddr = INS_Address(ins) - lowAddr;
-	if (methodCandidateAddrs.count(insRelAddr) == 1) {
-		assert(!alreadyInstrumented); // TODO: it's possible for this to fail if the first instr in a method is `call`. Not the end of the world; we just need to double check that analysis functions are called in the order they're inserted, and that we have the right order here.
-		alreadyInstrumented = true;
-
-		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)MethodCandidateCallback,
-			       IARG_ADDRINT, insRelAddr, IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END); // TODO: are we really allowed to put FUNCARG on a non-routine instrumentation?
 	}
 }
 
