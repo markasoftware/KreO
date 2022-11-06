@@ -11,6 +11,10 @@
 #include "pin.H"
 
 using namespace std;
+// HACK: on Windows, Pintool uses STLP, which puts lots of the C++11 standard library data structures into the tr1 namespace (as was normal pre-C++11). Of course, this is fairly fragile because it depends on the exact implementation Pin uses...but I doubt they'll change it in any way other than eventually removing it and supporting C++11 on Windows
+#ifdef _STLP_BEGIN_TR1_NAMESPACE
+using namespace std::tr1;
+#endif
 
 // malloc names -- not sure how correct it is, but it's how it's done in malloctrace.c from pin examples
 #ifdef TARGET_MAC
@@ -22,13 +26,19 @@ using namespace std;
 #endif
 
 // custom structures
-struct ObjectTraceEntry {
+class ObjectTraceEntry {
+public:
+	ObjectTraceEntry(ADDRINT procedure, bool isCall)
+	: procedure(procedure), isCall(isCall) { };
 	ADDRINT procedure;
 	bool isCall; // else, is return
 	// TODO: look into calledMethods, what exactly is it for?
 };
 
 struct ShadowStackEntry {
+public:
+	ShadowStackEntry(ADDRINT returnAddr, ADDRINT procedure, ADDRINT objPtr)
+	: returnAddr(returnAddr), procedure(procedure), objPtr(objPtr) { };
 	ADDRINT returnAddr;
 	ADDRINT procedure;
 	ADDRINT objPtr;
@@ -69,11 +79,13 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
 	auto firstTrace = activeObjectTraces.lower_bound(regionStart);
 	auto lastTrace = activeObjectTraces.end();
 	auto it = firstTrace;
-	for (; it != lastTrace && it->first < regionEnd; it = activeObjectTraces.erase(it)) {
+	for (; it != lastTrace && it->first < regionEnd; it++) {
 		// (i did investigate a bit and i'm pretty sure it doesn't copy, because it seems on gcc at least that `map` internally stores `pair`s at tree leaves, so I don't think this'll copy anything)
 		cerr << "Deallocated, flushing trace for " << hex << it->first << endl;
-		finishedObjectTraces.push_back(std::move(it->second));
+		// TODO: we should be moving the vector, while this copies! But on Windows, there's no move. May need to use pointers :(
+		finishedObjectTraces.push_back(it->second);
 	}
+	activeObjectTraces.erase(firstTrace, it);
 }
 
 ///////////////////////
@@ -138,6 +150,7 @@ void CallCallback(ADDRINT retAddr) {
 bool IsPossibleObjPtr(ADDRINT ptr) {
 	// TODO: something smarter! But checking if it's in an allocated region is not good enough because the regions can change without triggering an image load, eg with brk syscall.
 	// here's a reasonable idea: Either in a mapped memory region OR in an explicitly mallocated heap zone.
+	return true;
 	return ptr >= lowAddr;
 
  // 	// currently, just check if it's in a mapped memory region.
@@ -157,19 +170,12 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objPtr) {
 
 	// should always appear just after a `call` (or should it?)
 	//assert(lastRetAddr != (ADDRINT)-1);
-	ObjectTraceEntry entry = {
-		.procedure = procAddr,
-		.isCall = true,
-	};
+	ObjectTraceEntry entry(procAddr, true);
 	activeObjectTraces[objPtr].push_back(entry);
 	if (lastRetAddr == (ADDRINT)-1) {
 		cerr << "WARNING: Method executed without call! Likely not a method. At 0x" << hex << procAddr << endl;
 	} else {
-		methodStack.push_back({
-				.returnAddr = lastRetAddr,
-				.procedure = procAddr,
-				.objPtr = objPtr
-			});
+		methodStack.push_back(ShadowStackEntry(lastRetAddr, procAddr, objPtr));
 		stackEntryCount[lastRetAddr]++;
 	}
 	lastRetAddr = (ADDRINT)-1;
@@ -184,7 +190,7 @@ void RetCallback(ADDRINT returnAddr) {
 	if (stackEntryCount[returnAddr] != 0) {
 		// if the return is in the stack somewhere, find exactly where!
 		// pop off the top of stack until we find something matching our return address. 
-		ShadowStackEntry stackTop;
+		ShadowStackEntry stackTop(0, 0, 0);
 		do {
 			stackTop = methodStack.back();
 			methodStack.pop_back();
@@ -193,10 +199,7 @@ void RetCallback(ADDRINT returnAddr) {
 			if (activeObjectTraces.count(stackTop.objPtr) == 0) {
 				cerr << "WARNING: Return being inserted into a brand new trace??? " << hex << stackTop.objPtr << endl;
 			}
-			activeObjectTraces[stackTop.objPtr].push_back({
-					.procedure = stackTop.procedure,
-					.isCall = false,
-				});
+			activeObjectTraces[stackTop.objPtr].push_back(ObjectTraceEntry(stackTop.procedure, false));
 		} while (stackTop.returnAddr != returnAddr && !methodStack.empty());
 	}
 }
@@ -227,6 +230,15 @@ bool IsPossibleStackIncrease(INS ins) {
 	return false;
 }
 
+#ifdef _WIN32
+// in this case, FUNCARG ENTRYPOINT stuff doesn't know whether it's a method or not, and probably looks at the stack. TODO: figure out how FUNCARG ENTRYPOINT works in general, and if we're allowed to put it on things we haven't marked as routines.
+#define IARG_KREO_FIRST_ARG IARG_REG_VALUE
+#define IARG_KREO_FIRST_ARG_VALUE REG_ECX
+#else
+#define IARG_KREO_FIRST_ARG IARG_FUNCARG_ENTRYPOINT_VALUE
+#define IARG_KREO_FIRST_ARG_VALUE 0
+#endif
+
 void InstrumentInstruction(INS ins, void *) {
 	// We want to instrument:
 	// + Calls to candidate methods, to add to the trace.
@@ -236,7 +248,7 @@ void InstrumentInstruction(INS ins, void *) {
 	ADDRINT insRelAddr = INS_Address(ins) - lowAddr;
 	if (methodCandidateAddrs.count(insRelAddr) == 1) {
 		INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR)MethodCandidateCallback,
-			       IARG_ADDRINT, insRelAddr, IARG_FUNCARG_ENTRYPOINT_VALUE, 0, IARG_END); // TODO: are we really allowed to put FUNCARG on a non-routine instrumentation?
+			       IARG_ADDRINT, insRelAddr, IARG_KREO_FIRST_ARG, IARG_KREO_FIRST_ARG_VALUE, IARG_END);
 	}
 
 	// The following types of instructions should be mutually exclusive.
@@ -291,7 +303,7 @@ void InstrumentImage(IMG img, void *) {
 		// store all procedures with symbols into the global map for debugging use.
 		for (SEC sec = IMG_SecHead(img); SEC_Valid(sec); sec = SEC_Next(sec)) {
 			for(RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
-				procedureSymbolNames[RTN_Address(rtn)] = RTN_Name(rtn);
+				procedureSymbolNames[RTN_Address(rtn) - lowAddr] = RTN_Name(rtn);
 			}
 		}
 
@@ -356,16 +368,17 @@ void Fini(INT32 code, void *) {
 
 	for (auto &pair : activeObjectTraces) {
 		if (!pair.second.empty()) {
-			finishedObjectTraces.push_back(move(pair.second));
+			// TODO: should be `move`ing here
+			finishedObjectTraces.push_back(pair.second);
 		}
 	}
 
-	ofstream os(objectTracesPath.Value());
+	ofstream os(objectTracesPath.Value().c_str());
 	// TODO: use a more structured trace format.
 	for (const vector<ObjectTraceEntry> &trace : finishedObjectTraces) {
 		for (const ObjectTraceEntry &entry : trace) {
-			if (procedureSymbolNames.count(lowAddr + entry.procedure)) {
-				os << procedureSymbolNames[lowAddr + entry.procedure] << " ";
+			if (procedureSymbolNames.count(entry.procedure)) {
+				os << procedureSymbolNames[entry.procedure] << " ";
 			}
 			os << entry.procedure << " " << entry.isCall << endl;
 		}
