@@ -1,8 +1,9 @@
 // Config file is in JSON5 format, supporting comments and hex numbers.
 {
     "binaryPath": "/path/to/your-executable",
-    // We try to automatically detect memory allocation and deallocation procedures, but often fail. Use the following config options to specify manually. `new` and `delete` are the most important.
+    "isa": "x86-64", // should be x86 or x86-64
 
+    // We try to automatically detect memory allocation and deallocation procedures, but often fail. Use the following config options to specify manually. `new` and `delete` are the most important.
     // All addresses are relative to the image base offset!
     // procedures which allocate an amount of memory given by their first argument. Put malloc, new, and new[] here:
     // TODO: do we need to instrument calloc or is that done by malloc internally?
