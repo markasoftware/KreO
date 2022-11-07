@@ -7,8 +7,12 @@ if len(sys.argv) != 2:
     exit(1)
 
 config = json5.load(open(sys.argv[1]))
-if not 'PIN_ROOT' in os.environ:
-    raise Exception('PIN_ROOT environment variable must be set to where you downloaded the pin kit.')
+if 'PIN_ROOT' in config:
+   pin_root = config['PIN_ROOT']
+elif 'PIN_ROOT' in os.environ:
+    pin_root = os.environ['PIN_ROOT']
+else:
+    raise Exception('PIN_ROOT environment variable or config option must be set to where you downloaded the pin kit.')
 
 # TODO: make it better at figuring out where the pintool is cross-platform!
 pin_executable_path = os.environ['PIN_ROOT'] + '/pin'
