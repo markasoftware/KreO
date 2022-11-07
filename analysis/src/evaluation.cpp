@@ -6,6 +6,7 @@
 
 using virtual_address_t = uint64_t;
 
+// ============================================================================
 struct MethodInfo {
   virtual_address_t address;
   std::string type;
@@ -19,14 +20,18 @@ struct MethodInfo {
   }
 };
 
+// ============================================================================
 using MethodSet = std::set<MethodInfo>;
 
+// ============================================================================
 /// @brief Converts json to vector of method sets whose set elements are method
 /// addresses that have been associated with some particular class.
 static std::vector<MethodSet> ToMethodSets(const boost::json::value &json);
 
+// ============================================================================
 static std::vector<MethodSet> LoadAndConvertJson(const std::string &json_str);
 
+// ============================================================================
 /// @brief Computes precision and recall on the generated methods. The ground
 /// truth for evaluation is all methods in the ground truth. A true positive is
 /// a correctly identified method. A false positive is a method that is not in
@@ -37,18 +42,22 @@ static std::pair<float, float> PrecisionAndRecallMethods(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated);
 
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallClasses(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data);
 
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallConstructors(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data);
 
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallDestructors(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data);
 
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallIndividualClasses(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data);
@@ -118,16 +127,30 @@ static std::vector<MethodSet> ToMethodSets(const boost::json::value &json) {
   return method_sets;
 }
 
+// ============================================================================
 static float ComputePrecision(int32_t true_positives, int32_t false_positives) {
+  if (false_positives + true_positives == 0) {
+    return 0.0f;
+  }
   return static_cast<float>(true_positives) /
          static_cast<float>(true_positives + false_positives);
 }
 
+// ============================================================================
 static float ComputeRecall(int32_t true_positives, int32_t false_negatives) {
+  if (true_positives + false_negatives == 0) {
+    return 0.0f;
+  }
   return static_cast<float>(true_positives) /
          static_cast<float>(true_positives + false_negatives);
 }
 
+// ============================================================================
+static float ComputeF1(float precision, float recall) {
+  return (2.0f * precision * recall) / (precision + recall);
+}
+
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallClasses(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
@@ -177,6 +200,7 @@ static std::pair<float, float> PrecisionAndRecallClasses(
                    ComputeRecall(true_positives, false_negatives));
 }
 
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallMethods(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
@@ -210,6 +234,7 @@ static std::pair<float, float> PrecisionAndRecallMethods(
                    ComputeRecall(true_positives, false_negatives));
 }
 
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallSpecificType(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data, const std::string &type) {
@@ -245,53 +270,36 @@ static std::pair<float, float> PrecisionAndRecallSpecificType(
                    ComputeRecall(true_positives, false_negatives));
 }
 
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallConstructors(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
   return PrecisionAndRecallSpecificType(ground_truth, generated_data, "ctor");
 }
 
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallDestructors(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
   return PrecisionAndRecallSpecificType(ground_truth, generated_data, "dtor");
 }
 
+// ============================================================================
+struct PrecisionRecallF1 {
+  float precision{};
+  float recall{};
+  float f1{};
+  const MethodSet *ground_truth_class;
+
+  friend bool operator<(const PrecisionRecallF1 &o1,
+                        const PrecisionRecallF1 &o2) {
+    return o1.f1 < o2.f1;
+  }
+};
+
 static std::pair<float, float> PrecisionAndRecallIndividualClasses(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
-  // Data structure that links generated classes to ground truth classes
-  std::map<const MethodSet *, const MethodSet *> generated_to_ground_truth_map;
-
-  // When mapping generated to ground truth classes, mappings must be 1-1 (i.e.
-  // you can't map class c1 and c2 in the generated data to a single class c3 in
-  // the ground truth. Use a set to keep track of already used ground truth
-  // classes
-  std::set<const MethodSet *> mapped_ground_truth_classes;
-
-  for (const auto &gen_class : generated_data) {
-    // matching constructor indicates class potentially the same
-    std::vector<MethodSet>::const_iterator it;
-    if ((it = std::find_if(ground_truth.begin(),
-                           ground_truth.end(),
-                           [gen_class](const MethodSet &gt_class) {
-                             for (const MethodInfo &mi : gt_class) {
-                               if (mi.type == "ctor" && gen_class.count(mi)) {
-                                 return true;
-                               }
-                             }
-                             return false;
-                           })) != ground_truth.end()) {
-      if (mapped_ground_truth_classes.count(&(*it))) {
-        // TODO handle this case
-        std::cout << "ground truth class already mapped" << std::endl;
-      } else {
-        mapped_ground_truth_classes.insert(&(*it));
-        generated_to_ground_truth_map[&gen_class] = &(*it);
-      }
-    }
-  }
-
   struct EvaluationResults {
     float precision;
     float recall;
@@ -300,36 +308,41 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
 
   std::vector<EvaluationResults> results;
 
+  // For each generated method set
   for (const auto &generated_class : generated_data) {
-    // Find true positives for the given class
+    // compute precision and recall against every ground truth method set
+    std::set<PrecisionRecallF1> precision_recall_f1_scores;
 
-    int32_t true_positives_class{};
-    int32_t false_positives_class{};
-    int32_t false_negatives_class{};
-
-    size_t ground_truth_class_size{};
-
-    if (generated_to_ground_truth_map.count(&generated_class)) {
-      const MethodSet *ground_truth_ms =
-          generated_to_ground_truth_map[&generated_class];
+    for (const auto &ground_truth_class : ground_truth) {
+      int32_t true_positives{};
 
       for (const auto &method : generated_class) {
-        if (ground_truth_ms->count(method)) {
-          true_positives_class++;
+        if (ground_truth_class.count(method)) {
+          true_positives++;
         }
       }
 
-      false_positives_class = generated_class.size() - true_positives_class;
-      false_negatives_class = ground_truth_ms->size() - true_positives_class;
+      int32_t false_positives = generated_class.size() - true_positives;
+      int32_t false_negatives = ground_truth_class.size() - true_positives;
 
-      ground_truth_class_size = ground_truth_ms->size();
+      float precision = ComputePrecision(true_positives, false_positives);
+      float recall = ComputeRecall(true_positives, false_negatives);
+      float f1 = ComputeF1(precision, recall);
+
+      precision_recall_f1_scores.insert(PrecisionRecallF1{
+          .precision = ComputePrecision(true_positives, false_positives),
+          .recall = ComputeRecall(true_positives, false_negatives),
+          .f1 = ComputeF1(precision, recall),
+          .ground_truth_class = &ground_truth_class,
+      });
     }
 
+    const PrecisionRecallF1 &highest_f1 = *precision_recall_f1_scores.begin();
+
     results.push_back(EvaluationResults{
-        .precision =
-            ComputePrecision(true_positives_class, false_positives_class),
-        .recall = ComputeRecall(true_positives_class, false_positives_class),
-        .ground_truth_class_size = ground_truth_class_size,
+        .precision = highest_f1.precision,
+        .recall = highest_f1.recall,
+        .ground_truth_class_size = highest_f1.ground_truth_class->size(),
     });
   }
 
@@ -337,10 +350,10 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
   float precision{};
   float recall{};
   size_t total_methods{};
-  for (const auto &it : results) {
-    precision += it.precision * it.ground_truth_class_size;
-    recall += it.recall * it.ground_truth_class_size;
-    total_methods += it.ground_truth_class_size;
+  for (const auto &result : results) {
+    precision += result.precision * result.ground_truth_class_size;
+    recall += result.recall * result.ground_truth_class_size;
+    total_methods += result.ground_truth_class_size;
   }
 
   return std::pair(precision / static_cast<float>(total_methods),
