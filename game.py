@@ -1,12 +1,7 @@
 import sys
 import os
-import json5
+from parseconfig import config
 
-if len(sys.argv) != 2:
-    print('Usage: python game.py /path/to/config.json')
-    exit(1)
-
-config = json5.load(open(sys.argv[1]))
 if 'PIN_ROOT' in config:
    pin_root = config['PIN_ROOT']
 elif 'PIN_ROOT' in os.environ:

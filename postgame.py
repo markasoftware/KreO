@@ -1,11 +1,8 @@
-import json5
+import json
 import itertools
+from parseconfig import config
 
-if len(sys.argv) != 2:
-    print('Usage: python postgame.py /path/to/config.json')
-    exit(1)
-
-procedures = map() # map from address to procedure
+procedures = dict() # map from address to procedure
 
 class Procedure:
     def __init__(self, address, name='N/A'):
@@ -15,8 +12,8 @@ class Procedure:
         self.seenTail = 0
         self.seenTorso = 0
 
-    def isDestructor:
-        return self.seenTail > 0 && self.seenTorso < self.seenTail//4 # TODO: more thought into this, other heuristics?
+    def isDestructor(self):
+        return self.seenTail > 0 and self.seenTorso <= self.seenTail//4 # TODO: more thought into this, other heuristics?
 
 def findProcedure(address, name='N/A'):
     if address not in procedures:
@@ -32,16 +29,28 @@ class TraceEntry:
         elif len(splitLine) == 3:
             self.procedure = findProcedure(int(splitLine[1]), splitLine[0])
             self.isCall = int(splitLine[2]) == 1
+        else:
+            raise Exception('Could not parse trace entry from line: "' + line + '"')
+
+    def __str__(self):
+        procStr = ('' if self.procedure.name == 'N/A' else (self.procedure.name + ' ')) + str(self.procedure.address)
+        return procStr + ' ' + ('1' if self.isCall else '0') + '\n'
 
     def __eq__(self, other):
-        return self.procedure is other.procedure && self.isCall == other.isCall
+        return self.procedure is other.procedure and self.isCall == other.isCall
 
 class Trace:
     def __init__(self, traceEntries):
         self.traceEntries = traceEntries
         # Tail is in reverse order -- last call in the trace first
-        self.tail = map(lambda entry: entry.procedure, itertools.takewhile(lambda entry: not entry.isCall, reversed(traceEntries)))
+        self.tail = list(map(lambda entry: entry.procedure, itertools.takewhile(lambda entry: not entry.isCall, reversed(traceEntries))))
         self.numUpperBodyEntries = len(traceEntries) - len(self.tail)
+
+    def __str__(self):
+        return ''.join(map(lambda te: te.__str__(), self.traceEntries))
+
+    def __hash__(self):
+        return hash(self.__str__())
 
     # Return a generator for entries preceding the tail
     def torso(self):
@@ -65,7 +74,7 @@ class Trace:
             if isTerminatingTrace:
                 if entry.isCall: # the tail is over, rejoice or something
                     result.append(curResultTrace)
-                    curResultTrace = []
+                    curResultTrace = [entry]
                     isTerminatingTrace = False
                 else:
                     curResultTrace.append(entry)
@@ -76,27 +85,34 @@ class Trace:
         # end of loop
         if curResultTrace:
             result.append(curResultTrace)
-        return result
+        return map(Trace, result)
 
-config = json5.load(open(sys.argv[1]))
+def printTraces(traces):
+    for trace in traces:
+        print(trace)
 
 # Step 1: Read traces from disk
 
-traces = []
-procedures = set()
 def parseTraces():
     curTrace = []
+    traces = []
     for line in open(config['objectTracesPath']):
-        if not line: # empty line indicates end of trace
+        # each line ends with \n
+        if len(line) == 1:
             if curTrace:
-                traces.append(curTrace)
+                traces.append(Trace(curTrace))
                 curTrace = []
         else:
             curTrace.append(TraceEntry(line))
-parseTraces()
+    # finish the last trace
+    if curTrace:
+        traces.append(Trace(curTrace))
+    return traces
+traces = parseTraces()
 
 # Remove duplicate traces. TODO: check that the hash function that set() uses is appropriate.
 def removeDuplicateTraces():
+    global traces
     result = []
     tracesSet = set()
     for trace in traces:
@@ -112,17 +128,26 @@ for trace in traces:
     trace.updateProcedureStatistics()
 
 # Step 3: Decide what's a destructor
-destructors = set(filter(lambda proc: proc.isDestructor(), procedures))
+destructors = set(filter(lambda proc: proc.isDestructor(), procedures.values()))
+print('fini:')
+print(procedures[4528].seenTail)
+print(procedures[4528].seenTorso)
+print(procedures[4528].isDestructor())
 
 # Step 4: Split traces based on destructors
 splitTraces = []
 for trace in traces:
     splitTraces += trace.split(destructors)
 
+print('Split traces:')
+printTraces(splitTraces)
+
 # TODO: Possible improvement: Perform the last steps iteratively. I.e., if splitting reveals a new destructor, then we may want to re-split. However, splitting seems like it shouldn't be happening too often, let alone re-splitting.
 
 # TODO: possible improvement: Instead of just looking for the true tail of returns, maybe if we identify a suffix common to many object traces, we can infer that a destructor is calling another method and account for it?
 
 # Step 5: Look at tails to determine hierarchy
+# Ideally, everything would form a nice trie. But what if it doesn't, eg in the case when we're just tracing weird sequence of functions that operate on an integer pointer?
+
 # Step 6: Associate methods from torsos with classes
 # Step 7: Static dataflow analysis

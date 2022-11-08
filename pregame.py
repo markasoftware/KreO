@@ -1,15 +1,5 @@
 import sys
-import json5
-
-if len(sys.argv) != 2:
-    print('Usage: python pregame.py /path/to/config.json')
-    exit(1)
-
-config = json5.load(open(sys.argv[1]))
-if not 'cfgMode' in config:
-    config['cfgMode'] = 'fast'
-if not 'methodCandidatesPah' in config:
-    config['methodCandidatesPath'] = 'method-candidates'
+from parseconfig import config
 
 print('Loading angr...')
 import angr
