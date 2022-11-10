@@ -1,0 +1,15 @@
+{
+    "configurations": [
+        {
+            "cppStandard": "c++17",
+            "includePath": [
+                "include",
+                "/usr/local/include/rose"
+            ],
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerPath": "/usr/bin/clang-10",
+            "cStandard": "c17"
+        }
+    ],
+    "version": 4
+}
