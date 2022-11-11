@@ -12,6 +12,9 @@ static const char purpose[] = "Generates a list of function candidates for a giv
 static const char description[] =
     "This tool disassembles the specified file and generates prints a list of function candidates to standard output. Functions are printed in decimal, a single function per line. Pass in --partition-split-thunks if you want the tool to list true functions and not thunk functions.";
 
+// Unhard code this potentially (though this is a known constant)
+static constexpr int kMinAddress{0x400000};
+
 int main(int argc, char *argv[])
 {
     ROSE_INITIALIZE;
@@ -33,7 +36,7 @@ int main(int argc, char *argv[])
         // Print function candidates, excluding thunk functions
         if (!function->isThunk())
         {
-            std::cout << function->address() << std::endl;
+            std::cout << function->address() - kMinAddress << std::endl;
         }
     }
 
