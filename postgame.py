@@ -1,5 +1,6 @@
 import json
 import itertools
+import uuid
 from parseconfig import config
 
 procedures = dict() # map from address to procedure
@@ -129,25 +130,73 @@ for trace in traces:
 
 # Step 3: Decide what's a destructor
 destructors = set(filter(lambda proc: proc.isDestructor(), procedures.values()))
-print('fini:')
-print(procedures[4528].seenTail)
-print(procedures[4528].seenTorso)
-print(procedures[4528].isDestructor())
 
 # Step 4: Split traces based on destructors
 splitTraces = []
 for trace in traces:
     splitTraces += trace.split(destructors)
 
-print('Split traces:')
-printTraces(splitTraces)
-
 # TODO: Possible improvement: Perform the last steps iteratively. I.e., if splitting reveals a new destructor, then we may want to re-split. However, splitting seems like it shouldn't be happening too often, let alone re-splitting.
 
 # TODO: possible improvement: Instead of just looking for the true tail of returns, maybe if we identify a suffix common to many object traces, we can infer that a destructor is calling another method and account for it?
 
 # Step 5: Look at tails to determine hierarchy
-# Ideally, everything would form a nice trie. But what if it doesn't, eg in the case when we're just tracing weird sequence of functions that operate on an integer pointer?
+
+def identity(x):
+    return x
+
+def findIf(target, lst, key=identity):
+    # Return list element equal to target after calling key on element
+    for elt in lst:
+        if target == key(elt):
+            return elt
+    return None
+
+class KreoClass:
+    def __init__(self, destructor):
+        self.uuid = str(uuid.uuid4())
+        self.destructor = destructor
+
+    def __str__(self):
+        return 'KreoClass{ ' + self.uuid[0:5] + ' @ ' + str(self.destructor.address) +  ' }'
+
+class TreeNode:
+    def __init__(self, value, parent):
+        self.value = value
+        self.parent = parent
+        self.children = []
+
+    def insert(self, childValue):
+        """
+        Unconditionally insert into children list.
+        """
+        self.children.append(TreeNode(childvalue, self))
+
+    def getPath(self, path, key=identity, mkNode=None):
+        if path == []:
+            return self
+        step = path[0]
+        matchingChild = findIf(step, self.children, key)
+        if matchingChild == None:
+            if not mkNode:
+                raise Exception('Path not found and mkNode not provided')
+            matchingChild = mkNode(step)
+            self.children.append(matchingChild)
+        return self.getPath(path[1:], key, mkNode)
+
+    def __str__(self):
+        result = self.value.__str__() + '\nChildren: [\n'
+        for child in self.children:
+            result += child.__str__() + '\n'
+        result += ']'
+        return result
+        
+# Ideally, everything would form a nice trie. But what if it doesn't, eg in the case when we're just tracing weird sequence of functions that operate on an integer pointer? The simple algorithm of always inserting into the trie will never error out, but it will result in a trie where certain "destructors" are at the base of some tries and in the middle of others. So that's a rule we could use to exclude some of them: A class that appears in multiple different branches from the root should be removed
+
+treeRootNode = TreeNode(None, None)
+for trace in traces:
+    treeRootNode.getPath(trace.tail, lambda cls: cls.destructor, KreoClass)
+print(treeRootNode)
 
 # Step 6: Associate methods from torsos with classes
 # Step 7: Static dataflow analysis
