@@ -8,7 +8,7 @@ if len(sys.argv) != 2:
 config = json5.load(open(sys.argv[1]))
 if not 'cfgMode' in config:
     config['cfgMode'] = 'fast'
-if not 'methodCandidatesPah' in config:
-    config['methodCandidatesPath'] = 'method-candidates'
+if not 'methodCandidatesPath' in config:
+    config['methodCandidatesPath'] = 'out/method-candidates'
 if not 'objectTracesPath' in config:
-    config['objectTracesPath'] = 'object-traces'
+    config['objectTracesPath'] = 'out/object-traces'

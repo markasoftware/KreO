@@ -97,7 +97,7 @@ def parseTraces():
     curTrace = []
     traces = []
     for line in open(config['objectTracesPath']):
-        # each line ends with \n
+        # each line ends with \n, empty line indicates new trace
         if len(line) == 1:
             if curTrace:
                 traces.append(Trace(curTrace))
