@@ -3,69 +3,73 @@ import itertools
 import uuid
 import hashlib
 import os
+import time
 from parseconfig import config
-
-procedures = dict() # map from address to procedure
+from typing import List, Callable, Dict, Set, Any
 
 class Procedure:
-    def __init__(self, address, name='N/A'):
+    def __init__(self, address: int, name: str='N/A'):
         self.address = address
         self.name = name
         # How many times the procedure has been seen in different parts of a trace:
-        self.seenTail = 0
-        self.seenTorso = 0
+        self.seenInTail = int(0)
+        self.seenInTorso = int(0)
 
-    def isDestructor(self):
-        return self.seenTail > 0 and self.seenTorso <= self.seenTail//4 # TODO: more thought into this, other heuristics?
+    def isDestructor(self) -> bool:
+        return self.seenInTail > 0 and self.seenInTorso <= self.seenInTail // 4  # TODO: more thought into this, other heuristics?
 
-def findProcedure(address, name='N/A'):
-    if address not in procedures:
-        procedures[address] = Procedure(address, name)
-    return procedures[address]
+    def __str__(self) -> str:
+        return ('' if self.name == 'N/A' else (self.name + ' ')) + str(self.address)
 
 class TraceEntry:
-    def __init__(self, line):
+    def __init__(self, line: str):
+        '''
+        Contruct a trace entry from the given trace entry
+        '''
         splitLine = line.split()
         if len(splitLine) == 2:
-            self.procedure = findProcedure(int(splitLine[0]))
+            self.procedure = findOrInsertProcedure(int(splitLine[0]))
             self.isCall = int(splitLine[1]) == 1
         elif len(splitLine) == 3:
-            self.procedure = findProcedure(int(splitLine[1]), splitLine[0])
+            # There's a procedure name in the trace
+            self.procedure = findOrInsertProcedure(int(splitLine[1]), splitLine[0])
             self.isCall = int(splitLine[2]) == 1
         else:
             raise Exception('Could not parse trace entry from line: "' + line + '"')
 
-    def __str__(self):
-        procStr = ('' if self.procedure.name == 'N/A' else (self.procedure.name + ' ')) + str(self.procedure.address)
-        return procStr + ' ' + ('1' if self.isCall else '0') + '\n'
+    def __str__(self) -> str:
+        return str(self.procedure) + ' ' + ('1' if self.isCall else '0')
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         return self.procedure is other.procedure and self.isCall == other.isCall
 
 class Trace:
-    def __init__(self, traceEntries):
+    def __init__(self, traceEntries: List[TraceEntry]):
         self.traceEntries = traceEntries
-        # Tail is in reverse order -- last call in the trace first
+        # Tail is in reverse order -- last call in the trace first, aka fingerprint
         self.tail = list(map(lambda entry: entry.procedure, itertools.takewhile(lambda entry: not entry.isCall, reversed(traceEntries))))
-        self.numUpperBodyEntries = len(traceEntries) - len(self.tail)
+        self.torsoLen = len(traceEntries) - len(self.tail)
 
-    def __str__(self):
-        return ''.join(map(lambda te: te.__str__(), self.traceEntries))
+    def __str__(self) -> str:
+        return '\n'.join(map(lambda te: te.__str__(), self.traceEntries))
 
     def __hash__(self):
         return hash(self.__str__())
 
+    def __eq__(self, other) -> bool:
+        return self.__str__() == other.__str__()
+
     # Return a generator for entries preceding the tail
     def torso(self):
-        return itertools.islice(self.traceEntries, self.numUpperBodyEntries)
+        return itertools.islice(self.traceEntries, self.torsoLen)
 
     # update all procedures involved with this trace, to store number of appearances in each part of the trace.
     def updateProcedureStatistics(self):
         for torsoEntry in self.torso():
             if not torsoEntry.isCall: # avoid double-counting, and avoid counting the calls corresponding to the returns in the tail
-                torsoEntry.procedure.seenTorso += 1
+                torsoEntry.procedure.seenInTorso += 1
         for tailProcedure in self.tail:
-            tailProcedure.seenTail += 1
+            tailProcedure.seenInTail += 1
 
     # Given a set of destructors, return a list of traces created from this one. Returns just itself if no splitting is necessary.
     def split(self, destructors):
@@ -90,53 +94,98 @@ class Trace:
             result.append(curResultTrace)
         return map(Trace, result)
 
+procedures: Dict[int, Procedure] = dict() # map from address to procedure
+
+def findOrInsertProcedure(address: int, name: str='N/A') -> Procedure:
+    '''
+    Attempts to find the procedure in the global procedures map. If the function fails
+    to find a procedure, one will be inserted.
+    '''
+    global procedures
+
+    if address not in procedures:
+        procedures[address] = Procedure(address, name)
+    return procedures[address]
+
 def printTraces(traces):
     for trace in traces:
         print(trace)
 
+def runStep(function: Callable[[None], None], startMsg: str, endMsg: str)-> None:
+    '''
+    Runs the given step function, printing start/end messages and profiling the step's time
+    '''
+    print(startMsg)
+    startTime = time.perf_counter()
+    function()
+    endTime = time.perf_counter()
+    print(f'{endMsg} ({endTime - startTime:0.2f}s)')
+
 # Step 1: Read traces from disk
 
 def parseTraces():
-    curTrace = []
-    traces = []
-    for line in open(config['objectTracesPath']):
-        # each line ends with \n, empty line indicates new trace
-        if len(line) == 1:
-            if curTrace:
-                traces.append(Trace(curTrace))
-                curTrace = []
-        else:
-            curTrace.append(TraceEntry(line))
-    # finish the last trace
-    if curTrace:
-        traces.append(Trace(curTrace))
-    return traces
-traces = parseTraces()
+    global traces
 
-# Remove duplicate traces. TODO: check that the hash function that set() uses is appropriate.
+    curTrace: List[TraceEntry] = []
+    # there can be multiple object trace files...find all of them
+
+    traceIndex = 0
+    while os.path.exists(config['objectTracesPath'] + "_" + str(traceIndex)):
+        for line in open(config['objectTracesPath'] + "_" + str(traceIndex)):
+            # each line ends with \n, empty line indicates new trace
+            if len(line) == 1:
+                if curTrace:
+                    traces.append(Trace(curTrace))
+                    curTrace = []
+            else:
+                curTrace.append(TraceEntry(line))
+        # finish the last trace
+        if curTrace:
+            traces.append(Trace(curTrace))
+
+        traceIndex += 1
+
+traces: List[Trace] = []
+runStep(parseTraces, 'parsing traces...', f'traces parsed')
+print(f'found {len(traces)} traces')
+
+# Remove duplicate traces.
 def removeDuplicateTraces():
     global traces
-    result = []
-    tracesSet = set()
+    tracesSet: Set[Trace] = set()
     for trace in traces:
-        if not trace in tracesSet:
-            tracesSet.add(trace)
-            result.append(trace)
-    traces = result
-removeDuplicateTraces()
+        tracesSet.add(trace)
+    traces = list(tracesSet)
+
+runStep(removeDuplicateTraces, 'removing duplicates...', f'duplicates removed')
+print(f'now are {len(traces)} unique traces')
 
 # Step 2: Record how many times each procedure was seen in each part of the trace.
 
-for trace in traces:
-    trace.updateProcedureStatistics()
+def updateAllProcedureStatistics():
+    global traces
+    for trace in traces:
+        trace.updateProcedureStatistics()
+
+runStep(updateAllProcedureStatistics, 'updating procedure statistics...', 'procedure statistics updated')
 
 # Step 3: Decide what's a destructor
-destructors = set(filter(lambda proc: proc.isDestructor(), procedures.values()))
+
+destructors: Set[Procedure] = set()
+def findDestructors():
+    global destructors
+    destructors = set(filter(lambda proc: proc.isDestructor(), procedures.values()))
+runStep(findDestructors, 'finding destructors for each object trace...', 'destructors found for each boject trace')
 
 # Step 4: Split traces based on destructors
-splitTraces = []
-for trace in traces:
-    splitTraces += trace.split(destructors)
+splitTraces: List[Trace] = []
+def splitTracesFn():
+    global splitTraces
+    for trace in traces:
+        splitTraces += trace.split(destructors)
+runStep(splitTracesFn, 'splitting traces...', f'traces split')
+print(f'after splitting there are now {len(splitTraces)} traces')
+traces = splitTraces
 
 # TODO: Possible improvement: Perform the last steps iteratively. I.e., if splitting reveals a new destructor, then we may want to re-split. However, splitting seems like it shouldn't be happening too often, let alone re-splitting.
 
@@ -147,7 +196,7 @@ for trace in traces:
 def identity(x):
     return x
 
-def findIf(target, lst, key=identity):
+def findIf(target: Any, lst: List[Any], key: Callable[[Any], Any]=identity) -> Any:
     # Return list element equal to target after calling key on element
     for elt in lst:
         if target == key(elt):
@@ -155,33 +204,50 @@ def findIf(target, lst, key=identity):
     return None
 
 class KreoClass:
-    def __init__(self, destructor):
+    def __init__(self, destructor: Procedure):
         self.uuid = str(uuid.uuid4())
         self.destructor = destructor
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'KreoClass-' + self.uuid[0:5] + '@' + str(self.destructor.address)
 
-class TreeNode:
-    def __init__(self, value=None, parent=None):
+class TrieNode:
+    def __init__(self, value: Any=None, parent=None):
         self.value = value
         self.parent = parent
-        self.children = []
+        self.children: List[TrieNode] = []
 
-    def insert(self, childValue):
+    def printStructured(self, startOffset: str='') -> str:
+        if self.value is not None:
+            print(startOffset + str(self.value))
+        else:
+            print(startOffset + 'None')
+
+        for child in self.children:
+            child.printStructured(startOffset + '    ')    
+
+    def insert(self, childValue: Any) -> None:
         # Unconditionally insert into children list.
-        self.children.append(TreeNode(childValue, self))
+        self.children.append(TrieNode(childValue, self))
 
-    def getPath(self, path, key=identity, mkNew=None):
+    def getPath(self, path: List[Procedure], key: Callable[[Any], Any]=identity, mkNew: Callable[[Procedure], Any]=None):
+        '''
+        Attempts to insert the given path into the TrieNode entry.
+        '''
         if path == []:
             return self
+
         step = path[0]
+
+        # Attempt to find the class in the TrieNode's child.
         matchingChild = findIf(step, self.children, lambda node: key(node.value))
         if matchingChild == None:
+            # Class not in TrieNode's child, make a new child node and insert it (add it as a child)
             if not mkNew:
                 raise Exception('Path not found and mkNew not provided')
             newChildValue = mkNew(step)
             self.insert(newChildValue)
+
         return self.getPath(path[1:], key, mkNew)
 
     def isRoot(self):
@@ -196,7 +262,7 @@ class TreeNode:
             reversedBcs.append(curNode)
         return reversed(reversedBcs)
 
-    # Generator gives tree starting from this node in preorder
+    # Generator gives trie starting from this node in preorder
     def preorderIter(self):
         yield self
         for child in self.children:
@@ -211,7 +277,7 @@ class TreeNode:
         return result
 
 # Lowest common ancestor of two nodes
-def treeNodesLCA(n1, n2):
+def trieNodesLCA(n1, n2):
     n1bcs = n1.breadcrumbs()
     n2bcs = n2.breadcrumbs()
     n1root = next(n1bcs)
@@ -232,17 +298,23 @@ def treeNodesLCA(n1, n2):
         
 # Ideally, everything would form a nice trie. But what if it doesn't, eg in the case when we're just tracing weird sequence of functions that operate on an integer pointer? The simple algorithm of always inserting into the trie will never error out, but it will result in a trie where certain "destructors" are at the base of some tries and in the middle of others. So that's a rule we could use to exclude some of them: A class that appears in multiple different branches from the root should be removed
 
-treeRootNode = TreeNode(None, None)
-methodNodes = dict() # we need a way to know which tree nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the tree before processing.
-for trace in traces:
-    # insert class into the tree if necessary
-    classNode = treeRootNode.getPath(trace.tail, lambda cls: cls.destructor, KreoClass)
+trieRootNode = TrieNode(None, None)
 
-    # set LCAs if necessary
-    for entry in trace.torso():
-        procedure = entry.procedure
-        oldMethodClassNode = methodNodes.get(procedure, treeRootNode)
-        methodNodes[procedure] = treeNodesLCA(classNode, oldMethodClassNode)
+def constructTrie():
+    global trieRootNode
+    methodNodes = dict() # we need a way to know which trie nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the trie before processing.
+    for trace in traces:
+        # insert class into the trie if necessary
+        classNode = trieRootNode.getPath(trace.tail, lambda cls: cls.destructor, KreoClass)
+
+        # set LCAs if necessary
+        for entry in trace.torso():
+            procedure = entry.procedure
+            oldMethodClassNode = methodNodes.get(procedure, trieRootNode)
+            methodNodes[procedure] = trieNodesLCA(classNode, oldMethodClassNode)
+
+    trieRootNode.printStructured()
+runStep(constructTrie, 'constructing trie...', 'trie constructed')
 
 # Step 6: Associate methods from torsos with classes
 # Step 7: Static dataflow analysis
@@ -257,16 +329,17 @@ def md5File(fname):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
-structures = dict()
-treeIter = treeRootNode.preorderIter()
-next(treeIter) # skip the root
-for classNode in treeIter:
+structures: Dict[str, Dict[str, Any]] = dict()
+trieIter = trieRootNode.preorderIter()
+next(trieIter) # skip the root
+for classNode in trieIter:
     cls = classNode.value
     name = str(cls)
 
     # For now, while we only detect direct parent relationships, only add a member if we have a parent, and don't actually know anything about its size
+    # We are not detecting members so members should always be empty
     members = dict()
-    if not classNode.parent is treeRootNode:
+    if not classNode.parent is trieRootNode:
         parentClass = classNode.parent.value
         members['0x0'] = {
             'base': False, # TODO: what does this one even mean?
