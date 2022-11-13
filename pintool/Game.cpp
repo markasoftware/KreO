@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -10,7 +11,12 @@
 
 #include "pin.H"
 
+// If you don't want to log any debugging information, uncomment these lines out
+#undef LOG
+#define LOG(x)
+
 using namespace std;
+
 // HACK: on Windows, Pintool uses STLP, which puts lots of the C++11 standard
 // library data structures into the tr1 namespace (as was normal pre-C++11).
 // Of course, this is fairly fragile because it depends on the exact
@@ -31,41 +37,62 @@ using namespace std::tr1;
 #endif
 
 // custom structures
+
+// ============================================================================
+/// @brief An entry in an object trace.
 class ObjectTraceEntry {
- public:
+public:
   ObjectTraceEntry(ADDRINT procedure, bool isCall)
-      : procedure(procedure),
-        isCall(isCall){};
+    : procedure(procedure),
+    isCall(isCall) {}
+
+  // procedure's address
   ADDRINT procedure;
-  bool isCall;  // else, is return
-                // TODO: look into calledMethods, what exactly is it for?
+
+  // true indicates call, false indicates return
+  bool isCall;
+
+  // set of directly called procedures TODO currently creating unordered_sets
+  // for each ObjectTraceEntry causes the application to run out of memory
 };
 
+// ============================================================================
+/// @brief An entry in the shadow stack. A tuple of the form (object pointer,
+/// expected return address, calledProcedures set). calledProcedures initially
+/// empty.
 struct ShadowStackEntry {
- public:
-  ShadowStackEntry(ADDRINT returnAddr, ADDRINT procedure, ADDRINT objPtr)
-      : returnAddr(returnAddr),
-        procedure(procedure),
-        objPtr(objPtr){};
+public:
+  ShadowStackEntry(ADDRINT objPtr, ADDRINT returnAddr, ADDRINT procedure)
+    : objPtr(objPtr),
+    returnAddr(returnAddr),
+    procedure(procedure) {}
+
+  ADDRINT objPtr;
   ADDRINT returnAddr;
   ADDRINT procedure;
-  ADDRINT objPtr;
 };
 
+// ============================================================================
 KNOB<string> configPath(
-    KNOB_MODE_WRITEONCE, "pintool", "config", "config.json",
-    "Path to configuration json file (same as for pregame and postgame).");
+  KNOB_MODE_WRITEONCE, "pintool", "config", "config.json",
+  "Path to configuration json file (same as for pregame and postgame).");
+
 KNOB<string> methodCandidatesPath(KNOB_MODE_WRITEONCE, "pintool",
-                                  "method-candidates", "method-candidates",
-                                  "Path to method candidates file.");
+  "method-candidates", "out/method-candidates",
+  "Path to method candidates file.");
+
 KNOB<string> objectTracesPath(KNOB_MODE_WRITEONCE, "pintool", "object-traces",
-                              "object-traces",
-                              "Path to object traces output file.");
+  "out/object-traces",
+  "Path to object traces output file.");
+
 // TODO: make these knobs:
 vector<ADDRINT> mallocProcedures;
 vector<ADDRINT> freeProcedures;
 
+// Potential method candidates, populated from the method candidates found
+// during pregame
 unordered_set<ADDRINT> methodCandidateAddrs;
+
 // TODO: potential optimization: Don't store finishedObjectTraces separately
 // from activeObjectTraces; instead just have a single map<ADDRINT,
 // vector<TraceEntry>>, and then insert special trace objects indicating when
@@ -73,53 +100,69 @@ unordered_set<ADDRINT> methodCandidateAddrs;
 // Problem then is that multiple "splits" may be inserted, so theoretically an
 // old trace whose memory keeps getting allocated and deallocated could be
 // problematic...but does that even happen?
-vector<vector<ObjectTraceEntry>> finishedObjectTraces;
-map<ADDRINT, vector<ObjectTraceEntry>> activeObjectTraces;
-vector<ShadowStackEntry>
-    methodStack;  // "shadow stack". Each entry is (return addr, method addr)
-unordered_map<ADDRINT, int>
-    stackEntryCount;  // number of times each return address appears in the
-                      // method stack.
-unordered_map<ADDRINT, ADDRINT>
-    heapAllocations;  // map starts of regions to (one past the) ends of
-                      // regions.
-map<ADDRINT, ADDRINT>
-    mappedRegions;  // ^^^, but for mapped areas of memory (images). Used to
-                    // determine valid object ptrs
-ADDRINT lowAddr;  // base offset of the executable image what the fuck si going
-                  // on why is it so laggy oercuheorcuheorchuoercuh
-unordered_map<ADDRINT, string>
-    procedureSymbolNames;  // can't use RTN methods during Fini, so we
-                           // explicitly store all the symbol names here (for
-                           // debugging)
+vector<vector<ObjectTraceEntry>*> finishedObjectTraces;
+map<ADDRINT, vector<ObjectTraceEntry>*> activeObjectTraces;
 
+vector<ShadowStackEntry> shadowStack;
+
+// number of times each return address appears in the method stack.
+unordered_map<ADDRINT, int> stackEntryCount;
+
+// map starts of regions to (one past the) ends of regions.
+map<ADDRINT, ADDRINT> heapAllocations;
+
+// ^^^, but for mapped areas of memory (images). Used to determine valid object
+// ptrs
+map<ADDRINT, ADDRINT> mappedRegions;
+
+// base offset of the executable image
+ADDRINT lowAddr;
+
+// Stack base
+// TODO this might not work for multithreaded applications
+ADDRINT stackBase{};
+
+// Set of blacklisted addresses. Any address in the blacklist will have any
+// methods that call the address as this receiver removed from the list of
+// finalized object traces.
+set<ADDRINT> blacklistedProcedures;
+
+// can't use RTN methods during Fini, so we explicitly store all the symbol
+// names here (for debugging)
+unordered_map<ADDRINT, string> procedureSymbolNames;
+
+// ============================================================================
+/// @brief Retrieve method candidates from file
 void ParsePregame() {
-  // TODO
-
   ifstream methodCandidatesStream(methodCandidatesPath.Value());
-  ADDRINT methodCandidate;
+  ADDRINT methodCandidate{};
   while (methodCandidatesStream >> methodCandidate >> ws) {
     methodCandidateAddrs.insert(methodCandidate);
   }
+  cout << "Populated method candidates" << endl;
 }
 
+// ============================================================================
+/// @brief Ends any object traces whose object pointers reside within the given
+/// region, that is, within the set of values [regionStart, regionEnd).
 void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
   // lower_bound means that the argument is the lower bound and that the
-  // returned iterator points to an element at least as great as the argument.
-  // And, as you'd expect, upper_bound points /after/ the position you really
-  // want, to make it easy to use in the end condition of a loop..
+  // returned iterator points to an element greater than or equal to the
+  // argument. And, as you'd expect, upper_bound points /after/ the position you
+  // really want, to make it easy to use in the end condition of a loop..
 
   auto firstTrace = activeObjectTraces.lower_bound(regionStart);
   auto lastTrace = activeObjectTraces.end();
   auto it = firstTrace;
   for (; it != lastTrace && it->first < regionEnd; it++) {
-    // (i did investigate a bit and i'm pretty sure it doesn't copy, because it
-    // seems on gcc at least that `map` internally stores `pair`s at tree
-    // leaves, so I don't think this'll copy anything) cerr << "Deallocated,
-    // flushing trace for " << hex << it->first << endl;
-    // TODO: we should be moving the vector, while this copies! But on Windows,
-    // there's no move. May need to use pointers :(
-    finishedObjectTraces.push_back(it->second);
+    if (it->second->empty()) {
+      // Don't insert empty object trace
+      delete it->second;
+      it->second = nullptr;
+    }
+    else {
+      finishedObjectTraces.push_back(it->second);
+    }
   }
   activeObjectTraces.erase(firstTrace, it);
 }
@@ -128,42 +171,60 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
 // ANALYSIS ROUTINES //
 ///////////////////////
 
+// ============================================================================
+//                          Malloc/Free Observers
+// ============================================================================
+
 ADDRINT mallocSize;  // saves arg passed to most recent malloc invocation
+
+// TODO this won't work when an executable being instrumented has threads
 void MallocBeforeCallback(ADDRINT size) { mallocSize = size; }
+
 void MallocAfterCallback(ADDRINT regionStart) {
 #ifndef SUPPRESS_MALLOC_ERRORS
   if (heapAllocations.find(regionStart) != heapAllocations.end()) {
-    // cerr << "PINTOOL WARNING: Malloc'ing a pointer that was already
-    // malloc'ed! Maybe too many malloc procedures specified?" << endl;
+    LOG("PINTOOL WARNING: Malloc'ing a pointer that was already malloc'ed! "
+      "Maybe too many malloc procedures specified?\n");
     // TODO: could debug even further by searching for if the pointer lies
     // within an allocated region.
   }
 #endif
 
-  // cerr << "Malloc @ " << hex << regionStart << endl;
+  stringstream ss;
+  ss << "Malloc @ " << hex << regionStart << " (" << dec << mallocSize
+    << " bytes)" << endl;
+  LOG(ss.str());
   heapAllocations[regionStart] = regionStart + mallocSize;
 }
 
 void FreeCallback(ADDRINT freedRegionStart) {
-  // cerr << "Free @ " << hex << freedRegionStart << endl;
-  if (freedRegionStart ==
-      0) {  // for whatever reason, real programs seem to be doing this??
-    // cerr << "WARNING: Freed nullptr?" << endl;
+  stringstream ss;
+  ss << "Free @ " << hex << freedRegionStart << endl;
+  LOG(ss.str());
+
+  if (freedRegionStart == 0) {
+    // for whatever reason, real programs seem to be doing this??
+    LOG("WARNING: Freed nullptr?");
     return;
   }
-#ifndef SUPPRESS_MALLOC_ERRORS
-  if (heapAllocations.find(freedRegionStart) == heapAllocations.end()) {
-    // cerr << "PINTOOL WARNING: Invalid pointer freed! Check the
-    // program-under-test." << endl;
-    return;
-  }
-#endif
 
   auto freedRegionIt = heapAllocations.find(freedRegionStart);
+
+  if (freedRegionIt == heapAllocations.end()) {
+#ifndef SUPPRESS_MALLOC_ERRORS
+    LOG("WARNING: Invalid pointer freed! Check the program-under-test.\n");
+    return;
+#endif
+  }
+
   ADDRINT freedRegionEnd = freedRegionIt->second;
   EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
   heapAllocations.erase(freedRegionIt);
 }
+
+// ============================================================================
+//                          Stack Pointer Observers
+// ============================================================================
 
 // a stack pointer change is interesting if it moves the pointer to the lowest
 // known address, or moves it up past an active object trace. Possible
@@ -184,51 +245,250 @@ void StackIncreaseCallback(ADDRINT stackPtr) {
 
 ADDRINT lastRetAddr;
 void CallCallback(ADDRINT retAddr) { lastRetAddr = retAddr; }
-// determine if an ADDRINT is a plausible object pointer.
-bool IsPossibleObjPtr(ADDRINT ptr) {
+
+// ============================================================================
+/// @brief Removes any methods that are blacklisted from the finished object
+/// traces. Also removes the trace if the trace is empty after blacklisted
+/// procedures are removed from it.
+void RemoveBlacklistedMethods() {
+  for (auto traceIt = finishedObjectTraces.begin();
+    traceIt != finishedObjectTraces.end();) {
+    vector<ObjectTraceEntry>* trace = *traceIt;
+
+    for (auto entryIt = trace->begin(); entryIt != trace->end();) {
+      if (blacklistedProcedures.count(entryIt->procedure)) {
+        entryIt = trace->erase(entryIt);
+      }
+      else {
+        entryIt++;
+      }
+    }
+
+    if (trace->empty()) {
+      traceIt = finishedObjectTraces.erase(traceIt);
+      delete trace;
+    }
+    else {
+      traceIt++;
+    }
+  }
+}
+
+// ============================================================================
+/// @brief Alternative to RemoveBlacklistedMethods, removes the
+/// entire object trace if it contains a blacklisted method.
+void RemoveObjectTracesWithBlacklistedMethods() {
+  for (auto traceIt = finishedObjectTraces.begin();
+    traceIt != finishedObjectTraces.end();) {
+    vector<ObjectTraceEntry>* trace = *traceIt;
+
+    bool objectTraceRemoved{ false };
+
+    for (const ObjectTraceEntry& entry : *trace) {
+      if (blacklistedProcedures.count(entry.procedure)) {
+        objectTraceRemoved = true;
+        traceIt = finishedObjectTraces.erase(traceIt);
+        delete trace;
+        break;
+      }
+    }
+
+    if (!objectTraceRemoved) {
+      traceIt++;
+    }
+  }
+}
+
+// ============================================================================
+/// @brief determine if an ADDRINT is a plausible object pointer.
+bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
   // TODO: something smarter! But checking if it's in an allocated region is not
   // good enough because the regions can change without triggering an image
   // load, eg with brk syscall. here's a reasonable idea: Either in a mapped
   // memory region OR in an explicitly mallocated heap zone.
-  return true;
-  return ptr >= lowAddr;
 
-  // 	// currently, just check if it's in a mapped memory region.
-  // 	// Theoretically, can be more precise by tracking, for example, if it's
-  // in a section that makes sense for objects to live in, and further by
-  // checking for example that if it's in the heap it's been allocated by
-  // malloc. But this stuff often is platform-specific and could break under
-  // obfuscation. 	auto it = mappedRegions.upper_bound(ptr);
-  // // TODO: check the time complexity of this! Based on different sources, it
-  // seems it could either be O(1), O(log n), or O(n)! 	return it !=
-  // mappedRegions.begin() && --it != mappedRegions.begin() && ptr < it->second;
-  // 	// TODO: blacklisting: If a method is called once with an invalid object
-  // pointer, then it
-  // 	// needs to be permanently blacklisted. I think the Lego paper describes
-  // this.
+  // No way the pointer can be larger than the stack base
+  if (ptr > stackBase) {
+    return false;
+  }
+
+  // If <= stack base and >= current stack, address valid.
+  if (ptr >= stackPtr) {
+    return true;
+  }
+
+  // If lies within heap allocated region, address valid.
+  auto it = heapAllocations.lower_bound(ptr);
+  if (it == heapAllocations.end()) {
+    return false;
+  }
+  else if (stackPtr <= it->second) {
+    return true;
+  }
+
+  return false;
+
+  // return true;
+  // return ptr >= lowAddr;
+
+  // currently, just check if it's in a mapped memory region. Theoretically, can
+  // be more precise by tracking, for example, if it's in a section that makes
+  // sense for objects to live in, and further by checking for example that if
+  // it's in the heap it's been allocated by malloc. But this stuff often is
+  // platform-specific and could break under obfuscation.
+
+  // TODO: check the time complexity of this! Based on different sources, it
+  // seems it could either be O(1), O(log n), or O(n)!
+
+  // auto it = mappedRegions.upper_bound(ptr);
+
+  // Previously && --it != mappedRegions.begin()  was also part of tihs
+  // conditional but I don't think tihs is right. Consider the region map {(0,
+  // 10), (20, 30)} with address 5. mappedRegions.upper_bound returns (20, 30),
+  // so you make sure this isn't begin() and then subtract from the it to ge (0,
+  // 10), then simply check the second element.
+  // return it != mappedRegions.begin() && ptr < --it->second;
+
+  // TODO: blacklisting: If a method is called once with an invalid object
+  // pointer, then it needs to be permanently blacklisted. I think the Lego
+  // paper describes this.
 }
-void MethodCandidateCallback(ADDRINT procAddr, ADDRINT objPtr) {
-  if (!IsPossibleObjPtr(objPtr)) {
+
+// ============================================================================
+/// @brief Inserts object trace entry into the active object traces
+static void InsertObjectTraceEntry(ADDRINT objPtr,
+  const ObjectTraceEntry& entry) {
+  auto objectTraceIt = activeObjectTraces.find(objPtr);
+
+  if (objectTraceIt == activeObjectTraces.end()) {
+    // Since pin doesn't support c++11 on windows we have to manage heap
+    // allocations manually :(
+    activeObjectTraces[objPtr] = new vector<ObjectTraceEntry>();
+    objectTraceIt = activeObjectTraces.find(objPtr);
+  }
+
+  objectTraceIt->second->push_back(entry);
+}
+
+// ============================================================================
+// Shadow stack helpers
+// ============================================================================
+/// @brief Removes the top entry in the shadow stack and decrements the
+/// associated counter in the stackEntryCount. Also removes the entry in the
+/// stackEntryCount if the counter is 0 to preserve memory.
+static ShadowStackEntry ShadowStackRemoveAndReturnTop() {
+  ShadowStackEntry stackTop = shadowStack.back();
+
+  // Remove from shadow stack
+  shadowStack.pop_back();
+
+  // Remove from stackEntryCount
+  auto& stackEntryIt = stackEntryCount.find(stackTop.returnAddr);
+  stackEntryIt->second--;
+  if (stackEntryIt->second == 0) {
+    stackEntryCount.erase(stackEntryIt);
+  }
+
+  return stackTop;
+}
+
+// ============================================================================
+/// @brief Handle calls with unmatched returns. Performs call-return matching.
+/// Removes unmatched shadow stack frames as appropriate.
+/// @note If shadow stack empty, return ignored.
+/// @param actualRetAddr Actual (observed) return address.
+static bool IgnoreReturn(ADDRINT actualRetAddr) {
+  if (shadowStack.empty()) {
+    return true;
+  }
+
+  ShadowStackEntry stackTop = shadowStack.back();
+
+  // Return address matches top of stack
+  if (actualRetAddr == stackTop.returnAddr) {
+    return false;
+  }
+
+  // The return address does not match the procedure on the top of the stack,
+  // so we have to find the procedure on the stack that has a matching return
+  // address.
+
+  // Matching call in stack
+  if (stackEntryCount.find(actualRetAddr) != stackEntryCount.end()) {
+    // Pop unmatched frames
+    while (actualRetAddr != stackTop.returnAddr) {
+      stackTop = ShadowStackRemoveAndReturnTop();
+    }
+  }
+  else {
+    return true;
+  }
+}
+
+// ============================================================================
+/// @brief Called when a procedure is instrumented (a methodCandidates address
+/// is being instrumented).
+/// @param procAddr Address of procedure being instrumented. This is a relative
+/// address, normalized by subtracting the base address.
+/// @param objPtr Address of object (this) pointer passed to the procedure. This
+/// pointer is not normalized.
+static void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr, ADDRINT objPtr) {
+  if (stackBase == 0) {
+    stackBase = stackPtr;
+  }
+
+  stringstream ss;
+  ss << "Method called on possible objPtr: " << hex << objPtr
+    << " with procAddr " << procAddr << " and stack ptr " << stackPtr;
+  if (procedureSymbolNames.count(procAddr)) {
+    ss << " : " << procedureSymbolNames[procAddr];
+  }
+  ss << endl;
+  LOG(ss.str());
+
+  // Object pointer invalid, not possible method candidate
+  if (!IsPossibleObjPtr(objPtr, stackPtr)) {
+    blacklistedProcedures.insert(procAddr);
+    LOG("not a method\n");
     return;
   }
-  // cerr << "Method called on possible objPtr: " << hex << objPtr << endl;
-  // we're a method candidate! Add to the trace and shadow stack.
+
+  // Method blacklisted, don't add to trace
+  if (blacklistedProcedures.find(procAddr) != blacklistedProcedures.end()) {
+    LOG("blacklisted, not adding\n");
+    return;
+  }
+
+  // The method candidate is valid. Add to the trace and shadow stack.
+
+  if (shadowStack.size() != 0) {
+    ShadowStackEntry& trace_entry = shadowStack.back();
+    // TODO insert procedure to calledProcedures
+  }
+
+  InsertObjectTraceEntry(objPtr, ObjectTraceEntry(procAddr, true));
 
   // should always appear just after a `call` (or should it?)
-  // assert(lastRetAddr != (ADDRINT)-1);
-  ObjectTraceEntry entry(procAddr, true);
-  activeObjectTraces[objPtr].push_back(entry);
-  if (lastRetAddr == (ADDRINT)-1) {
-    // cerr << "WARNING: Method executed without call! Likely not a method. At
-    // 0x" << hex << procAddr << endl;
-  } else {
-    methodStack.push_back(ShadowStackEntry(lastRetAddr, procAddr, objPtr));
+  if (lastRetAddr == static_cast<ADDRINT>(-1)) {
+    // return address invalid, don't add procedure to shadow stack
+    stringstream ss;
+    ss << "WARNING: Method executed without call! Likely not a method. At  0x "
+      << hex << procAddr << endl;
+    LOG(ss.str());
+  }
+  else {
+    shadowStack.push_back(ShadowStackEntry(objPtr, lastRetAddr, procAddr));
     stackEntryCount[lastRetAddr]++;
   }
-  lastRetAddr = (ADDRINT)-1;
+
+  lastRetAddr = static_cast<ADDRINT>(-1);
 }
 
-void RetCallback(ADDRINT returnAddr) {
+// ============================================================================
+/// @brief Called when a procedure is returned from. Handles popping stack entry
+/// from the shadow stack and inserting an entry in the correct object trace.
+/// @param returnAddr Address being returned to (not normalized).
+static void RetCallback(ADDRINT returnAddr) {
   // TODO: maybe do this as an InsertIfCall? Probably won't help though because
   // map lookup probably can't be inlined.
   // TODO: perhaps include a compile time flag to use a simpler implementation
@@ -239,33 +499,50 @@ void RetCallback(ADDRINT returnAddr) {
   // access, but the hash table access function has branches. if the ret is not
   // in the stack, then maybe there was some manual push-jump stuff going on, so
   // we ignore it.
-  if (stackEntryCount[returnAddr] != 0) {
-    // if the return is in the stack somewhere, find exactly where!
-    // pop off the top of stack until we find something matching our return
-    // address.
-    ShadowStackEntry stackTop(0, 0, 0);
-    do {
-      stackTop = methodStack.back();
-      methodStack.pop_back();
-      stackEntryCount[stackTop.returnAddr]--;
-      // TODO: this shouldn't cause a new object trace to be created, because
-      // the memory shouldn't be deallocated between the call and the
-      // return...but what if it does?
-      if (activeObjectTraces.count(stackTop.objPtr) == 0) {
-        // cerr << "WARNING: Return being inserted into a brand new trace??? "
-        // << hex << stackTop.objPtr << endl;
-      }
-      activeObjectTraces[stackTop.objPtr].push_back(
-          ObjectTraceEntry(stackTop.procedure, false));
-    } while (stackTop.returnAddr != returnAddr && !methodStack.empty());
+
+  if (!IgnoreReturn(returnAddr)) {
+    ShadowStackEntry stackTop = ShadowStackRemoveAndReturnTop();
+
+    // The object trace shouldn't start with a return, so log a warning if this
+    // is the case. Potentially do more in the future.
+    auto objectTraceIt = activeObjectTraces.find(stackTop.objPtr);
+    if (objectTraceIt == activeObjectTraces.end()) {
+      stringstream ss;
+      ss << "WARNING: Return being inserted into a brand new trace??? " << hex
+        << stackTop.objPtr << endl;
+      LOG(ss.str());
+    }
+
+    InsertObjectTraceEntry(stackTop.objPtr,
+      ObjectTraceEntry(stackTop.procedure, false));
   }
+
+  // if (stackEntryCount[returnAddr] != 0) {
+  //   // if the return is in the stack somewhere, find exactly where!
+  //   // pop off the top of stack until we find something matching our return
+  //   // address.
+  //   ShadowStackEntry stackTop(0, 0, 0);
+  //   do {
+  //     stackTop = shadowStack.back();
+  //     shadowStack.pop_back();
+  //     stackEntryCount[stackTop.returnAddr]--;
+  //     // TODO: this shouldn't cause a new object trace to be created, because
+  //     // the memory shouldn't be deallocated between the call and the
+  //     // return...but what if it does?
+  //     if (activeObjectTraces.count(stackTop.objPtr) == 0) {
+  //       stringstream ss;
+  //       ss << "WARNING: Return being inserted into a brand new trace??? " <<
+  //       hex
+  //          << stackTop.objPtr << endl;
+  //       LOG(ss.str());
+  //     }
+  //     InsertObjectTraceEntry(stackTop.objPtr,
+  //                            ObjectTraceEntry(stackTop.procedure, false));
+  //   } while (stackTop.returnAddr != returnAddr && !shadowStack.empty());
+  // }
 }
 
-///////////////////
-// INSTRUMENTERS //
-///////////////////
-
-bool IsPossibleStackIncrease(INS ins) {
+static bool IsPossibleStackIncrease(INS ins) {
   // TODO: check for other instructions we might want to exclude, or handle
   // specially (branches can't modify sp, right?)
 
@@ -281,12 +558,16 @@ bool IsPossibleStackIncrease(INS ins) {
   UINT32 operandCount = INS_OperandCount(ins);
   for (UINT32 opIdx = 0; opIdx < operandCount; opIdx++) {
     if (INS_OperandWritten(ins, opIdx) &&
-        INS_OperandReg(ins, opIdx) == REG_STACK_PTR) {
+      INS_OperandReg(ins, opIdx) == REG_STACK_PTR) {
       return true;
     }
   }
   return false;
 }
+
+// ============================================================================
+//                              INSTRUMENTERS
+// ============================================================================
 
 #ifdef _WIN32
 // in this case, FUNCARG ENTRYPOINT stuff doesn't know whether it's a method or
@@ -300,7 +581,11 @@ bool IsPossibleStackIncrease(INS ins) {
 #define IARG_KREO_FIRST_ARG_VALUE 0
 #endif
 
-void InstrumentInstruction(INS ins, void *) {
+/// @brief Called during the instrumentation of each instruction. Main logic for
+/// creating object traces done here. Thread safety satisfied because Pin holds
+/// a client lock whenever an instruction is instrumented.
+/// @param ins Instruction being instrumented.
+void InstrumentInstruction(INS ins, void*) {
   // We want to instrument:
   // + Calls to candidate methods, to add to the trace.
   // + Return instructions, to add to the trace.
@@ -308,17 +593,17 @@ void InstrumentInstruction(INS ins, void *) {
   // end traces.
 
   ADDRINT insRelAddr = INS_Address(ins) - lowAddr;
-  // std::cout << std::hex << lowAddr << ", " << insRelAddr << ", " <<
-  // INS_Address(ins) << std::endl;
   if (methodCandidateAddrs.count(insRelAddr) == 1) {
     INS_InsertCall(ins,
-                   IPOINT_BEFORE,
-                   (AFUNPTR)MethodCandidateCallback,
-                   IARG_ADDRINT,
-                   insRelAddr,
-                   IARG_KREO_FIRST_ARG,
-                   IARG_KREO_FIRST_ARG_VALUE,
-                   IARG_END);
+      IPOINT_BEFORE,
+      reinterpret_cast<AFUNPTR>(MethodCandidateCallback),
+      IARG_ADDRINT,
+      insRelAddr,
+      IARG_REG_VALUE,
+      REG_STACK_PTR,
+      IARG_KREO_FIRST_ARG,
+      IARG_KREO_FIRST_ARG_VALUE,
+      IARG_END);
   }
 
   // The following types of instructions should be mutually exclusive.
@@ -328,23 +613,23 @@ void InstrumentInstruction(INS ins, void *) {
     alreadyInstrumented = true;
 
     INS_InsertCall(ins,
-                   IPOINT_BEFORE,
-                   (AFUNPTR)StackIncreaseBeforeCallback,
-                   IARG_REG_VALUE,
-                   REG_STACK_PTR,
-                   IARG_END);
+      IPOINT_BEFORE,
+      reinterpret_cast<AFUNPTR>(StackIncreaseBeforeCallback),
+      IARG_REG_VALUE,
+      REG_STACK_PTR,
+      IARG_END);
     INS_InsertIfCall(ins,
-                     IPOINT_AFTER,
-                     (AFUNPTR)StackIncreasePredicate,
-                     IARG_REG_VALUE,
-                     REG_STACK_PTR,
-                     IARG_END);
+      IPOINT_AFTER,
+      reinterpret_cast<AFUNPTR>(StackIncreasePredicate),
+      IARG_REG_VALUE,
+      REG_STACK_PTR,
+      IARG_END);
     INS_InsertThenCall(ins,
-                       IPOINT_AFTER,
-                       (AFUNPTR)StackIncreaseCallback,
-                       IARG_REG_VALUE,
-                       REG_STACK_PTR,
-                       IARG_END);
+      IPOINT_AFTER,
+      reinterpret_cast<AFUNPTR>(StackIncreaseCallback),
+      IARG_REG_VALUE,
+      REG_STACK_PTR,
+      IARG_END);
   }
 
   if (INS_IsRet(ins)) {  // TODO: do we need to handle farret?
@@ -356,10 +641,10 @@ void InstrumentInstruction(INS ins, void *) {
     // internal assert.
     assert(INS_IsControlFlow(ins));
     INS_InsertCall(ins,
-                   IPOINT_BEFORE,
-                   (AFUNPTR)RetCallback,
-                   IARG_BRANCH_TARGET_ADDR,
-                   IARG_END);
+      IPOINT_BEFORE,
+      reinterpret_cast<AFUNPTR>(RetCallback),
+      IARG_BRANCH_TARGET_ADDR,
+      IARG_END);
   }
 
   if (INS_IsCall(ins)) {
@@ -367,23 +652,28 @@ void InstrumentInstruction(INS ins, void *) {
     alreadyInstrumented = true;
 
     INS_InsertCall(ins,
-                   IPOINT_BEFORE,
-                   (AFUNPTR)CallCallback,
-                   IARG_ADDRINT,
-                   INS_NextAddress(ins),
-                   IARG_END);
+      IPOINT_BEFORE,
+      reinterpret_cast<AFUNPTR>(CallCallback),
+      IARG_ADDRINT,
+      INS_NextAddress(ins),
+      IARG_END);
   }
 }
 
-void InstrumentImage(IMG img, void *) {
-  // most of the work here is finding potential malloc and free procedures and
-  // instrumenting them appropriately.
+/// @brief Called when image loaded. Finds potential malloc and free procedures
+/// and instruments them properly.
+void InstrumentImage(IMG img, void*) {
+  // This is just for debugging, curious if/why there would be multiple regions
+  assert(IMG_NumRegions(img) == 1);
 
   // track mapped memory regions
   for (UINT32 i = 0; i < IMG_NumRegions(img); i++) {
     mappedRegions[IMG_RegionLowAddress(img, i)] =
-        IMG_RegionHighAddress(img, i) + 1;
+      IMG_RegionHighAddress(img, i) + 1;
   }
+
+  cout << hex << IMG_Name(img) << ", " << IMG_RegionLowAddress(img, 0) << ", "
+    << IMG_RegionHighAddress(img, 0) << endl;
 
   // TODO: what if the user specifies a routine that's already detected
   // automatically? Want to make sure we don't add it twice, but RTN isn't
@@ -421,93 +711,136 @@ void InstrumentImage(IMG img, void *) {
     }
   }
 
-  RTN discoveredMalloc = RTN_FindByName(
-      img, MALLOC_SYMBOL);  // TODO: look more into what the malloc symbol is
-                            // named on different platforms.
-  RTN discoveredFree = RTN_FindByName(
-      img,
-      FREE_SYMBOL);  // TODO: it seems that `free` in one library calls `free`
-                     // in another library (at least on gnu libc linux), because
+  // TODO: look more into what the malloc symbol is named on different
+  // platforms.
+  RTN discoveredMalloc = RTN_FindByName(img, MALLOC_SYMBOL);
+
+  // TODO: it seems that `free` in one library calls `free`
+  // in another library (at least on gnu libc linux), because...
+  RTN discoveredFree = RTN_FindByName(img, FREE_SYMBOL);
+
+  // Insert malloc/free discovered by name into routine list
+
   if (RTN_Valid(discoveredMalloc)) {
-    // TODO: figure out if we can hook into pin's logging system?
-    // cerr << "Found malloc procedure by symbol!" << endl;
+    LOG("Found malloc procedure by symbol in img " + IMG_Name(img) + "\n");
     mallocRtns.push_back(discoveredMalloc);
   }
+  else {
+    LOG("Failed to find malloc procedure by symbol in img " + IMG_Name(img) +
+      "\n");
+  }
+
   if (RTN_Valid(discoveredFree)) {
-    // cerr << "Found free procedure by symbol!" << endl;
+    LOG("Found free procedure by symbol in img " + IMG_Name(img) + "\n");
     freeRtns.push_back(discoveredFree);
   }
+  else {
+    LOG("Failed to find free procedure by symbol in img " + IMG_Name(img) +
+      "\n");
+  }
+
   for (RTN mallocRtn : mallocRtns) {
     RTN_Open(mallocRtn);
     // save first argument
     RTN_InsertCall(mallocRtn,
-                   IPOINT_BEFORE,
-                   (AFUNPTR)MallocBeforeCallback,
-                   IARG_FUNCARG_ENTRYPOINT_VALUE,
-                   0,
-                   IARG_END);
+      IPOINT_BEFORE,
+      reinterpret_cast<AFUNPTR>(MallocBeforeCallback),
+      IARG_FUNCARG_ENTRYPOINT_VALUE,
+      0,
+      IARG_END);
     RTN_InsertCall(mallocRtn,
-                   IPOINT_AFTER,
-                   (AFUNPTR)MallocAfterCallback,
-                   IARG_FUNCRET_EXITPOINT_VALUE,
-                   IARG_END);
+      IPOINT_AFTER,
+      reinterpret_cast<AFUNPTR>(MallocAfterCallback),
+      IARG_FUNCRET_EXITPOINT_VALUE,
+      IARG_END);
     RTN_Close(mallocRtn);
   }
+
   for (RTN freeRtn : freeRtns) {
     RTN_Open(freeRtn);
     RTN_InsertCall(freeRtn,
-                   IPOINT_BEFORE,
-                   (AFUNPTR)FreeCallback,
-                   IARG_FUNCARG_ENTRYPOINT_VALUE,
-                   0,
-                   IARG_END);
+      IPOINT_BEFORE,
+      reinterpret_cast<AFUNPTR>(FreeCallback),
+      IARG_FUNCARG_ENTRYPOINT_VALUE,
+      0,
+      IARG_END);
     RTN_Close(freeRtn);
   }
 }
 
-void InstrumentUnloadImage(IMG img, void *) {
+/// @brief Caled when image unloaded. Remove any mapped regions.
+void InstrumentUnloadImage(IMG img, void*) {
   // remove regions from mapped memory tracker
   for (UINT32 i = 0; i < IMG_NumRegions(img); i++) {
     mappedRegions.erase(IMG_RegionLowAddress(img, i));
   }
 }
 
-void Fini(INT32 code, void *) {
-  // cerr << "Program run completed, writing object traces to disk..." << endl;
-  // end all in-progress traces, then print all to disk.
+void Fini(INT32 code, void*) {
+  // Max number of entries per trace file generated to avoid generating trace
+  // files that are ridiculously large. Object traces are not split between
+  // files; however, so the exact number of entries in the trace may be larger.
+  const int kEntriesPerTraceFile{ 100'000 };
 
-  for (auto &pair : activeObjectTraces) {
-    if (!pair.second.empty()) {
-      // TODO: should be `move`ing here
-      finishedObjectTraces.push_back(pair.second);
-    }
+  cout << "Program run completed, writing object traces to disk..." << endl;
+
+  // end all in-progress traces, then print all to disk.
+  auto lastObjectTraceIt = activeObjectTraces.rbegin();
+  if (lastObjectTraceIt != activeObjectTraces.rend()) {
+    EndObjectTracesInRegion(0, lastObjectTraceIt->first);
   }
 
-  ofstream os(objectTracesPath.Value().c_str());
-  // TODO: use a more structured trace format.
-  for (const vector<ObjectTraceEntry> &trace : finishedObjectTraces) {
-    for (const ObjectTraceEntry &entry : trace) {
+  cout << "Finished all object traces" << endl;
+
+  RemoveBlacklistedMethods();
+
+  cout << dec << "found " << finishedObjectTraces.size()
+    << " valid object traces" << endl;
+
+  string objectTracesPathStr = objectTracesPath.Value().c_str();
+
+  int currEntry = 0;
+  int currTrace = 0;
+  ofstream os(objectTracesPathStr.c_str());
+  // TODO: use a more structured trace format...currently all traces shoved into
+  // files, which are broken up to avoid making files that are too large.
+  for (const vector<ObjectTraceEntry>* trace : finishedObjectTraces) {
+    for (const ObjectTraceEntry& entry : *trace) {
       if (procedureSymbolNames.count(entry.procedure)) {
         os << procedureSymbolNames[entry.procedure] << " ";
       }
       os << entry.procedure << " " << entry.isCall << endl;
+
+      currEntry++;
     }
     os << endl;
+
+    if (currEntry >= kEntriesPerTraceFile) {
+      os.close();
+      std::string objTracePathEnumerated =
+        objectTracesPathStr + "_" + std::to_string(++currTrace);
+      os.open(objTracePathEnumerated.c_str());
+
+      currEntry = 0;
+    }
   }
-  // cerr << "Done! Exiting normally." << endl;
+
+  cout << "Done! Exiting normally." << endl;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ParsePregame();
 
   PIN_InitSymbols();  // this /is/ necessary for debug symbols, but somehow it
-                      // doesn't have an entry in the PIN documentation? (though
-                      // its name is referenced in a few places).
+  // doesn't have an entry in the PIN documentation? (though
+  // its name is referenced in a few places).
   PIN_Init(argc, argv);
   IMG_AddInstrumentFunction(InstrumentImage, NULL);
   IMG_AddUnloadFunction(InstrumentUnloadImage, NULL);
   INS_AddInstrumentFunction(InstrumentInstruction, NULL);
   PIN_AddFiniFunction(Fini, NULL);
+
+  // Start program, never returns
   PIN_StartProgram();
   return 0;
 }
