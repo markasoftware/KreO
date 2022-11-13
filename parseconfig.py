@@ -12,3 +12,7 @@ if not 'methodCandidatesPath' in config:
     config['methodCandidatesPath'] = 'out/method-candidates'
 if not 'objectTracesPath' in config:
     config['objectTracesPath'] = 'out/object-traces'
+if not 'resultsPath' in config:
+    config['resultsPath'] = 'out/results.json'
+if not 'resultsIndent' in config:
+    config['resultsIndent'] = 4

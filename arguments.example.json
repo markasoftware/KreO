@@ -17,5 +17,7 @@
 
     // "methodCandidatesPath": "method-candidates",
     // "objectTracesPath": "object-traces",
+    // "resultsPath": "results.json",
+    // "resultsIndent": 4, // for pretty-printing final output json. Set to 0 for maximum compaction
     // TODO: maybe allow a "base folder" that all the other paths are inside of, to help separate executables?
 }

@@ -73,10 +73,6 @@ public:
 };
 
 // ============================================================================
-KNOB<string> configPath(
-  KNOB_MODE_WRITEONCE, "pintool", "config", "config.json",
-  "Path to configuration json file (same as for pregame and postgame).");
-
 KNOB<string> methodCandidatesPath(KNOB_MODE_WRITEONCE, "pintool",
   "method-candidates", "out/method-candidates",
   "Path to method candidates file.");
