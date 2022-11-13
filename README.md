@@ -37,7 +37,7 @@ TODO: We should eventually just distribute DLLs so people don't have to deal wit
 1. Install [Cygwin](https://www.cygwin.com). When selecting packages to install, make sure to add `make` in addition to the default selections.
 1. Install a recent version of Microsoft® Visual© Studio™, which should include MSVC.
 1. Open up the "x86 Native Tools Command Prompt for VS" or "x64 Native Tools Command Prompt for VS" depending on whether you want to build pin for 32-bit or 64-bit (you can do both one at a time and then have both versions available for later use).
-1. Add the Cygwin binary directory to your path. Usually something like `set PATH=C:\cygwin64\bin;%PATH%`.
+1. Add the Cygwin binary directory to your path. Usually something like `set PATH=%PATH%;C:\cygwin64\bin`. Make sure to use MSVC linker instead of GNU linker utility.
 1. Set the `PIN_ROOT` environment variable to inside the extract Pin directory, *using forward slashes*. For example, `set PIN_ROOT=C:/Users/Mark/pin`.
 1. Run `make` from inside the `pintool` directory of KreO.
 
