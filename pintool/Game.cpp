@@ -52,9 +52,6 @@ struct ShadowStackEntry {
   ADDRINT objPtr;
 };
 
-KNOB<string> configPath(
-    KNOB_MODE_WRITEONCE, "pintool", "config", "config.json",
-    "Path to configuration json file (same as for pregame and postgame).");
 KNOB<string> methodCandidatesPath(KNOB_MODE_WRITEONCE, "pintool",
                                   "method-candidates", "method-candidates",
                                   "Path to method candidates file.");
