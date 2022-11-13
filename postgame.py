@@ -12,11 +12,11 @@ class Method:
         self.address = address
         self.name = name
         # How many times the method has been seen in different parts of a trace:
-        self.seenInTail = int(0)
+        self.seenInFingerprint = int(0)
         self.seenInTorso = int(0)
 
     def isDestructor(self) -> bool:
-        return self.seenInTail > 0 and self.seenInTorso <= self.seenInTail // 4  # TODO: more thought into this, other heuristics?
+        return self.seenInFingerprint > 0 and self.seenInTorso <= self.seenInFingerprint // 4  # TODO: more thought into this, other heuristics?
 
     def __str__(self) -> str:
         return ('' if self.name == 'N/A' else (self.name + ' ')) + str(self.address)
@@ -46,9 +46,9 @@ class TraceEntry:
 class Trace:
     def __init__(self, traceEntries: List[TraceEntry]):
         self.traceEntries = traceEntries
-        # Tail is in reverse order -- last call in the trace first, aka fingerprint
-        self.tail = list(map(lambda entry: entry.method, itertools.takewhile(lambda entry: not entry.isCall, reversed(traceEntries))))
-        self.torsoLen = len(traceEntries) - len(self.tail)
+        # Fingerprint is in reverse order -- last call in the trace first
+        self.fingerprint = list(map(lambda entry: entry.method, itertools.takewhile(lambda entry: not entry.isCall, reversed(traceEntries))))
+        self.torsoLen = len(traceEntries) - len(self.fingerprint)
 
     def __str__(self) -> str:
         return '\n'.join(map(lambda te: te.__str__(), self.traceEntries))
@@ -59,17 +59,17 @@ class Trace:
     def __eq__(self, other) -> bool:
         return self.__str__() == other.__str__()
 
-    # Return a generator for entries preceding the tail
+    # Return a generator for entries preceding the fingerprint
     def torso(self):
         return itertools.islice(self.traceEntries, self.torsoLen)
 
     # update all methods involved with this trace, to store number of appearances in each part of the trace.
     def updateMethodStatistics(self):
         for torsoEntry in self.torso():
-            if not torsoEntry.isCall: # avoid double-counting, and avoid counting the calls corresponding to the returns in the tail
+            if not torsoEntry.isCall: # avoid double-counting, and avoid counting the calls corresponding to the returns in the fingerprint
                 torsoEntry.method.seenInTorso += 1
-        for tailMethod in self.tail:
-            tailMethod.seenInTail += 1
+        for fingerprintMethod in self.fingerprint:
+            fingerprintMethod.seenInFingerprint += 1
 
     # Given a set of destructors, return a list of traces created from this one. Returns just itself if no splitting is necessary.
     def split(self, destructors):
@@ -79,7 +79,7 @@ class Trace:
         isTerminatingTrace = False
         for entry in self.traceEntries:
             if isTerminatingTrace:
-                if entry.isCall: # the tail is over, rejoice or something
+                if entry.isCall: # the fingerprint is over, rejoice or something
                     result.append(curResultTrace)
                     curResultTrace = [entry]
                     isTerminatingTrace = False
@@ -189,9 +189,9 @@ traces = splitTraces
 
 # TODO: Possible improvement: Perform the last steps iteratively. I.e., if splitting reveals a new destructor, then we may want to re-split. However, splitting seems like it shouldn't be happening too often, let alone re-splitting.
 
-# TODO: possible improvement: Instead of just looking for the true tail of returns, maybe if we identify a suffix common to many object traces, we can infer that a destructor is calling another method and account for it?
+# TODO: possible improvement: Instead of just looking for the true fingerprint of returns, maybe if we identify a suffix common to many object traces, we can infer that a destructor is calling another method and account for it?
 
-# Step 5: Look at tails to determine hierarchy
+# Step 5: Look at fingerprints to determine hierarchy
 
 def identity(x):
     return x
@@ -235,9 +235,10 @@ class TrieNode:
     def insert(self, childValue: Any) -> None:
         # Unconditionally insert into children list.
         self.children.append(TrieNode(childValue, self))
+        return self.children[-1]
 
     # TODO this doesn't work
-    def getPath(self, path: List[Method], key: Callable[[Any], Any]=identity, mkNew: Callable[[Method], Any]=None):
+    def insertTraceIntoTrie(self, path: List[Method], key: Callable[[Any], Any]=identity, mkNew: Callable[[Method], Any]=None):
         '''
         Attempts to insert the given path into the TrieNode entry.
         '''
@@ -247,15 +248,16 @@ class TrieNode:
         step = path[0]
 
         # Attempt to find the class in the TrieNode's child.
-        matchingChild = findIf(step, self.children, lambda node: key(node.value))
+        matchingChild: TrieNode = findIf(step, self.children, lambda node: key(node.value))
+
         if matchingChild == None:
             # Class not in TrieNode's child, make a new child node and insert it (add it as a child)
             if not mkNew:
                 raise Exception('Path not found and mkNew not provided')
             newChildValue = mkNew(step)
-            self.insert(newChildValue)
+            matchingChild = self.insert(newChildValue)
 
-        return self.getPath(path[1:], key, mkNew)
+        return matchingChild.insertTraceIntoTrie(path[1:], key, mkNew)
 
     def isRoot(self):
         return self.parent == None
@@ -295,7 +297,7 @@ def trieNodesLCA(n1: TrieNode, n2: TrieNode) -> TrieNode:
             lastAncestor = n1n
         else:
             return lastAncestor
-        
+
 # Ideally, everything would form a nice trie. But what if it doesn't, eg in the case when we're just tracing weird sequence of functions that operate on an integer pointer? The simple algorithm of always inserting into the trie will never error out, but it will result in a trie where certain "destructors" are at the base of some tries and in the middle of others. So that's a rule we could use to exclude some of them: A class that appears in multiple different branches from the root should be removed
 
 trieRootNode = TrieNode(None, None)
@@ -305,21 +307,17 @@ def constructTrie():
     global trieRootNode
     global methodToTrieNodeMap
     for trace in traces:
-        # insert class into the trie if necessary
-        trieNode = trieRootNode.getPath(trace.tail, lambda cls: cls.destructor, KreoClass)
-        print(trieNode == trieRootNode)
-        print(str(trieNode))
+        # insert class into the trie if necessary. A dummy first fingerprint element added
+        # to the fingerprint for the root node
+        fingerprintWithDummy = [Method(0, 'Root')] + trace.fingerprint
+        trieNode = trieRootNode.insertTraceIntoTrie(fingerprintWithDummy, lambda cls: cls.destructor, KreoClass)
 
         # set LCAs if necessary
-        # TODO this is wrong since getPath always returns the root
         for entry in trace.torso():
             method = entry.method
             existingTrieNodeForMethod = methodToTrieNodeMap.get(method, None)
             methodClassNodeLCA = trieNode if existingTrieNodeForMethod is None else trieNodesLCA(trieNode, existingTrieNodeForMethod)
             methodToTrieNodeMap[method] = methodClassNodeLCA
-
-        # for method in methodToTrieNodeMap:
-        #     print(str(method) + " ==> " + str(methodToTrieNodeMap[method]))
 
 runStep(constructTrie, 'constructing trie...', 'trie constructed')
 
