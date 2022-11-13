@@ -8,9 +8,11 @@ from parseconfig import config
 from typing import List, Callable, Dict, Set, Any
 
 class Method:
-    def __init__(self, address: int, name: str='N/A'):
+    def __init__(self, address: int, firstMethodInTrace: bool, name: str='unknown'):
         self.address = address
         self.name = name
+        self.type = ''
+        self.firstMethodInTrace = firstMethodInTrace
         # How many times the method has been seen in different parts of a trace:
         self.seenInFingerprint = int(0)
         self.seenInTorso = int(0)
@@ -18,21 +20,32 @@ class Method:
     def isDestructor(self) -> bool:
         return self.seenInFingerprint > 0 and self.seenInTorso <= self.seenInFingerprint // 4  # TODO: more thought into this, other heuristics?
 
+    def evaluateType(self) -> None:
+        # TODO other types may be viable options (virtual methods for example), but for now we don't care about them
+        if self.isDestructor():
+            self.type = 'dtor'
+        elif self.firstMethodInTrace:
+            self.type = 'ctor'
+        else:
+            self.type = 'meth'
+
     def __str__(self) -> str:
-        return ('' if self.name == 'N/A' else (self.name + ' ')) + str(self.address)
+        return ('' if self.name == 'unknown' else (self.name + ' ')) +\
+               (str(self.address)) +\
+               ('' if self.type == '' else ' ' + self.type)
 
 class TraceEntry:
-    def __init__(self, line: str):
+    def __init__(self, line: str, firstEntryInTrace: bool):
         '''
         Contruct a trace entry from the given trace entry
         '''
         splitLine = line.split()
         if len(splitLine) == 2:
-            self.method = findOrInsertMethod(int(splitLine[0]))
+            self.method = findOrInsertMethod(int(splitLine[0]), firstEntryInTrace)
             self.isCall = int(splitLine[1]) == 1
         elif len(splitLine) == 3:
             # There's a method name in the trace
-            self.method = findOrInsertMethod(int(splitLine[1]), splitLine[0])
+            self.method = findOrInsertMethod(int(splitLine[1]), firstEntryInTrace, splitLine[0])
             self.isCall = int(splitLine[2]) == 1
         else:
             raise Exception('Could not parse trace entry from line: "' + line + '"')
@@ -96,7 +109,7 @@ class Trace:
 
 methods: Dict[int, Method] = dict() # map from address to method
 
-def findOrInsertMethod(address: int, name: str='N/A') -> Method:
+def findOrInsertMethod(address: int, firstMethodInTrace: bool, name: str='unknown') -> Method:
     '''
     Attempts to find the method in the global methods map. If the function fails
     to find a method, one will be inserted.
@@ -104,7 +117,7 @@ def findOrInsertMethod(address: int, name: str='N/A') -> Method:
     global methods
 
     if address not in methods:
-        methods[address] = Method(address, name)
+        methods[address] = Method(address, firstMethodInTrace, name)
     return methods[address]
 
 def printTraces(traces):
@@ -130,6 +143,7 @@ def parseTraces():
     # there can be multiple object trace files...find all of them
 
     traceIndex = 0
+    firstElement = True
     while os.path.exists(config['objectTracesPath'] + "_" + str(traceIndex)):
         for line in open(config['objectTracesPath'] + "_" + str(traceIndex)):
             # each line ends with \n, empty line indicates new trace
@@ -137,8 +151,10 @@ def parseTraces():
                 if curTrace:
                     traces.append(Trace(curTrace))
                     curTrace = []
+                firstElement = True
             else:
-                curTrace.append(TraceEntry(line))
+                curTrace.append(TraceEntry(line, firstElement))
+                firstElement = False
         # finish the last trace
         if curTrace:
             traces.append(Trace(curTrace))
@@ -309,7 +325,7 @@ def constructTrie():
     for trace in traces:
         # insert class into the trie if necessary. A dummy first fingerprint element added
         # to the fingerprint for the root node
-        fingerprintWithDummy = [Method(0, 'Root')] + trace.fingerprint
+        fingerprintWithDummy = [Method(0, False, 'Root')] + trace.fingerprint
         trieNode = trieRootNode.insertTraceIntoTrie(fingerprintWithDummy, lambda cls: cls.destructor, KreoClass)
 
         # set LCAs if necessary
@@ -334,18 +350,26 @@ def md5File(fname):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
+# map trie nodes to methods now that method locations are fixed
+trieNodeToMethodSetMap: Dict[TrieNode, Set[Method]] = dict()
+
+for method, trieNode in methodToTrieNodeMap.items():
+    if trieNode not in trieNodeToMethodSetMap.keys():
+        trieNodeToMethodSetMap[trieNode] = set()
+    trieNodeToMethodSetMap[trieNode].add(method)
+
 structures: Dict[str, Dict[str, Any]] = dict()
 trieIter = trieRootNode.preorderIter()
 next(trieIter) # skip the root
-for classNode in trieIter:
-    cls = classNode.value
+for trieNode in trieIter:
+    cls = trieNode.value
     name = str(cls)
 
     # For now, while we only detect direct parent relationships, only add a member if we have a parent, and don't actually know anything about its size
     # We are not detecting members so members should always be empty
     members = dict()
-    if not classNode.parent is trieRootNode:
-        parentClass = classNode.parent.value
+    if not trieNode.parent is trieRootNode:
+        parentClass = trieNode.parent.value
         members['0x0'] = {
             'base': False, # TODO: what does this one even mean?
             'name': name + '_0x0',
@@ -358,6 +382,18 @@ for classNode in trieIter:
         }
 
     methods: Dict[str, Any] = dict()
+    # If there are no methods associated with the trie node there might not be any methods in the set
+    if trieNode in trieNodeToMethodSetMap:
+        for method in trieNodeToMethodSetMap[trieNode]:
+            method.evaluateType()
+            methodAddrStr = '0x' + hex(method.address)
+            methods[methodAddrStr] = {
+                'demangled_name': method.name,
+                'ea': methodAddrStr,
+                'import': False,
+                'name': method.type + methodAddrStr,
+                'type': method.type,
+            }
 
     structures[str(cls)] = {
         'name': name,
