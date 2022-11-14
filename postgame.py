@@ -8,23 +8,39 @@ from parseconfig import config
 from typing import List, Callable, Dict, Set, Any
 
 class Method:
-    def __init__(self, address: int, firstMethodInTrace: bool, name: str='unknown'):
+    def __init__(self, address: int, name: str='unknown'):
         self.address = address
         self.name = name
         self.type = ''
-        self.firstMethodInTrace = firstMethodInTrace
         # How many times the method has been seen in different parts of a trace:
+        self.seenInHead = int(0)
         self.seenInFingerprint = int(0)
-        self.seenInTorso = int(0)
+        self.seenTotal = int(0)
+
+        self.destructorTailToTorsoRatioMax = 4
+        self.destructorTailToHeadRatioMax = 16
+        self.constructorHeadToTorsoRatioMax = 4
+        self.constructorHeadToTailRatioMax = 16
+
+    def seenInTorso(self):
+        return self.seenTotal - self.seenInHead - self.seenInFingerprint
 
     def isDestructor(self) -> bool:
-        return self.seenInFingerprint > 0 and self.seenInTorso <= self.seenInFingerprint // 4  # TODO: more thought into this, other heuristics?
+        return (self.seenInFingerprint > 0
+                and self.seenInTorso() <= self.seenInFingerprint // self.destructorTailToTorsoRatioMax
+                and self.seenInHead <= self.seenInFingerprint // self.destructorTailToHeadRatioMax) # TODO: more thought into this, other heuristics?
+
+    def isConstructor(self) -> bool:
+        return (self.seenInHead > 0
+                and self.seenInTorso() <= self.seenInHead // self.constructorHeadToTorsoRatioMax
+                and self.seenInFingerprint <= self.seenInHead // self.constructorHeadToTailRatioMax) # TODO maybe improve
 
     def evaluateType(self) -> None:
         # TODO other types may be viable options (virtual methods for example), but for now we don't care about them
+        assert not (self.isConstructor() and self.isDestructor())
         if self.isDestructor():
             self.type = 'dtor'
-        elif self.firstMethodInTrace:
+        elif self.isConstructor():
             self.type = 'ctor'
         else:
             self.type = 'meth'
@@ -35,17 +51,17 @@ class Method:
                ('' if self.type == '' else ' ' + self.type)
 
 class TraceEntry:
-    def __init__(self, line: str, firstEntryInTrace: bool):
+    def __init__(self, line: str):
         '''
         Contruct a trace entry from the given trace entry
         '''
         splitLine = line.split()
         if len(splitLine) == 2:
-            self.method = findOrInsertMethod(int(splitLine[0]), firstEntryInTrace)
+            self.method = findOrInsertMethod(int(splitLine[0]))
             self.isCall = int(splitLine[1]) == 1
         elif len(splitLine) == 3:
             # There's a method name in the trace
-            self.method = findOrInsertMethod(int(splitLine[1]), firstEntryInTrace, splitLine[0])
+            self.method = findOrInsertMethod(int(splitLine[1]), splitLine[0])
             self.isCall = int(splitLine[2]) == 1
         else:
             raise Exception('Could not parse trace entry from line: "' + line + '"')
@@ -60,8 +76,8 @@ class Trace:
     def __init__(self, traceEntries: List[TraceEntry]):
         self.traceEntries = traceEntries
         # Fingerprint is in reverse order -- last call in the trace first
+        self.head = list(map(lambda entry: entry.method, itertools.takewhile(lambda entry: entry.isCall, traceEntries)))
         self.fingerprint = list(map(lambda entry: entry.method, itertools.takewhile(lambda entry: not entry.isCall, reversed(traceEntries))))
-        self.torsoLen = len(traceEntries) - len(self.fingerprint)
 
     def __str__(self) -> str:
         return '\n'.join(map(lambda te: te.__str__(), self.traceEntries))
@@ -72,17 +88,18 @@ class Trace:
     def __eq__(self, other) -> bool:
         return self.__str__() == other.__str__()
 
-    # Return a generator for entries preceding the fingerprint
-    def torso(self):
-        return itertools.islice(self.traceEntries, self.torsoLen)
-
     # update all methods involved with this trace, to store number of appearances in each part of the trace.
     def updateMethodStatistics(self):
-        for torsoEntry in self.torso():
+        for torsoEntry in self.traceEntries:
             if not torsoEntry.isCall: # avoid double-counting, and avoid counting the calls corresponding to the returns in the fingerprint
-                torsoEntry.method.seenInTorso += 1
+                torsoEntry.method.seenTotal += 1
+        for headMethod in self.head:
+            headMethod.seenInHead += 1
         for fingerprintMethod in self.fingerprint:
             fingerprintMethod.seenInFingerprint += 1
+
+    def methods(self):
+        return map(lambda entry: entry.method, filter(lambda entry: entry.isCall, self.traceEntries))
 
     # Given a set of destructors, return a list of traces created from this one. Returns just itself if no splitting is necessary.
     def split(self, destructors):
@@ -109,7 +126,7 @@ class Trace:
 
 methods: Dict[int, Method] = dict() # map from address to method
 
-def findOrInsertMethod(address: int, firstMethodInTrace: bool, name: str='unknown') -> Method:
+def findOrInsertMethod(address: int, name: str='unknown') -> Method:
     '''
     Attempts to find the method in the global methods map. If the function fails
     to find a method, one will be inserted.
@@ -117,7 +134,7 @@ def findOrInsertMethod(address: int, firstMethodInTrace: bool, name: str='unknow
     global methods
 
     if address not in methods:
-        methods[address] = Method(address, firstMethodInTrace, name)
+        methods[address] = Method(address, name)
     return methods[address]
 
 def printTraces(traces):
@@ -143,7 +160,6 @@ def parseTraces():
     # there can be multiple object trace files...find all of them
 
     traceIndex = 0
-    firstElement = True
     while os.path.exists(config['objectTracesPath'] + "_" + str(traceIndex)):
         for line in open(config['objectTracesPath'] + "_" + str(traceIndex)):
             # each line ends with \n, empty line indicates new trace
@@ -151,17 +167,15 @@ def parseTraces():
                 if curTrace:
                     traces.append(Trace(curTrace))
                     curTrace = []
-                firstElement = True
             else:
-                curTrace.append(TraceEntry(line, firstElement))
-                firstElement = False
+                curTrace.append(TraceEntry(line))
         # finish the last trace
         if curTrace:
             traces.append(Trace(curTrace))
 
         traceIndex += 1
 
-traces: List[Trace] = []
+traces = []
 runStep(parseTraces, 'parsing traces...', f'traces parsed')
 print(f'found {len(traces)} traces')
 
@@ -315,9 +329,10 @@ def trieNodesLCA(n1: TrieNode, n2: TrieNode) -> TrieNode:
             return lastAncestor
 
 # Ideally, everything would form a nice trie. But what if it doesn't, eg in the case when we're just tracing weird sequence of functions that operate on an integer pointer? The simple algorithm of always inserting into the trie will never error out, but it will result in a trie where certain "destructors" are at the base of some tries and in the middle of others. So that's a rule we could use to exclude some of them: A class that appears in multiple different branches from the root should be removed
+# ^^^ But in fact, this happens automatically! Because the LCA will be the root, and we skip the root when we traverse over the tree to print final output!
 
 trieRootNode = TrieNode(None, None)
-methodToTrieNodeMap: Dict[Method, TrieNode] = dict()  # we need a way to know which trie nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the trie before processing.
+methodToTrieNodeMap = dict()  # we need a way to know which trie nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the trie before processing.
 
 def constructTrie():
     global trieRootNode
@@ -325,12 +340,11 @@ def constructTrie():
     for trace in traces:
         # insert class into the trie if necessary. A dummy first fingerprint element added
         # to the fingerprint for the root node
-        fingerprintWithDummy = [Method(0, False, 'Root')] + trace.fingerprint
+        fingerprintWithDummy = [Method(0, 'Root')] + trace.fingerprint
         trieNode = trieRootNode.insertTraceIntoTrie(fingerprintWithDummy, lambda cls: cls.destructor, KreoClass)
 
         # set LCAs if necessary
-        for entry in trace.torso():
-            method = entry.method
+        for method in trace.methods():
             existingTrieNodeForMethod = methodToTrieNodeMap.get(method, None)
             methodClassNodeLCA = trieNode if existingTrieNodeForMethod is None else trieNodesLCA(trieNode, existingTrieNodeForMethod)
             methodToTrieNodeMap[method] = methodClassNodeLCA
@@ -381,12 +395,12 @@ for trieNode in trieIter:
             'usages': [],
         }
 
-    methods: Dict[str, Any] = dict()
+    methods = dict()
     # If there are no methods associated with the trie node there might not be any methods in the set
     if trieNode in trieNodeToMethodSetMap:
         for method in trieNodeToMethodSetMap[trieNode]:
             method.evaluateType()
-            methodAddrStr = '0x' + hex(method.address)
+            methodAddrStr = hex(method.address)
             methods[methodAddrStr] = {
                 'demangled_name': method.name,
                 'ea': methodAddrStr,
