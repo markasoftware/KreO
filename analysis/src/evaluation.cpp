@@ -6,6 +6,9 @@
 
 using virtual_address_t = uint64_t;
 
+static constexpr std::string_view kConstructorType{"ctor"};
+static constexpr std::string_view kDestructorType{"dtor"};
+
 // ============================================================================
 struct MethodInfo {
   virtual_address_t address;
@@ -17,6 +20,10 @@ struct MethodInfo {
     }
 
     return mi1.type.compare(mi2.type) < 0;
+  }
+
+  friend bool operator==(const MethodInfo &mi1, const MethodInfo &mi2) {
+    return mi1.address == mi2.address && mi1.type == mi2.type;
   }
 };
 
@@ -85,6 +92,7 @@ int main(int argc, char *argv[]) {
                   << precision_recall.second << std::endl;
       };
 
+  std::cout << "evaluation criteria\tprecision\trecall" << std::endl;
   run_test("methods", &PrecisionAndRecallMethods);
   run_test("classes", &PrecisionAndRecallClasses);
   run_test("constructors", &PrecisionAndRecallConstructors);
@@ -108,21 +116,28 @@ static std::vector<MethodSet> ToMethodSets(const boost::json::value &json) {
   std::vector<MethodSet> method_sets;
   for (const auto &class_it :
        json.as_object().find("structures")->value().as_object()) {
-    const auto &class_methods =
-        class_it.value().as_object().find("methods")->value().as_object();
+    try {
+      const auto &class_methods =
+          class_it.value().as_object().find("methods")->value().as_object();
 
-    MethodSet method_set;
-    for (const auto &method_it : class_methods) {
-      const auto &method_obj = method_it.value().as_object();
-      std::stringstream method_ea_ss;
-      std::string type = method_obj.find("type")->value().as_string().c_str();
-      method_ea_ss << std::hex
-                   << method_obj.find("ea")->value().as_string().c_str();
-      virtual_address_t ea{};
-      method_ea_ss >> ea;
-      method_set.insert(MethodInfo{.address = ea, .type = type});
+      MethodSet method_set;
+      for (const auto &method_it : class_methods) {
+        const auto &method_obj = method_it.value().as_object();
+        std::stringstream method_ea_ss;
+        std::string type = method_obj.find("type")->value().as_string().c_str();
+        method_ea_ss << std::hex
+                     << method_obj.find("ea")->value().as_string().c_str();
+        virtual_address_t ea{};
+        method_ea_ss >> ea;
+        method_set.insert(MethodInfo{.address = ea, .type = type});
+      }
+      method_sets.push_back(method_set);
+    } catch (std::invalid_argument e) {
+      std::stringstream ss;
+      ss << "when trying to create method sets: " << e.what() << " for class "
+         << class_it.key() << std::endl;
+      throw std::invalid_argument(ss.str());
     }
-    method_sets.push_back(method_set);
   }
   return method_sets;
 }
@@ -147,54 +162,75 @@ static float ComputeRecall(int32_t true_positives, int32_t false_negatives) {
 
 // ============================================================================
 static float ComputeF1(float precision, float recall) {
+  if (precision + recall == 0.0f) {
+    return 0.0f;
+  }
   return (2.0f * precision * recall) / (precision + recall);
+}
+
+// ============================================================================
+template <typename T>
+static int32_t FalseNegatives(const T &gt, int32_t true_positives) {
+  return gt.size() - true_positives;
+}
+
+// ============================================================================
+template <typename T>
+static int32_t FalsePositives(const T &gen_data, int32_t true_positives) {
+  return gen_data.size() - true_positives;
 }
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallClasses(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
-  // Creates a set of all detected classes. We identify classes by associating
-  // constructor methods with the class. Two classes are equal the intersection
-  // of their constructor sets is not empty.
-  auto to_class_set = [](const std::vector<MethodSet> &in) {
-    std::set<std::set<virtual_address_t>> class_set;
-    for (const auto &c : in) {
-      std::set<virtual_address_t> constructors;
-      for (const auto &method : c) {
-        if (method.type == "ctor") {
-          constructors.insert(method.address);
-        }
+  // Two classes are equal if the intersection of their method sets is not
+  // empty. Exclude classes without methods. Ground truth classes can't be
+  // double counted as a match for multiple generated classes.
+
+  auto remove_empty_cls = [](const std::vector<MethodSet> &classes) {
+    std::vector<MethodSet> classesNonempty;
+    for (const auto &cls : classes) {
+      if (!cls.empty()) {
+        classesNonempty.push_back(cls);
       }
-      class_set.insert(constructors);
     }
-    return class_set;
+    return classesNonempty;
   };
 
-  std::set<std::set<virtual_address_t>> ground_truth_class_set =
-      to_class_set(ground_truth);
-  std::set<std::set<virtual_address_t>> generated_data_class_set =
-      to_class_set(generated_data);
+  std::vector<MethodSet> ground_truth_excluding_empty_cls =
+      remove_empty_cls(ground_truth);
+  std::vector<MethodSet> generated_data_excluding_empty_cls =
+      remove_empty_cls(generated_data);
 
   int32_t true_positives{};
 
-  for (const auto &c : generated_data_class_set) {
-    if (std::find_if(ground_truth_class_set.begin(),
-                     ground_truth_class_set.end(),
-                     [c](const std::set<virtual_address_t> &constructors) {
-                       for (virtual_address_t va : constructors) {
-                         if (c.count(va)) {
-                           return true;
-                         }
-                       }
-                       return false;
-                     }) != ground_truth_class_set.end()) {
-      true_positives++;
+  std::set<MethodSet> gt_classes_referenced;
+
+  for (const auto &cls : generated_data_excluding_empty_cls) {
+    for (const auto &gt_cls : ground_truth_excluding_empty_cls) {
+      std::vector<MethodInfo> intersected_method_set;
+
+      std::set_intersection(cls.begin(),
+                            cls.end(),
+                            gt_cls.begin(),
+                            gt_cls.end(),
+                            std::back_inserter(intersected_method_set));
+
+      if (!intersected_method_set.empty() &&
+          gt_classes_referenced.find(gt_cls) == gt_classes_referenced.end()) {
+        gt_classes_referenced.insert(gt_cls);
+
+        true_positives++;
+        break;
+      }
     }
   }
 
-  int32_t false_negatives = ground_truth_class_set.size() - true_positives;
-  int32_t false_positives = generated_data_class_set.size() - true_positives;
+  int32_t false_negatives =
+      FalseNegatives(ground_truth_excluding_empty_cls, true_positives);
+  int32_t false_positives =
+      FalsePositives(generated_data_excluding_empty_cls, true_positives);
 
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
@@ -204,6 +240,7 @@ static std::pair<float, float> PrecisionAndRecallClasses(
 static std::pair<float, float> PrecisionAndRecallMethods(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
+  // Collect all methods in a single set (their address only)
   auto to_method_set = [](const std::vector<MethodSet> &in) {
     std::set<virtual_address_t> method_set;
     for (const auto &it : in) {
@@ -227,8 +264,10 @@ static std::pair<float, float> PrecisionAndRecallMethods(
     }
   }
 
-  int32_t false_negatives = ground_truth_methods.size() - true_positives;
-  int32_t false_positives = generated_data_methods.size() - true_positives;
+  int32_t false_negatives =
+      FalseNegatives(ground_truth_methods, true_positives);
+  int32_t false_positives =
+      FalsePositives(generated_data_methods, true_positives);
 
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
@@ -237,8 +276,9 @@ static std::pair<float, float> PrecisionAndRecallMethods(
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallSpecificType(
     const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data, const std::string &type) {
-  auto to_constructor_set = [type](const std::vector<MethodSet> &in) {
+    const std::vector<MethodSet> &generated_data,
+    const std::string_view &type) {
+  auto to_type_set = [type](const std::vector<MethodSet> &in) {
     std::set<MethodInfo> constructors;
     for (const auto &it : in) {
       for (const auto &method : it) {
@@ -250,10 +290,9 @@ static std::pair<float, float> PrecisionAndRecallSpecificType(
     return constructors;
   };
 
-  std::set<MethodInfo> ground_truth_constructors =
-      to_constructor_set(ground_truth);
+  std::set<MethodInfo> ground_truth_constructors = to_type_set(ground_truth);
   std::set<MethodInfo> generated_data_constructors =
-      to_constructor_set(generated_data);
+      to_type_set(generated_data);
 
   int32_t true_positives{};
 
@@ -263,8 +302,10 @@ static std::pair<float, float> PrecisionAndRecallSpecificType(
     }
   }
 
-  int32_t false_negatives = ground_truth_constructors.size() - true_positives;
-  int32_t false_positives = generated_data_constructors.size() - true_positives;
+  int32_t false_negatives =
+      FalseNegatives(ground_truth_constructors, true_positives);
+  int32_t false_positives =
+      FalsePositives(generated_data_constructors, true_positives);
 
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
@@ -274,14 +315,16 @@ static std::pair<float, float> PrecisionAndRecallSpecificType(
 static std::pair<float, float> PrecisionAndRecallConstructors(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
-  return PrecisionAndRecallSpecificType(ground_truth, generated_data, "ctor");
+  return PrecisionAndRecallSpecificType(
+      ground_truth, generated_data, kConstructorType);
 }
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallDestructors(
     const std::vector<MethodSet> &ground_truth,
     const std::vector<MethodSet> &generated_data) {
-  return PrecisionAndRecallSpecificType(ground_truth, generated_data, "dtor");
+  return PrecisionAndRecallSpecificType(
+      ground_truth, generated_data, kDestructorType);
 }
 
 // ============================================================================
@@ -313,6 +356,16 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
     // compute precision and recall against every ground truth method set
     std::set<PrecisionRecallF1> precision_recall_f1_scores;
 
+    // Insert 0 precision, recall, and F-score struct into
+    // precision_recall_f1_scores in case none of the ground truth sets don't
+    // have any methods shared with the generated class.
+    precision_recall_f1_scores.insert(PrecisionRecallF1{
+        .precision = 0,
+        .recall = 0,
+        .f1 = 0,
+        .ground_truth_class = nullptr,
+    });
+
     for (const auto &ground_truth_class : ground_truth) {
       int32_t true_positives{};
 
@@ -322,8 +375,14 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
         }
       }
 
-      int32_t false_positives = generated_class.size() - true_positives;
-      int32_t false_negatives = ground_truth_class.size() - true_positives;
+      // If no true positives, the precision and recall are 0 or undefined
+      if (true_positives == 0) {
+        continue;
+      }
+
+      int32_t false_negatives = FalseNegatives(generated_class, true_positives);
+      int32_t false_positives =
+          FalsePositives(ground_truth_class, true_positives);
 
       float precision = ComputePrecision(true_positives, false_positives);
       float recall = ComputeRecall(true_positives, false_negatives);
@@ -337,13 +396,28 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
       });
     }
 
-    const PrecisionRecallF1 &highest_f1 = *precision_recall_f1_scores.begin();
+    const auto &highest_f1_it = precision_recall_f1_scores.rbegin();
+    if (highest_f1_it != precision_recall_f1_scores.rend()) {
+      const PrecisionRecallF1 &highest_f1 = *highest_f1_it;
 
-    results.push_back(EvaluationResults{
-        .precision = highest_f1.precision,
-        .recall = highest_f1.recall,
-        .ground_truth_class_size = highest_f1.ground_truth_class->size(),
-    });
+      // If the ground truth class is undefined, the ground truth class size is
+      // 0. While this means this won't be taken into account in this metric,
+      // other metrics that measure overall class precision/recall are useful.
+      results.push_back(EvaluationResults{
+          .precision = highest_f1.precision,
+          .recall = highest_f1.recall,
+          .ground_truth_class_size =
+              highest_f1.ground_truth_class == nullptr
+                  ? 0
+                  : highest_f1.ground_truth_class->size(),
+      });
+    } else {
+      results.push_back(EvaluationResults{
+          .precision = 0,
+          .recall = 0,
+          .ground_truth_class_size = 0,
+      });
+    }
   }
 
   // Consume results

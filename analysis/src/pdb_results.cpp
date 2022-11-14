@@ -150,6 +150,8 @@ boost::json::value PdbResults::ToJson() const {
       class_info["methods"] = methods;
 
       size = fl_it->second.method_index_list.size();
+    } else {
+      class_info["methods"] = boost::json::object();
     }
 
     class_info["name"] = it.second.class_name;
