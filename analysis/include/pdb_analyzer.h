@@ -6,6 +6,7 @@
 #include <ostream>
 #include <string>
 #include <vector>
+#include <set>
 
 using type_id_t = uint32_t;
 using virtual_address_t = uint64_t;
@@ -15,6 +16,7 @@ struct ClassInfo {
   std::string class_name;
   virtual_address_t virtual_address{};
   type_id_t field_list{};
+  std::set<type_id_t> parent_classes{};
 
   friend std::ostream &operator<<(std::ostream &os, const ClassInfo &ci) {
     os << "{'" << ci.mangled_class_name << "' class name: " << ci.class_name
@@ -96,8 +98,10 @@ class PdbAnalyzer {
   static constexpr std::string_view kPublicsSection{"*** PUBLICS"};
   static constexpr std::string_view kSymbolsSection{"*** SYMBOLS"};
   static constexpr std::string_view kClassId{"LF_CLASS"};
+  static constexpr std::string_view kStructureId{"LF_STRUCTURE"};
   static constexpr std::string_view kGlobals{"*** GLOBALS"};
   static constexpr std::string_view kFieldListId{"LF_FIELDLIST"};
+  static constexpr std::string_view kBaseClassId{" LF_BCLASS"};
 
   static constexpr std::string_view kModuleSection{"** Module: "};
 
@@ -113,6 +117,7 @@ class PdbAnalyzer {
   static constexpr std::string_view kFieldIndexId{"index = "};
   static constexpr std::string_view kNameId{"name = "};
   static constexpr std::string_view kUniqueName{"unique name = "};
+  static constexpr std::string_view kTypeId{"type = "};
 
   static constexpr std::string_view kBlank{""};
 
@@ -131,6 +136,9 @@ class PdbAnalyzer {
 
   /// @brief Identify all publics in the pdb file
   void FindSymbols(std::fstream &fstream);
+
+  /// @brief Identify all inheritance relationships in the pdb file. Must be called after FindTypes.
+  void FindInheritanceRelationships(std::fstream &fstream);
 
   static void SeekToSectionHeader(std::fstream &fstream,
                                   const std::string_view &header);
@@ -180,6 +188,10 @@ class PdbAnalyzer {
 
   std::shared_ptr<std::map<type_id_t, ClassInfo>> ci_;
   std::shared_ptr<std::map<std::string, MethodList>> ml_;
+
+  std::map<type_id_t, type_id_t> fieldlist_to_class_id_map_;
+  std::map<type_id_t, std::string> forward_ref_type_to_unique_name_;
+  std::map<std::string, type_id_t> unique_name_to_type_id_;
 
   std::map<int, HeaderData> h_data_;
 

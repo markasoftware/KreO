@@ -24,7 +24,8 @@ class PdbResults {
 
   friend std::ostream &operator<<(std::ostream &os, const PdbResults &results);
 
-  void RemoveAllBut(const std::set<std::string> &classes);
+  void RemoveAllBut(
+      const std::map<std::string, std::set<std::string>> &child_to_parent_map);
 
   boost::json::value ToJson() const;
 

@@ -17,6 +17,8 @@ void PdbAnalyzer::AnalyzePdbDump(const std::string &fname) {
   fstream.seekg(std::fstream::beg);
   FindTypes(fstream);
   fstream.seekg(std::fstream::beg);
+  FindInheritanceRelationships(fstream);
+  fstream.seekg(std::fstream::beg);
   FindSectionHeaders(fstream);
   fstream.seekg(std::fstream::beg);
   FindSymbols(fstream);
@@ -49,7 +51,13 @@ void PdbAnalyzer::FindTypes(std::fstream &fstream) {
 
       MustGetLine(fstream, line, "failed to get second class line");
       if (Contains(line, kForwardRef)) {
-        // Forward refs are ignored
+        MustGetLine(fstream, line, "failed to get third class line");
+        MustGetLine(fstream, line, "failed to get fourth class line");
+        std::string unique_name;
+        GetStrValueAfterString(line, kUniqueName, unique_name);
+        // trim to remove trailing ,
+        forward_ref_type_to_unique_name_[type_index] =
+            unique_name.substr(0, unique_name.size() - 1);
         continue;
       }
 
@@ -72,6 +80,76 @@ void PdbAnalyzer::FindTypes(std::fstream &fstream) {
 
       // Insert class info to class info map
       ci_->insert(std::pair(type_index, ci));
+
+      unique_name_to_type_id_[ci.mangled_class_name] = type_index;
+      fieldlist_to_class_id_map_[ci.field_list] = type_index;
+    } else if (line == kBlank) {
+      break;
+    }
+  }
+}
+
+// ============================================================================
+void PdbAnalyzer::FindInheritanceRelationships(std::fstream &fstream) {
+  // Move stream to start of types (past file header)
+  SeekToSectionHeader(fstream, kTypesSection);
+
+  std::string line;
+
+  // Seek past blank line between types section header and first type
+  MustGetLine(
+      fstream,
+      line,
+      "failed to seek past blank line between types header and first type");
+
+  // Call IterateToNewType to iterate to the next type and std::getline to get
+  // the first line in the type
+  while (IterateToNewType(fstream, line) && std::getline(fstream, line)) {
+    // associate any LF_BCLASS elements with the class they belong to
+    // so we need to know which class the field list is associated with, which
+    // we found during FindTypes
+    if (Contains(line, kFieldListId)) {
+      // Extract method type index
+      type_id_t field_list_index{};
+      GetHexValueAfterString(line, kBlank, field_list_index);
+
+      if (!fieldlist_to_class_id_map_.count(field_list_index)) {
+        continue;
+      }
+
+      // Note: entries in the list actual contain type id of the forward
+      // reference of the parent class
+      std::vector<type_id_t> parent_forward_ref_types_;
+
+      // Extract list contents
+      while (true) {
+        MustGetLine(fstream, line, "failed to get line from field list");
+
+        if (Contains(line, kBaseClassId)) {
+          type_id_t parent_type_id{};
+          GetHexValueAfterString(line, kTypeId, parent_type_id);
+          parent_forward_ref_types_.push_back(parent_type_id);
+        } else if (line == kBlank) {
+          break;
+        }
+      }
+
+      if (parent_forward_ref_types_.size() > 0) {
+        for (auto it : parent_forward_ref_types_) {
+          type_id_t class_type_id =
+              fieldlist_to_class_id_map_[field_list_index];
+
+          if (!ci_->count(class_type_id)) {
+            throw std::runtime_error("couldn't find class entry for type ID " +
+                                     std::to_string(class_type_id));
+          }
+
+          (*ci_)[class_type_id]
+              .parent_classes.insert(
+                  unique_name_to_type_id_
+                      [forward_ref_type_to_unique_name_[it]]);
+        }
+      }
     } else if (line == kBlank) {
       break;
     }

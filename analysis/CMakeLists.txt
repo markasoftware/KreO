@@ -15,8 +15,7 @@ add_executable(evaluation src/evaluation.cpp)
 
 target_sources(analyze_pdb_dump PRIVATE
     src/pdb_analyzer.cpp
-    src/pdb_results.cpp
-    src/ctags_reader.cpp)
+    src/pdb_results.cpp)
 
 target_link_libraries(analyze_pdb_dump ${Boost_LIBRARIES})
 target_link_libraries(evaluation ${Boost_LIBRARIES})

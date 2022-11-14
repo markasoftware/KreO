@@ -3,6 +3,7 @@
         ".?AVXMLAttribute@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLAttribute",
             "type_id": "0x105e",
+            "members": {},
             "methods": {
                 "0x42a4d0": {
                     "demangled_name": "tinyxml2::XMLAttribute::BoolValue",
@@ -252,6 +253,18 @@
         ".?AVXMLUnknown@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLUnknown",
             "type_id": "0x1085",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::XMLNode",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVXMLNode@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x4182c0": {
                     "demangled_name": "tinyxml2::XMLUnknown::XMLUnknown",
@@ -333,6 +346,18 @@
         ".?AVXMLPrinter@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLPrinter",
             "type_id": "0x10dc",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::XMLVisitor",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVXMLVisitor@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x42a590": {
                     "demangled_name": "tinyxml2::XMLPrinter::CStr",
@@ -694,6 +719,18 @@
         ".?AVXMLComment@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLComment",
             "type_id": "0x10f1",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::XMLNode",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVXMLNode@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x417c30": {
                     "demangled_name": "tinyxml2::XMLComment::XMLComment",
@@ -775,6 +812,7 @@
         ".?AV?$DynArray@D$09@tinyxml2@@": {
             "demangled_name": "tinyxml2::DynArray<char,10>",
             "type_id": "0x1110",
+            "members": {},
             "methods": {
                 "0x42a0c0": {
                     "demangled_name": "tinyxml2::DynArray<char,10>::DynArray<char,10>",
@@ -832,6 +870,18 @@
         ".?AV?$MemPoolT@$0DI@@tinyxml2@@": {
             "demangled_name": "tinyxml2::MemPoolT<56>",
             "type_id": "0x112b",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::MemPool",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVMemPool@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x4177f0": {
                     "demangled_name": "tinyxml2::MemPoolT<56>::MemPoolT<56>",
@@ -921,6 +971,7 @@
         ".?AV?$DynArray@PAUBlock@?$MemPoolT@$0DM@@tinyxml2@@$09@tinyxml2@@": {
             "demangled_name": "tinyxml2::DynArray<tinyxml2::MemPoolT<60>::Bloc",
             "type_id": "0x1156",
+            "members": {},
             "methods": {
                 "0x417470": {
                     "demangled_name": "tinyxml2::DynArray<tinyxml2::MemPoolT<60>::Block",
@@ -978,6 +1029,7 @@
         ".?AVXMLConstHandle@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLConstHandle",
             "type_id": "0x1171",
+            "members": {},
             "methods": {
                 "0x42a200": {
                     "demangled_name": "tinyxml2::XMLConstHandle::XMLConstHandle",
@@ -1035,6 +1087,7 @@
         ".?AV?$DynArray@PAUBlock@?$MemPoolT@$0CI@@tinyxml2@@$09@tinyxml2@@": {
             "demangled_name": "tinyxml2::DynArray<tinyxml2::MemPoolT<40>::Bloc",
             "type_id": "0x1196",
+            "members": {},
             "methods": {
                 "0x4172f0": {
                     "demangled_name": "tinyxml2::DynArray<tinyxml2::MemPoolT<40>::Block",
@@ -1092,6 +1145,7 @@
         ".?AV?$DynArray@PAUBlock@?$MemPoolT@$0DE@@tinyxml2@@$09@tinyxml2@@": {
             "demangled_name": "tinyxml2::DynArray<tinyxml2::MemPoolT<52>::Bloc",
             "type_id": "0x11bb",
+            "members": {},
             "methods": {
                 "0x417370": {
                     "demangled_name": "tinyxml2::DynArray<tinyxml2::MemPoolT<52>::Block",
@@ -1149,6 +1203,7 @@
         ".?AV?$DynArray@PAUBlock@?$MemPoolT@$0DI@@tinyxml2@@$09@tinyxml2@@": {
             "demangled_name": "tinyxml2::DynArray<tinyxml2::MemPoolT<56>::Bloc",
             "type_id": "0x11de",
+            "members": {},
             "methods": {
                 "0x4173f0": {
                     "demangled_name": "tinyxml2::DynArray<tinyxml2::MemPoolT<56>::Block",
@@ -1206,6 +1261,7 @@
         ".?AV?$DynArray@D$0BE@@tinyxml2@@": {
             "demangled_name": "tinyxml2::DynArray<char,20>",
             "type_id": "0x11fa",
+            "members": {},
             "methods": {
                 "0x42afb0": {
                     "demangled_name": "tinyxml2::DynArray<char,20>::Mem",
@@ -1279,6 +1335,18 @@
         ".?AV?$MemPoolT@$0CI@@tinyxml2@@": {
             "demangled_name": "tinyxml2::MemPoolT<40>",
             "type_id": "0x1211",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::MemPool",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVMemPool@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x4175f0": {
                     "demangled_name": "tinyxml2::MemPoolT<40>::MemPoolT<40>",
@@ -1368,6 +1436,7 @@
         ".?AVMemPool@tinyxml2@@": {
             "demangled_name": "tinyxml2::MemPool",
             "type_id": "0x1229",
+            "members": {},
             "methods": {
                 "0x4176f0": {
                     "demangled_name": "tinyxml2::MemPoolT<52>::MemPoolT<52>",
@@ -1561,6 +1630,7 @@
         ".?AVXMLNode@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLNode",
             "type_id": "0x1264",
+            "members": {},
             "methods": {
                 "0x42abe0": {
                     "demangled_name": "tinyxml2::XMLNode::FirstChildElement",
@@ -1946,6 +2016,7 @@
         ".?AV?$DynArray@PBD$09@tinyxml2@@": {
             "demangled_name": "tinyxml2::DynArray<cha",
             "type_id": "0x1285",
+            "members": {},
             "methods": {
                 "0x417570": {
                     "demangled_name": "tinyxml2::DynArray<char",
@@ -1995,6 +2066,18 @@
         ".?AVXMLDeclaration@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLDeclaration",
             "type_id": "0x1298",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::XMLNode",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVXMLNode@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x417ca0": {
                     "demangled_name": "tinyxml2::XMLDeclaration::XMLDeclaration",
@@ -2076,6 +2159,18 @@
         ".?AVXMLText@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLText",
             "type_id": "0x12ad",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::XMLNode",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVXMLNode@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x418240": {
                     "demangled_name": "tinyxml2::XMLText::XMLText",
@@ -2173,6 +2268,18 @@
         ".?AV?$MemPoolT@$0DM@@tinyxml2@@": {
             "demangled_name": "tinyxml2::MemPoolT<60>",
             "type_id": "0x12c4",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::MemPool",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVMemPool@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "tinyxml2::MemPoolT<60>",
             "size": 0,
@@ -2181,6 +2288,18 @@
         ".?AV?$MemPoolT@$0DE@@tinyxml2@@": {
             "demangled_name": "tinyxml2::MemPoolT<52>",
             "type_id": "0x12e1",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::MemPool",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVMemPool@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "tinyxml2::MemPoolT<52>",
             "size": 0,
@@ -2189,6 +2308,18 @@
         ".?AVXMLElement@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLElement",
             "type_id": "0x1345",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::XMLNode",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVXMLNode@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x42b330": {
                     "demangled_name": "tinyxml2::XMLElement::QueryAttribute",
@@ -2830,6 +2961,7 @@
         ".?AVStrPair@tinyxml2@@": {
             "demangled_name": "tinyxml2::StrPair",
             "type_id": "0x1363",
+            "members": {},
             "methods": {
                 "0x417ac0": {
                     "demangled_name": "tinyxml2::StrPair::StrPair",
@@ -2943,6 +3075,7 @@
         ".?AV?$DynArray@PAVXMLNode@tinyxml2@@$09@tinyxml2@@": {
             "demangled_name": "tinyxml2::DynArray<tinyxml2::XMLNod",
             "type_id": "0x1384",
+            "members": {},
             "methods": {
                 "0x4174f0": {
                     "demangled_name": "tinyxml2::DynArray<tinyxml2::XMLNode",
@@ -3008,6 +3141,7 @@
         ".?AVXMLVisitor@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLVisitor",
             "type_id": "0x139d",
+            "members": {},
             "methods": {
                 "0x418330": {
                     "demangled_name": "tinyxml2::XMLVisitor::XMLVisitor",
@@ -3105,6 +3239,18 @@
         ".?AVXMLDocument@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLDocument",
             "type_id": "0x13d7",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "tinyxml2::XMLNode",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVXMLNode@tinyxml2@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x42a8a0": {
                     "demangled_name": "tinyxml2::XMLDocument::ErrorID",
@@ -3514,6 +3660,7 @@
         ".?AVDepthTracker@XMLDocument@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLDocument::DepthTracker",
             "type_id": "0x13de",
+            "members": {},
             "methods": {},
             "name": "tinyxml2::XMLDocument::DepthTracker",
             "size": 0,
@@ -3522,6 +3669,7 @@
         ".?AVXMLHandle@tinyxml2@@": {
             "demangled_name": "tinyxml2::XMLHandle",
             "type_id": "0x13f4",
+            "members": {},
             "methods": {
                 "0x42a2c0": {
                     "demangled_name": "tinyxml2::XMLHandle::XMLHandle",
@@ -3579,6 +3727,18 @@
         ".?AVbad_exception@std@@": {
             "demangled_name": "std::bad_exception",
             "type_id": "0x17a5",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::exception",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVexception@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "std::bad_exception",
             "size": 0,
@@ -3587,6 +3747,7 @@
         ".?AVexception_ptr@std@@": {
             "demangled_name": "std::exception_ptr",
             "type_id": "0x14a1",
+            "members": {},
             "methods": {},
             "name": "std::exception_ptr",
             "size": 0,
@@ -3595,6 +3756,7 @@
         ".?AVexception@std@@": {
             "demangled_name": "std::exception",
             "type_id": "0x17af",
+            "members": {},
             "methods": {
                 "0x43a650": {
                     "demangled_name": "std::exception::exception",
@@ -3644,6 +3806,18 @@
         ".?AVbad_alloc@std@@": {
             "demangled_name": "std::bad_alloc",
             "type_id": "0x17bb",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::exception",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVexception@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x43a560": {
                     "demangled_name": "std::bad_alloc::bad_alloc",
@@ -3693,6 +3867,18 @@
         ".?AVbad_array_new_length@std@@": {
             "demangled_name": "std::bad_array_new_length",
             "type_id": "0x17c6",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::bad_alloc",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVbad_alloc@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x43a5f0": {
                     "demangled_name": "std::bad_array_new_length::bad_array_new_length",
@@ -3734,6 +3920,7 @@
         ".?AVnested_exception@std@@": {
             "demangled_name": "std::nested_exception",
             "type_id": "0x14ef",
+            "members": {},
             "methods": {},
             "name": "std::nested_exception",
             "size": 0,
@@ -3742,6 +3929,18 @@
         "?AVbad_cast@std@@": {
             "demangled_name": "std::bad_cast",
             "type_id": "0x16b4",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::exception",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": "?AVexception@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "std::bad_cast",
             "size": 0,
@@ -3750,6 +3949,18 @@
         "?AV__non_rtti_object@std@@": {
             "demangled_name": "std::__non_rtti_object",
             "type_id": "0x16c9",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::bad_typeid",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": "?AVbad_typeid@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "std::__non_rtti_object",
             "size": 0,
@@ -3758,6 +3969,18 @@
         "?AVbad_exception@std@@": {
             "demangled_name": "std::bad_exception",
             "type_id": "0x16dc",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::exception",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": "?AVexception@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "std::bad_exception",
             "size": 0,
@@ -3766,6 +3989,7 @@
         "?AVexception@std@@": {
             "demangled_name": "std::exception",
             "type_id": "0x16ee",
+            "members": {},
             "methods": {
                 "0x43a650": {
                     "demangled_name": "std::exception::exception",
@@ -3815,6 +4039,18 @@
         "?AVbad_alloc@std@@": {
             "demangled_name": "std::bad_alloc",
             "type_id": "0x1702",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::exception",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": "?AVexception@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x43a560": {
                     "demangled_name": "std::bad_alloc::bad_alloc",
@@ -3864,6 +4100,18 @@
         "?AVbad_array_new_length@std@@": {
             "demangled_name": "std::bad_array_new_length",
             "type_id": "0x1715",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::bad_alloc",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": "?AVbad_alloc@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {
                 "0x43a5f0": {
                     "demangled_name": "std::bad_array_new_length::bad_array_new_length",
@@ -3905,6 +4153,18 @@
         "?AVbad_typeid@std@@": {
             "demangled_name": "std::bad_typeid",
             "type_id": "0x1729",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::exception",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": "?AVexception@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "std::bad_typeid",
             "size": 0,
@@ -3913,6 +4173,7 @@
         "?AVtype_info@@": {
             "demangled_name": "type_info",
             "type_id": "0x1741",
+            "members": {},
             "methods": {
                 "0x439340": {
                     "demangled_name": "type_info::~type_info",
@@ -3938,6 +4199,18 @@
         ".?AVbad_cast@std@@": {
             "demangled_name": "std::bad_cast",
             "type_id": "0x1785",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::exception",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVexception@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "std::bad_cast",
             "size": 0,
@@ -3946,6 +4219,18 @@
         ".?AV__non_rtti_object@std@@": {
             "demangled_name": "std::__non_rtti_object",
             "type_id": "0x179a",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::bad_typeid",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVbad_typeid@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "std::__non_rtti_object",
             "size": 0,
@@ -3954,6 +4239,18 @@
         ".?AVbad_typeid@std@@": {
             "demangled_name": "std::bad_typeid",
             "type_id": "0x17da",
+            "members": {
+                "0": {
+                    "base": false,
+                    "name": "std::exception",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 0,
+                    "struc": ".?AVexception@std@@",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
             "methods": {},
             "name": "std::bad_typeid",
             "size": 0,
@@ -3962,6 +4259,7 @@
         ".?AVtype_info@@": {
             "demangled_name": "type_info",
             "type_id": "0x17f9",
+            "members": {},
             "methods": {
                 "0x439340": {
                     "demangled_name": "type_info::~type_info",
@@ -3987,6 +4285,7 @@
         "?AVexception_ptr@std@@": {
             "demangled_name": "std::exception_ptr",
             "type_id": "0x1d08",
+            "members": {},
             "methods": {},
             "name": "std::exception_ptr",
             "size": 0,
@@ -3995,6 +4294,7 @@
         "?AVnested_exception@std@@": {
             "demangled_name": "std::nested_exception",
             "type_id": "0x1d19",
+            "members": {},
             "methods": {},
             "name": "std::nested_exception",
             "size": 0,
