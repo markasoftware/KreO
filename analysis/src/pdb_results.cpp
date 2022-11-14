@@ -96,6 +96,33 @@ void PdbResults::RemoveAllBut(const std::set<std::string> &classes) {
 }
 
 // ============================================================================
+void PdbResults::AddInheritanceRelationships(
+    const std::map<std::string, std::set<std::string>> &child_to_parent_map) {
+  auto find_parent_ci = [this](const std::string &name) {
+    for (const auto &ci : *ci_) {
+      if (ci.second.class_name == name) {
+        return ci.first;
+      }
+    }
+    throw std::runtime_error("could not find parent named " + name);
+  };
+
+  for (auto &ci : *ci_) {
+    if (child_to_parent_map.find(ci.second.class_name) !=
+        child_to_parent_map.end()) {
+      for (const std::string &str :
+           child_to_parent_map.find(ci.second.class_name)->second) {
+        ci.second.parent_classes.insert(find_parent_ci(str));
+      }
+    } else {
+      throw std::runtime_error(
+          "could not find class in child_to_parent_map named " +
+          ci.second.class_name);
+    }
+  }
+}
+
+// ============================================================================
 boost::json::value PdbResults::ToJson() const {
   boost::json::object obj;
 
