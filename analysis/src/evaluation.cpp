@@ -1,5 +1,6 @@
 #include <boost/json.hpp>
 #include <iostream>
+#include <map>
 #include <set>
 
 #include "json_loader.h"
@@ -28,15 +29,19 @@ struct MethodInfo {
 };
 
 // ============================================================================
-using MethodSet = std::set<MethodInfo>;
+struct ClassInfo {
+  std::string mangled_name;
+  std::vector<std::string> parent_mangled_names;
+  std::set<MethodInfo> method_set;
+};
 
 // ============================================================================
 /// @brief Converts json to vector of method sets whose set elements are method
 /// addresses that have been associated with some particular class.
-static std::vector<MethodSet> ToMethodSets(const boost::json::value &json);
+static std::vector<ClassInfo> ToClassInfo(const boost::json::value &json);
 
 // ============================================================================
-static std::vector<MethodSet> LoadAndConvertJson(const std::string &json_str);
+static std::vector<ClassInfo> LoadAndConvertJson(const std::string &json_str);
 
 // ============================================================================
 /// @brief Computes precision and recall on the generated methods. The ground
@@ -46,28 +51,38 @@ static std::vector<MethodSet> LoadAndConvertJson(const std::string &json_str);
 /// @return pair, first element precision second element recall. These elements
 /// are guaranteed to be between [0, 1].
 static std::pair<float, float> PrecisionAndRecallMethods(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated);
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated);
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallClasses(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data);
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data);
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallConstructors(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data);
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data);
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallDestructors(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data);
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data);
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallIndividualClasses(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data);
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data);
+
+// ============================================================================
+static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data);
+
+// ============================================================================
+static std::set<std::pair<const ClassInfo *, const ClassInfo *>>
+MatchGenToGtClasses(const std::vector<ClassInfo> &ground_truth,
+                    const std::vector<ClassInfo> &generated_data);
 
 // ============================================================================
 int main(int argc, char *argv[]) {
@@ -78,49 +93,53 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
 
-  auto gt_method_sets = LoadAndConvertJson(argv[1]);
-  auto gen_method_sets = LoadAndConvertJson(argv[2]);
+  auto gt_class_info_list = LoadAndConvertJson(argv[1]);
+  auto gen_class_info_list = LoadAndConvertJson(argv[2]);
 
   auto run_test =
       [=](const std::string &name,
-          std::function<std::pair<float, float>(const std::vector<MethodSet> &,
-                                                const std::vector<MethodSet> &)>
+          std::function<std::pair<float, float>(const std::vector<ClassInfo> &,
+                                                const std::vector<ClassInfo> &)>
               test) {
-        auto precision_recall = test(gt_method_sets, gen_method_sets);
+        auto precision_recall = test(gt_class_info_list, gen_class_info_list);
 
         std::cout << name << '\t' << precision_recall.first << "\t"
                   << precision_recall.second << std::endl;
       };
 
   std::cout << "evaluation criteria\tprecision\trecall" << std::endl;
-  run_test("methods", &PrecisionAndRecallMethods);
-  run_test("classes", &PrecisionAndRecallClasses);
-  run_test("constructors", &PrecisionAndRecallConstructors);
-  run_test("destructors", &PrecisionAndRecallDestructors);
-  run_test("individual_classes", &PrecisionAndRecallIndividualClasses);
+  run_test("methods", PrecisionAndRecallMethods);
+  run_test("classes", PrecisionAndRecallClasses);
+  run_test("constructors", PrecisionAndRecallConstructors);
+  run_test("destructors", PrecisionAndRecallDestructors);
+  run_test("individual_classes", PrecisionAndRecallIndividualClasses);
+  run_test("inheritance_relationships",
+           PrecisionAndRecallParentChildRelationships);
 }
 
 // ============================================================================
-static std::vector<MethodSet> LoadAndConvertJson(const std::string &json_str) {
+static std::vector<ClassInfo> LoadAndConvertJson(const std::string &json_str) {
   auto json = JsonLoader::LoadData(json_str);
 
   if (json == nullptr) {
     throw std::runtime_error("failed to parse json");
   }
 
-  return ToMethodSets(json);
+  return ToClassInfo(json);
 }
 
 // ============================================================================
-static std::vector<MethodSet> ToMethodSets(const boost::json::value &json) {
-  std::vector<MethodSet> method_sets;
+static std::vector<ClassInfo> ToClassInfo(const boost::json::value &json) {
+  std::vector<ClassInfo> class_info_list;
   for (const auto &class_it :
        json.as_object().find("structures")->value().as_object()) {
     try {
+      ClassInfo class_info;
+
+      // Search through class methods
       const auto &class_methods =
           class_it.value().as_object().find("methods")->value().as_object();
 
-      MethodSet method_set;
       for (const auto &method_it : class_methods) {
         const auto &method_obj = method_it.value().as_object();
         std::stringstream method_ea_ss;
@@ -129,9 +148,26 @@ static std::vector<MethodSet> ToMethodSets(const boost::json::value &json) {
                      << method_obj.find("ea")->value().as_string().c_str();
         virtual_address_t ea{};
         method_ea_ss >> ea;
-        method_set.insert(MethodInfo{.address = ea, .type = type});
+        class_info.method_set.insert(MethodInfo{.address = ea, .type = type});
       }
-      method_sets.push_back(method_set);
+
+      // Search through class members
+      const auto &class_members =
+          class_it.value().as_object().find("members")->value().as_object();
+
+      for (const auto &member_it : class_members) {
+        const auto &member_obj = member_it.value().as_object();
+        bool is_member_parent = member_obj.find("parent")->value().as_bool();
+
+        if (is_member_parent) {
+          class_info.parent_mangled_names.push_back(
+              member_obj.find("struc")->value().as_string().c_str());
+        }
+      }
+
+      class_info.mangled_name = class_it.key_c_str();
+
+      class_info_list.push_back(class_info);
     } catch (std::invalid_argument e) {
       std::stringstream ss;
       ss << "when trying to create method sets: " << e.what() << " for class "
@@ -139,7 +175,8 @@ static std::vector<MethodSet> ToMethodSets(const boost::json::value &json) {
       throw std::invalid_argument(ss.str());
     }
   }
-  return method_sets;
+
+  return class_info_list;
 }
 
 // ============================================================================
@@ -180,52 +217,34 @@ static int32_t FalsePositives(const T &gen_data, int32_t true_positives) {
   return gen_data.size() - true_positives;
 }
 
+/// @return The classes in the given data set that have a nonempty method set.
+static std::vector<const ClassInfo *> NonemptyClasses(
+    const std::vector<ClassInfo> &classes) {
+  std::vector<const ClassInfo *> nonempty_classes;
+  for (const auto &cls : classes) {
+    if (!cls.method_set.empty()) {
+      nonempty_classes.push_back(&cls);
+    }
+  }
+  return nonempty_classes;
+}
+
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallClasses(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data) {
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data) {
   // Two classes are equal if the intersection of their method sets is not
   // empty. Exclude classes without methods. Ground truth classes can't be
   // double counted as a match for multiple generated classes.
 
-  auto remove_empty_cls = [](const std::vector<MethodSet> &classes) {
-    std::vector<MethodSet> classesNonempty;
-    for (const auto &cls : classes) {
-      if (!cls.empty()) {
-        classesNonempty.push_back(cls);
-      }
-    }
-    return classesNonempty;
-  };
+  std::vector<const ClassInfo *> ground_truth_excluding_empty_cls =
+      NonemptyClasses(ground_truth);
+  std::vector<const ClassInfo *> generated_data_excluding_empty_cls =
+      NonemptyClasses(generated_data);
 
-  std::vector<MethodSet> ground_truth_excluding_empty_cls =
-      remove_empty_cls(ground_truth);
-  std::vector<MethodSet> generated_data_excluding_empty_cls =
-      remove_empty_cls(generated_data);
-
-  int32_t true_positives{};
-
-  std::set<MethodSet> gt_classes_referenced;
-
-  for (const auto &cls : generated_data_excluding_empty_cls) {
-    for (const auto &gt_cls : ground_truth_excluding_empty_cls) {
-      std::vector<MethodInfo> intersected_method_set;
-
-      std::set_intersection(cls.begin(),
-                            cls.end(),
-                            gt_cls.begin(),
-                            gt_cls.end(),
-                            std::back_inserter(intersected_method_set));
-
-      if (!intersected_method_set.empty() &&
-          gt_classes_referenced.find(gt_cls) == gt_classes_referenced.end()) {
-        gt_classes_referenced.insert(gt_cls);
-
-        true_positives++;
-        break;
-      }
-    }
-  }
+  std::set<std::pair<const ClassInfo *, const ClassInfo *>> matched_classes =
+      MatchGenToGtClasses(ground_truth, generated_data);
+  int32_t true_positives = matched_classes.size();
 
   int32_t false_negatives =
       FalseNegatives(ground_truth_excluding_empty_cls, true_positives);
@@ -238,13 +257,13 @@ static std::pair<float, float> PrecisionAndRecallClasses(
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallMethods(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data) {
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data) {
   // Collect all methods in a single set (their address only)
-  auto to_method_set = [](const std::vector<MethodSet> &in) {
+  auto to_method_set = [](const std::vector<ClassInfo> &in) {
     std::set<virtual_address_t> method_set;
     for (const auto &it : in) {
-      for (const auto &method : it) {
+      for (const auto &method : it.method_set) {
         method_set.insert(method.address);
       }
     }
@@ -275,13 +294,13 @@ static std::pair<float, float> PrecisionAndRecallMethods(
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallSpecificType(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data,
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data,
     const std::string_view &type) {
-  auto to_type_set = [type](const std::vector<MethodSet> &in) {
+  auto to_type_set = [type](const std::vector<ClassInfo> &in) {
     std::set<MethodInfo> constructors;
     for (const auto &it : in) {
-      for (const auto &method : it) {
+      for (const auto &method : it.method_set) {
         if (method.type == type) {
           constructors.insert(method);
         }
@@ -313,16 +332,16 @@ static std::pair<float, float> PrecisionAndRecallSpecificType(
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallConstructors(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data) {
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data) {
   return PrecisionAndRecallSpecificType(
       ground_truth, generated_data, kConstructorType);
 }
 
 // ============================================================================
 static std::pair<float, float> PrecisionAndRecallDestructors(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data) {
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data) {
   return PrecisionAndRecallSpecificType(
       ground_truth, generated_data, kDestructorType);
 }
@@ -332,7 +351,7 @@ struct PrecisionRecallF1 {
   float precision{};
   float recall{};
   float f1{};
-  const MethodSet *ground_truth_class;
+  const ClassInfo *ground_truth_class;
 
   friend bool operator<(const PrecisionRecallF1 &o1,
                         const PrecisionRecallF1 &o2) {
@@ -341,8 +360,8 @@ struct PrecisionRecallF1 {
 };
 
 static std::pair<float, float> PrecisionAndRecallIndividualClasses(
-    const std::vector<MethodSet> &ground_truth,
-    const std::vector<MethodSet> &generated_data) {
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data) {
   struct EvaluationResults {
     float precision;
     float recall;
@@ -369,8 +388,8 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
     for (const auto &ground_truth_class : ground_truth) {
       int32_t true_positives{};
 
-      for (const auto &method : generated_class) {
-        if (ground_truth_class.count(method)) {
+      for (const auto &method : generated_class.method_set) {
+        if (ground_truth_class.method_set.count(method)) {
           true_positives++;
         }
       }
@@ -380,9 +399,10 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
         continue;
       }
 
-      int32_t false_negatives = FalseNegatives(generated_class, true_positives);
+      int32_t false_negatives =
+          FalseNegatives(generated_class.method_set, true_positives);
       int32_t false_positives =
-          FalsePositives(ground_truth_class, true_positives);
+          FalsePositives(ground_truth_class.method_set, true_positives);
 
       float precision = ComputePrecision(true_positives, false_positives);
       float recall = ComputeRecall(true_positives, false_negatives);
@@ -409,7 +429,7 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
           .ground_truth_class_size =
               highest_f1.ground_truth_class == nullptr
                   ? 0
-                  : highest_f1.ground_truth_class->size(),
+                  : highest_f1.ground_truth_class->method_set.size(),
       });
     } else {
       results.push_back(EvaluationResults{
@@ -432,4 +452,110 @@ static std::pair<float, float> PrecisionAndRecallIndividualClasses(
 
   return std::pair(precision / static_cast<float>(total_methods),
                    recall / static_cast<float>(total_methods));
+}
+
+// ============================================================================
+static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data) {
+  std::set<std::pair<const ClassInfo *, const ClassInfo *>> matched_classes =
+      MatchGenToGtClasses(ground_truth, generated_data);
+
+  // TODO this is inefficient and can be sped up but for now we aren't worried
+  // about evaluation efficiency.
+  auto get_gen_class_by_name =
+      [matched_classes](const std::string &cls_mangled_name) {
+        using ClassPair = const std::pair<const ClassInfo *, const ClassInfo *>;
+        for (const auto &it : matched_classes) {
+          if (it.first->mangled_name == cls_mangled_name) {
+            return std::optional<ClassPair>{it};
+          }
+        }
+        return std::optional<ClassPair>{std::nullopt};
+      };
+
+  int32_t true_positives{0};
+  int32_t gt_size{0};
+  int32_t gen_size{0};
+
+  for (const auto &[gen_cls, gt_cls] : matched_classes) {
+    // std::cout << gen_cls->mangled_name << " : " << gt_cls->mangled_name
+    //           << std::endl;
+    // Count number of parents that the two classes share. The "ground truth"
+    // for this measure is the total number of inheritance relationships. A true
+    // positive would be when the generated and ground truth class share the
+    // same inheritance relationship
+
+    // Note: we don't expect parent names to be the same - instead we expect the
+    // paired classes to be the same.
+    for (const std::string &parent_name : gen_cls->parent_mangled_names) {
+      auto gt = get_gen_class_by_name(parent_name);
+      if (gt.has_value()) {
+        // std::cout << gt->second->mangled_name << std::endl;
+        if (std::find(gt_cls->parent_mangled_names.begin(),
+                      gt_cls->parent_mangled_names.end(),
+                      gt->second->mangled_name) !=
+            gt_cls->parent_mangled_names.end()) {
+          true_positives++;
+        }
+      } else {
+        std::cerr << "failed to find parent by the name of " << parent_name
+                  << " for child " << gen_cls->mangled_name << std::endl;
+      }
+    }
+
+    gen_size += gen_cls->parent_mangled_names.size();
+    gt_size += gt_cls->parent_mangled_names.size();
+  }
+
+  int32_t false_negatives = gt_size - true_positives;
+  int32_t false_positives = gen_size - true_positives;
+
+  return std::pair(ComputePrecision(true_positives, false_positives),
+                   ComputeRecall(true_positives, false_negatives));
+}
+
+// ============================================================================
+static std::set<std::pair<const ClassInfo *, const ClassInfo *>>
+MatchGenToGtClasses(const std::vector<ClassInfo> &ground_truth,
+                    const std::vector<ClassInfo> &generated_data) {
+  std::vector<const ClassInfo *> ground_truth_excluding_empty_cls =
+      NonemptyClasses(ground_truth);
+  std::vector<const ClassInfo *> generated_data_excluding_empty_cls =
+      NonemptyClasses(generated_data);
+
+  std::set<std::pair<const ClassInfo *, const ClassInfo *>> matched_classes;
+
+  std::set<const ClassInfo *> gt_classes_referenced;
+
+  for (const auto &cls : generated_data_excluding_empty_cls) {
+    std::multimap<size_t, const ClassInfo *> gen_gt_intersection_sizes;
+    for (const auto &gt_cls : ground_truth_excluding_empty_cls) {
+      std::vector<MethodInfo> intersected_method_set;
+
+      std::set_intersection(cls->method_set.begin(),
+                            cls->method_set.end(),
+                            gt_cls->method_set.begin(),
+                            gt_cls->method_set.end(),
+                            std::back_inserter(intersected_method_set));
+
+      if (!intersected_method_set.empty()) {
+        gen_gt_intersection_sizes.insert(
+            std::pair(intersected_method_set.size(), gt_cls));
+      }
+    }
+
+    // Get largest method set intersection
+    for (auto it = gen_gt_intersection_sizes.rbegin();
+         it != gen_gt_intersection_sizes.rend();
+         it++) {
+      if (!gt_classes_referenced.count(it->second)) {
+        gt_classes_referenced.insert(it->second);
+        matched_classes.insert(std::pair(cls, it->second));
+        break;
+      }
+    }
+  }
+
+  return matched_classes;
 }

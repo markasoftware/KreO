@@ -78,6 +78,12 @@ void PdbAnalyzer::FindTypes(std::fstream &fstream) {
       ci.mangled_class_name =
           ci.mangled_class_name.substr(0, ci.mangled_class_name.size() - 1);
 
+      // Mangled name must start with "." or else it is not a class and might be
+      // a weird thing where msvc duplicates the class but without the "."
+      if (ci.mangled_class_name[0] != '.') {
+        continue;
+      }
+
       // Insert class info to class info map
       ci_->insert(std::pair(type_index, ci));
 
@@ -144,10 +150,8 @@ void PdbAnalyzer::FindInheritanceRelationships(std::fstream &fstream) {
                                      std::to_string(class_type_id));
           }
 
-          (*ci_)[class_type_id]
-              .parent_classes.insert(
-                  unique_name_to_type_id_
-                      [forward_ref_type_to_unique_name_[it]]);
+          (*ci_)[class_type_id].parent_classes.insert(
+              unique_name_to_type_id_[forward_ref_type_to_unique_name_[it]]);
         }
       }
     } else if (line == kBlank) {
