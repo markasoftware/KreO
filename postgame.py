@@ -189,18 +189,17 @@ def removeDuplicateTraces():
     global traces
     tracesSet: Set[Trace] = set()
     for trace in traces:
+        if trace in tracesSet:
+            print(trace.traceEntries[0].method)
         tracesSet.add(trace)
     traces = list(tracesSet)
 
 runStep(removeDuplicateTraces, 'removing duplicates...', f'duplicates removed')
 print(f'now are {len(traces)} unique traces')
 
-with open ('object-traces-no-duplicates', 'w') as f:
+with open('out/object-traces-no-duplicates', 'w') as f:
     for trace in traces:
-        entrySet = set()
         for entry in trace.traceEntries:
-            entrySet.add(entry)
-        for entry in entrySet:
             f.write(str(entry) + '\n')
 
         f.write('\n')
@@ -282,7 +281,6 @@ class TrieNode:
         self.children.append(TrieNode(childValue, self))
         return self.children[-1]
 
-    # TODO this doesn't work
     def insertTraceIntoTrie(self, path: List[Method], key: Callable[[Any], Any]=identity, mkNew: Callable[[Method], Any]=None):
         '''
         Attempts to insert the given path into the TrieNode entry.
@@ -355,8 +353,7 @@ def constructTrie():
     for trace in traces:
         # insert class into the trie if necessary. A dummy first fingerprint element added
         # to the fingerprint for the root node
-        fingerprintWithDummy = [Method(0, 'Root')] + trace.fingerprint
-        trieNode = trieRootNode.insertTraceIntoTrie(fingerprintWithDummy, lambda cls: cls.destructor, KreoClass)
+        trieNode = trieRootNode.insertTraceIntoTrie(trace.fingerprint, lambda cls: cls.destructor, KreoClass)
 
         # set LCAs if necessary
         for method in trace.methods():
