@@ -85,9 +85,12 @@ std::ostream &operator<<(std::ostream &os, const PdbResults &results) {
 }
 
 // ============================================================================
-void PdbResults::RemoveAllBut(const std::set<std::string> &classes) {
+void PdbResults::RemoveAllBut(
+    const std::map<std::string, std::set<std::string>> &child_to_parent_map) {
   for (auto it = ci_->begin(); it != ci_->end();) {
-    if (!classes.count(it->second.class_name)) {
+    if (!child_to_parent_map.count(it->second.class_name)) {
+      std::cerr << "erasing " << it->second.class_name
+                << " because not found in doxygen output" << std::endl;
       it = ci_->erase(it);
     } else {
       it++;
@@ -101,24 +104,45 @@ boost::json::value PdbResults::ToJson() const {
 
   boost::json::object structures;
 
-  for (const auto &it : *ci_) {
+  for (const auto &cls : *ci_) {
     boost::json::object class_info;
 
-    class_info["demangled_name"] = it.second.class_name;
+    class_info["demangled_name"] = cls.second.class_name;
     std::stringstream type_id_ss;
-    type_id_ss << std::hex << it.first;
+    type_id_ss << std::hex << cls.first;
     class_info["type_id"] = "0x" + type_id_ss.str();
 
-    const auto &fl_it = ml_->find(it.second.class_name);
+    const auto &fl_it = ml_->find(cls.second.class_name);
     int size = 0;
-    std::string constructor_name = it.second.class_name;
+    std::string constructor_name = cls.second.class_name;
     size_t loc = 0;
     while ((loc = constructor_name.find("::")) != std::string::npos) {
       constructor_name = constructor_name.substr(loc + 2);
     }
 
+    boost::json::object members;
+    size_t ii = 0;
+    for (const auto &parent : cls.second.parent_classes) {
+      ClassInfo &ci = (*ci_)[parent];
+
+      boost::json::object member;
+      member["base"] = false;
+      member["name"] = ci.class_name;
+      member["offset"] = "0x0";  // Doesn't matter for our purposes
+      member["parent"] = true;
+      member["size"] = 0;  // doesn't matter for our purposes
+      member["struc"] = ci.mangled_class_name;
+      member["type"] = "struc";
+      member["usages"] = boost::json::array();  // doesn't matter
+
+      members[std::to_string(ii)] = member;
+      ii++;
+    }
+
+    class_info["members"] = members;
+
+    boost::json::object methods;
     if (fl_it != ml_->end()) {
-      boost::json::object methods;
       for (const auto &field_it : fl_it->second.method_index_list) {
         boost::json::object method;
 
@@ -131,10 +155,10 @@ boost::json::value PdbResults::ToJson() const {
         method["import"] = false;
         method["name"] = field_it.name;
 
-        if (field_it.name == it.second.class_name + "::" + constructor_name) {
+        if (field_it.name == cls.second.class_name + "::" + constructor_name) {
           method["type"] = "ctor";
         } else if (field_it.name ==
-                   it.second.class_name + "::~" + constructor_name) {
+                   cls.second.class_name + "::~" + constructor_name) {
           method["type"] = "dtor";
         } else {
           method["type"] = "meth";
@@ -147,16 +171,16 @@ boost::json::value PdbResults::ToJson() const {
         methods["0x" + va_ss.str()] = method;
       }
 
-      class_info["methods"] = methods;
-
       size = fl_it->second.method_index_list.size();
     }
 
-    class_info["name"] = it.second.class_name;
+    class_info["methods"] = methods;
+
+    class_info["name"] = cls.second.class_name;
     class_info["size"] = size;
     class_info["vftables"] = boost::json::object();
 
-    structures[it.second.mangled_class_name] = class_info;
+    structures[cls.second.mangled_class_name] = class_info;
   }
 
   obj["structures"] = structures;
