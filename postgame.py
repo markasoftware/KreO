@@ -7,6 +7,8 @@ import time
 from parseconfig import config
 from typing import List, Callable, Dict, Set, Any
 
+baseAddr = 0x400000
+
 class Method:
     def __init__(self, address: int, firstMethodInTrace: bool, name: str='unknown'):
         self.address = address
@@ -55,6 +57,9 @@ class TraceEntry:
 
     def __eq__(self, other) -> bool:
         return self.method is other.method and self.isCall == other.isCall
+
+    def __hash__(self):
+        return hash(self.__str__())
 
 class Trace:
     def __init__(self, traceEntries: List[TraceEntry]):
@@ -176,6 +181,16 @@ def removeDuplicateTraces():
 runStep(removeDuplicateTraces, 'removing duplicates...', f'duplicates removed')
 print(f'now are {len(traces)} unique traces')
 
+with open ('object-traces-no-duplicates', 'w') as f:
+    for trace in traces:
+        entrySet = set()
+        for entry in trace.traceEntries:
+            entrySet.add(entry)
+        for entry in entrySet:
+            f.write(str(entry) + '\n')
+
+        f.write('\n')
+
 # Step 2: Record how many times each method was seen in each part of the trace.
 
 def updateAllMethodStatistics():
@@ -225,7 +240,7 @@ class KreoClass:
         self.destructor = destructor
 
     def __str__(self) -> str:
-        return 'KreoClass-' + self.uuid[0:5] + '@' + str(self.destructor.address)
+        return 'KreoClass-' + self.uuid[0:5] + '@' + hex(self.destructor.address + baseAddr)
 
 class TrieNode:
     def __init__(self, value: Any=None, parent=None):
@@ -333,6 +348,19 @@ def constructTrie():
             method = entry.method
             existingTrieNodeForMethod = methodToTrieNodeMap.get(method, None)
             methodClassNodeLCA = trieNode if existingTrieNodeForMethod is None else trieNodesLCA(trieNode, existingTrieNodeForMethod)
+            if methodClassNodeLCA == trieRootNode:
+                # the classes are related but we did not discover a class to
+                # relate them, so create a new class and insert it in the trie
+                # below the root, then move the branches that contain the two
+                # nodes to be related to below the new trie node.
+
+                # This brings up a problem though - you might not be able to
+                # find a class if it has been moved. You could have another
+                # class that you insert that has the same fingerprint as one
+                # of the classes you moved, but you wouldn't be able to find
+                # it since it moved.
+                methodClassNodeLCA = trieNode
+
             methodToTrieNodeMap[method] = methodClassNodeLCA
 
 runStep(constructTrie, 'constructing trie...', 'trie constructed')
@@ -386,21 +414,21 @@ for trieNode in trieIter:
     if trieNode in trieNodeToMethodSetMap:
         for method in trieNodeToMethodSetMap[trieNode]:
             method.evaluateType()
-            methodAddrStr = '0x' + hex(method.address)
+            methodAddrStr = hex(method.address + baseAddr)
             methods[methodAddrStr] = {
                 'demangled_name': method.name,
                 'ea': methodAddrStr,
                 'import': False,
-                'name': method.type + methodAddrStr,
+                'name': method.type + "_" + methodAddrStr,
                 'type': method.type,
             }
 
     structures[str(cls)] = {
+        'demangled_name': '', # TODO: use RTTI to get this if possible?
         'name': name,
-        'demangled_name': 'unknown', # TODO: use RTTI to get this if possible?
-        'size': 4,
         'members': members,
         'methods': methods,
+        'size': 0, # TODO: this 
         'vftables': [],
     }
 
