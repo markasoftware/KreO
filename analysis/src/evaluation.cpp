@@ -70,7 +70,7 @@ static std::pair<float, float> PrecisionAndRecallDestructors(
     const std::vector<ClassInfo> &generated_data);
 
 // ============================================================================
-static std::pair<float, float> PrecisionAndRecallIndividualClasses(
+static std::pair<float, float> PrecisionAndRecallMethodsAssignedCorrectClass(
     const std::vector<ClassInfo> &ground_truth,
     const std::vector<ClassInfo> &generated_data);
 
@@ -83,6 +83,9 @@ static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
 static std::set<std::pair<const ClassInfo *, const ClassInfo *>>
 MatchGenToGtClasses(const std::vector<ClassInfo> &ground_truth,
                     const std::vector<ClassInfo> &generated_data);
+
+// ============================================================================
+static float ComputeF1(float precision, float recall);
 
 // ============================================================================
 int main(int argc, char *argv[]) {
@@ -103,16 +106,20 @@ int main(int argc, char *argv[]) {
               test) {
         auto precision_recall = test(gt_class_info_list, gen_class_info_list);
 
+        float f_score =
+            ComputeF1(precision_recall.first, precision_recall.second);
+
         std::cout << name << '\t' << precision_recall.first << "\t"
-                  << precision_recall.second << std::endl;
+                  << precision_recall.second << "\t" << f_score << std::endl;
       };
 
-  std::cout << "evaluation criteria\tprecision\trecall" << std::endl;
-  run_test("methods", PrecisionAndRecallMethods);
-  run_test("classes", PrecisionAndRecallClasses);
+  std::cout << "evaluation criteria\tprecision\trecall\tf-score" << std::endl;
+  run_test("methods_assigned_to_correct_class",
+           PrecisionAndRecallMethodsAssignedCorrectClass);
+  run_test("individual_classes", PrecisionAndRecallClasses);
   run_test("constructors", PrecisionAndRecallConstructors);
   run_test("destructors", PrecisionAndRecallDestructors);
-  run_test("individual_classes", PrecisionAndRecallIndividualClasses);
+  run_test("methods", PrecisionAndRecallMethods);
   run_test("inheritance_relationships",
            PrecisionAndRecallParentChildRelationships);
 }
@@ -251,6 +258,11 @@ static std::pair<float, float> PrecisionAndRecallClasses(
   int32_t false_positives =
       FalsePositives(generated_data_excluding_empty_cls, true_positives);
 
+  std::cout << "ground truth classes: "
+            << ground_truth_excluding_empty_cls.size() << std::endl;
+  std::cout << "generated classes: "
+            << generated_data_excluding_empty_cls.size() << std::endl;
+
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
 }
@@ -288,6 +300,11 @@ static std::pair<float, float> PrecisionAndRecallMethods(
   int32_t false_positives =
       FalsePositives(generated_data_methods, true_positives);
 
+  std::cout << "ground truth methods: " << ground_truth_methods.size()
+            << std::endl;
+  std::cout << "generated methods: " << generated_data_methods.size()
+            << std::endl;
+
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
 }
@@ -309,22 +326,24 @@ static std::pair<float, float> PrecisionAndRecallSpecificType(
     return constructors;
   };
 
-  std::set<MethodInfo> ground_truth_constructors = to_type_set(ground_truth);
-  std::set<MethodInfo> generated_data_constructors =
-      to_type_set(generated_data);
+  std::set<MethodInfo> ground_truth_type = to_type_set(ground_truth);
+  std::set<MethodInfo> generated_data_type = to_type_set(generated_data);
 
   int32_t true_positives{};
 
-  for (const auto &method : generated_data_constructors) {
-    if (ground_truth_constructors.count(method)) {
+  for (const auto &method : generated_data_type) {
+    if (ground_truth_type.count(method)) {
       true_positives++;
     }
   }
 
-  int32_t false_negatives =
-      FalseNegatives(ground_truth_constructors, true_positives);
-  int32_t false_positives =
-      FalsePositives(generated_data_constructors, true_positives);
+  int32_t false_negatives = FalseNegatives(ground_truth_type, true_positives);
+  int32_t false_positives = FalsePositives(generated_data_type, true_positives);
+
+  std::cout << "ground truth " << type << ": " << ground_truth_type.size()
+            << std::endl;
+  std::cout << "generated " << type << ": " << generated_data_type.size()
+            << std::endl;
 
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
@@ -359,7 +378,7 @@ struct PrecisionRecallF1 {
   }
 };
 
-static std::pair<float, float> PrecisionAndRecallIndividualClasses(
+static std::pair<float, float> PrecisionAndRecallMethodsAssignedCorrectClass(
     const std::vector<ClassInfo> &ground_truth,
     const std::vector<ClassInfo> &generated_data) {
   struct EvaluationResults {
@@ -545,17 +564,25 @@ MatchGenToGtClasses(const std::vector<ClassInfo> &ground_truth,
       }
     }
 
-    // Get largest method set intersection
+    // Get largest method set intersection that isn't already in the referenced
+    // class set
+    bool found = false;
     for (auto it = gen_gt_intersection_sizes.rbegin();
          it != gen_gt_intersection_sizes.rend();
          it++) {
       if (!gt_classes_referenced.count(it->second)) {
         gt_classes_referenced.insert(it->second);
         matched_classes.insert(std::pair(cls, it->second));
+        found = true;
         break;
       }
     }
+    if (!found) {
+      std::cerr << cls->mangled_name << std::endl;
+    }
   }
+
+  std::cerr << std::endl;
 
   return matched_classes;
 }

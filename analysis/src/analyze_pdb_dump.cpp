@@ -20,8 +20,8 @@ int main(int argv, char *argc[]) {
   PdbAnalyzer analyzer;
   analyzer.AnalyzePdbDump(pdb_file);
 
-  PdbResults results(analyzer.get_class_info(), analyzer.get_method_list());
-  // results.CombineClasses();
+  auto ci = analyzer.ConstructClassInfo();
+  PdbResults results(ci);
 
   std::cout << boost::json::serialize(results.ToJson()) << std::endl;
 

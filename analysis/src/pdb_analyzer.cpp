@@ -14,10 +14,19 @@ void PdbAnalyzer::AnalyzePdbDump(const std::string &fname) {
     throw std::runtime_error("failed to open file named " + fname);
   }
 
+  /*
+   * 1. Extract all classes and structs from the types section and place in a
+   * map mapping at minimum type id -> (field list type id, name). Also extract
+   * class forward references, mapping forward ref type id -> unique name. Also
+   * extract field list information. Map field list id -> list of class specific
+   * members.
+   * 2. Extract all field lists from types section and place in a map
+   */
+
   fstream.seekg(std::fstream::beg);
-  FindTypes(fstream);
-  fstream.seekg(std::fstream::beg);
-  FindInheritanceRelationships(fstream);
+  FindTypeInfo(fstream);
+  // fstream.seekg(std::fstream::beg);
+  // FindInheritanceRelationships(fstream);
   fstream.seekg(std::fstream::beg);
   FindSectionHeaders(fstream);
   fstream.seekg(std::fstream::beg);
@@ -25,11 +34,9 @@ void PdbAnalyzer::AnalyzePdbDump(const std::string &fname) {
 }
 
 // ============================================================================
-void PdbAnalyzer::FindTypes(std::fstream &fstream) {
+void PdbAnalyzer::FindTypeInfo(std::fstream &fstream) {
   // Move stream to start of types (past file header)
   SeekToSectionHeader(fstream, kTypesSection);
-
-  ci_ = std::make_shared<std::map<uint32_t, ClassInfo>>();
 
   std::string line;
 
@@ -42,7 +49,7 @@ void PdbAnalyzer::FindTypes(std::fstream &fstream) {
   // Call IterateToNewType to iterate to the next type and std::getline to get
   // the first line in the type
   while (IterateToNewType(fstream, line) && std::getline(fstream, line)) {
-    if (Contains(line, kClassId)) {
+    if (Contains(line, kClassId) || Contains(line, kStructureId)) {
       ClassInfo ci;
 
       // Extract class type index
@@ -50,110 +57,129 @@ void PdbAnalyzer::FindTypes(std::fstream &fstream) {
       GetHexValueAfterString(line, kBlank, type_index);
 
       MustGetLine(fstream, line, "failed to get second class line");
+
       if (Contains(line, kForwardRef)) {
+        // Class is a forward reference
         MustGetLine(fstream, line, "failed to get third class line");
         MustGetLine(fstream, line, "failed to get fourth class line");
         std::string unique_name;
-        GetStrValueAfterString(line, kUniqueName, unique_name);
-        // trim to remove trailing ,
-        forward_ref_type_to_unique_name_[type_index] =
-            unique_name.substr(0, unique_name.size() - 1);
-        continue;
+
+        GetStrValueBetweenStrs(line, kUniqueName, kUdt, unique_name);
+
+        forward_ref_type_to_unique_name_map_[type_index] = unique_name;
+      } else {
+        // Extract field list type
+        GetHexValueAfterString(line, kFieldListTypeId, ci.field_list_type_id);
+
+        MustGetLine(fstream, line, "failed to get third class line");
+        MustGetLine(fstream, line, "failed to get fourth class line");
+
+        // Extract class name
+        GetStrValueBetweenStrs(
+            line, kClassNameId, ", unique name", ci.class_name);
+
+        // Extract unique name
+        GetStrValueBetweenStrs(line, kUniqueName, kUdt, ci.mangled_class_name);
+
+        // Mangled name must start with "." or else it is not a class and might
+        // be a weird thing where msvc duplicates the class but without the "."
+        if (ci.mangled_class_name[0] == '.') {
+          class_type_id_to_class_info_map_[type_index] = ci;
+        }
       }
-
-      // Extract field list type
-      GetHexValueAfterString(line, kFieldListTypeId, ci.field_list);
-
-      MustGetLine(fstream, line, "failed to get third class line");
-      MustGetLine(fstream, line, "failed to get fourth class line");
-
-      // Extract class name
-      GetStrValueAfterString(line, kClassNameId, ci.class_name);
-      // trim name to remove trailing ,
-      ci.class_name = ci.class_name.substr(0, ci.class_name.size() - 1);
-
-      // Extract unique name
-      GetStrValueAfterString(line, kUniqueName, ci.mangled_class_name);
-      // trim mangled name to remove trailing ,
-      ci.mangled_class_name =
-          ci.mangled_class_name.substr(0, ci.mangled_class_name.size() - 1);
-
-      // Mangled name must start with "." or else it is not a class and might be
-      // a weird thing where msvc duplicates the class but without the "."
-      if (ci.mangled_class_name[0] != '.') {
-        continue;
-      }
-
-      // Insert class info to class info map
-      ci_->insert(std::pair(type_index, ci));
-
-      unique_name_to_type_id_[ci.mangled_class_name] = type_index;
-      fieldlist_to_class_id_map_[ci.field_list] = type_index;
-    } else if (line == kBlank) {
-      break;
-    }
-  }
-}
-
-// ============================================================================
-void PdbAnalyzer::FindInheritanceRelationships(std::fstream &fstream) {
-  // Move stream to start of types (past file header)
-  SeekToSectionHeader(fstream, kTypesSection);
-
-  std::string line;
-
-  // Seek past blank line between types section header and first type
-  MustGetLine(
-      fstream,
-      line,
-      "failed to seek past blank line between types header and first type");
-
-  // Call IterateToNewType to iterate to the next type and std::getline to get
-  // the first line in the type
-  while (IterateToNewType(fstream, line) && std::getline(fstream, line)) {
-    // associate any LF_BCLASS elements with the class they belong to
-    // so we need to know which class the field list is associated with, which
-    // we found during FindTypes
-    if (Contains(line, kFieldListId)) {
+    } else if (Contains(line, kFieldListId)) {
       // Extract method type index
       type_id_t field_list_index{};
       GetHexValueAfterString(line, kBlank, field_list_index);
 
-      if (!fieldlist_to_class_id_map_.count(field_list_index)) {
-        continue;
-      }
-
-      // Note: entries in the list actual contain type id of the forward
-      // reference of the parent class
-      std::vector<type_id_t> parent_forward_ref_types_;
+      std::vector<std::shared_ptr<FieldListMember>> field_list;
 
       // Extract list contents
       while (true) {
         MustGetLine(fstream, line, "failed to get line from field list");
 
-        if (Contains(line, kBaseClassId)) {
+        // Peek ahead until we reach a new list item
+        int len = fstream.tellg();
+        while (line != "") {
+          std::string lookahead;
+          MustGetLine(fstream, lookahead, "failed to get next line");
+          if (lookahead == "" || Contains(lookahead, "list[")) {
+            break;
+          }
+          line += " " + lookahead;
+        }
+        fstream.seekg(len, std::ios_base::beg);
+
+        if (Contains(line, "= LF_BCLASS, ")) {
           type_id_t parent_type_id{};
-          GetHexValueAfterString(line, kTypeId, parent_type_id);
-          parent_forward_ref_types_.push_back(parent_type_id);
+          GetHexValueAfterString(line, "type = ", parent_type_id);
+          field_list.push_back(
+              std::make_shared<ParentClassFieldList>(parent_type_id));
+        } else if (Contains(line, "= LF_ONEMETHOD, ")) {
+          if (!Contains(line, ", STATIC,") &&
+              !Contains(line, ", (compgenx),")) {
+            type_id_t method_type_id{};
+            GetHexValueAfterString(line, "index = ", method_type_id);
+            std::string name;
+            GetQuotedStrAfterString(line, "name = ", name);
+            field_list.push_back(
+                std::make_shared<OneMethodFieldList>(method_type_id, name));
+          }
+        } else if (Contains(line, "= LF_METHOD, ")) {
+          type_id_t list_type_id{};
+          GetHexValueAfterString(line, "list = ", list_type_id);
+          std::string name;
+          GetQuotedStrAfterString(line, "name = ", name);
+          // std::cout << "lf method " << name << ", " << list_type_id
+          //           << std::endl;
+          field_list.push_back(
+              std::make_shared<MethodFieldList>(list_type_id, name));
         } else if (line == kBlank) {
           break;
         }
       }
 
-      if (parent_forward_ref_types_.size() > 0) {
-        for (auto it : parent_forward_ref_types_) {
-          type_id_t class_type_id =
-              fieldlist_to_class_id_map_[field_list_index];
+      field_list_type_id_to_field_list_map_[field_list_index] = field_list;
+    } else if (Contains(line, "LF_METHODLIST")) {
+      // std::cout << line << std::endl;
+      type_id_t method_list_type_id{};
+      GetHexValueAfterString(line, kBlank, method_list_type_id);
 
-          if (!ci_->count(class_type_id)) {
-            throw std::runtime_error("couldn't find class entry for type ID " +
-                                     std::to_string(class_type_id));
-          }
+      std::vector<type_id_t> type_id_list;
 
-          (*ci_)[class_type_id].parent_classes.insert(
-              unique_name_to_type_id_[forward_ref_type_to_unique_name_[it]]);
+      while (true) {
+        MustGetLine(fstream, line, "failed to get line from method list");
+
+        if (line == kBlank) {
+          break;
+        } else if (!Contains(line, ", STATIC,") &&
+                   !Contains(line, ", (compgenx),")) {
+          std::stringstream ss(line);
+          std::string typeidstr;
+          getline(ss, typeidstr, ',');
+          getline(ss, typeidstr, ',');
+          getline(ss, typeidstr, ',');
+
+          type_id_t type_id;
+          GetHexValueAfterString(typeidstr, "", type_id);
+          type_id_list.push_back(type_id);
         }
       }
+
+      // std::cout << "adding type id list " << method_list_type_id << ", "
+      //           << type_id_list.size() << std::endl;
+
+      method_list_type_id_to_method_list_map_[method_list_type_id] =
+          type_id_list;
+    } else if (Contains(line, "LF_MFUNCTION")) {
+      type_id_t method_type_id{};
+      GetHexValueAfterString(line, kBlank, method_type_id);
+
+      MustGetLine(fstream, line, "failed to get second method line");
+      MustGetLine(fstream, line, "failed to get third method line");
+
+      std::string attr;
+      GetStrValueAfterString(line, "Func attr = ", attr);
     } else if (line == kBlank) {
       break;
     }
@@ -222,8 +248,6 @@ void PdbAnalyzer::FindSectionHeaders(std::fstream &fstream) {
 
 // ============================================================================
 void PdbAnalyzer::FindSymbols(std::fstream &fstream) {
-  ml_ = std::make_shared<std::map<std::string, MethodList>>();
-
   SeekToSectionHeader(fstream, kSymbolsSection);
 
   std::string line;
@@ -254,65 +278,53 @@ void PdbAnalyzer::FindSymbols(std::fstream &fstream) {
   SeekToNextSymbol();
 
   while (line != kGlobals) {
-    if (line.find(kGproc32) != std::string::npos) {
-      MethodInfo mi;
+    if (Contains(line, "S_GPROC32") || Contains(line, "S_LPROC32")) {
+      // Find type id
 
-      std::stringstream ss(
-          line.substr(line.find(kGproc32) + kGproc32.size() + 1));
+      auto pos = line.find("Type: ");
+      std::stringstream ss(line.substr(pos));
+      std::string type_id_str;
+      ss >> type_id_str;
+      ss >> type_id_str;
 
-      std::string address_info;
-      ss >> address_info;
+      if (type_id_str != "T_NOTYPE(0000),") {
+        type_id_t type_id;
+        GetHexValueAfterString(type_id_str, "", type_id);
 
-      int section_id{};
-      {
-        std::stringstream ss(address_info.substr(1, 4));
-        if (!(ss >> section_id)) {
-          throw std::runtime_error("failed to get section id");
-        }
-      }
+        std::string method_name;
+        getline(ss, method_name);
+        method_name = method_name.substr(1);
 
-      virtual_address_t local_address{};
-      {
-        std::stringstream ss;
-        ss << std::hex << address_info.substr(6, 8);
-        if (!(ss >> local_address)) {
-          throw std::runtime_error("failed to get local address");
-        }
-      }
+        std::string addr;
+        GetStrValueBetweenStrs(line, "[", "]", addr);
 
-      std::string type_str;
-      if (!(ss >> type_str) || !(ss >> type_str) || !(ss >> type_str) ||
-          !(ss >> type_str)) {
-        throw std::runtime_error("failed to get type");
-      }
-
-      if (type_str.find(kNoType) != std::string::npos) {
-        mi.type_id = 0;
-      } else {
-        std::stringstream ss;
-        ss << std::hex << type_str;
-        if (!(ss >> mi.type_id)) {
-          throw std::runtime_error("failed to get type as int");
-        }
-      }
-
-      ss >> mi.name;
-
-      virtual_address_t method_address = local_address +
-                                         h_data_[section_id].virtual_address +
-                                         kDefaultBaseAddress;
-
-      mi.virtual_address = method_address;
-
-      // Find class associated with method info.
-      for (const auto &it : *ci_) {
-        if (mi.name.find(it.second.class_name) == 0) {
-          if (ml_->find(it.second.class_name) == ml_->end()) {
-            ml_->insert(std::pair(it.second.class_name, MethodList()));
+        int section_id{};
+        {
+          std::stringstream ss(addr.substr(0, 4));
+          if (!(ss >> section_id)) {
+            throw std::runtime_error("failed to get section id");
           }
-          (*ml_)[it.second.class_name].method_index_list.push_back(mi);
-          break;
         }
+
+        virtual_address_t local_address{};
+        {
+          std::stringstream ss;
+          ss << std::hex << addr.substr(5, 8);
+          if (!(ss >> local_address)) {
+            throw std::runtime_error("failed to get local address");
+          }
+        }
+
+        virtual_address_t method_address = local_address +
+                                           h_data_[section_id].virtual_address +
+                                           kDefaultBaseAddress;
+
+        MethodInfo mi;
+        mi.virtual_address = method_address;
+        mi.name = method_name;
+        mi.type_id = type_id;
+        method_name_to_method_info_map_.insert(std::pair(method_name, mi));
+        type_id_to_method_info_map_.insert(std::pair(type_id, mi));
       }
     }
 
@@ -349,6 +361,17 @@ void PdbAnalyzer::GetHexValueAfterString(const std::string &line,
     throw std::runtime_error(std::string("failed to get value trailing ") +
                              str.data());
   }
+}
+
+// ============================================================================
+void PdbAnalyzer::GetStrValueBetweenStrs(const std::string &line,
+                                         const std::string_view &begin,
+                                         const std::string_view &end,
+                                         std::string &out_str) {
+  auto start = line.find(begin);
+  out_str = line.substr(start + begin.size());
+  auto stop = out_str.find(end);
+  out_str = out_str.substr(0, stop);
 }
 
 // ============================================================================
@@ -412,4 +435,132 @@ void PdbAnalyzer::MustGetLine(std::fstream &stream, std::string &out_str,
   if (!std::getline(stream, out_str)) {
     throw std::runtime_error("MustGetLine failed, " + error_str);
   }
+}
+
+// ============================================================================
+std::vector<ClassData> PdbAnalyzer::ConstructClassInfo() {
+  std::vector<ClassData> class_info_list;
+
+  for (const auto &class_it : class_type_id_to_class_info_map_) {
+    ClassData data;
+    data.class_name = class_it.second.class_name;
+    data.mangled_class_name = class_it.second.mangled_class_name;
+
+    if (field_list_type_id_to_field_list_map_.find(
+            class_it.second.field_list_type_id) ==
+        field_list_type_id_to_field_list_map_.end()) {
+      throw std::runtime_error("could not find field list for class " +
+                               class_it.second.class_name);
+    }
+
+    auto &field_list =
+        field_list_type_id_to_field_list_map_[class_it.second
+                                                  .field_list_type_id];
+
+    std::map<std::string, std::string> incorrect_to_correct_class_name;
+
+    size_t size = field_list.size();
+    for (int ii = 0; ii < size; ii++) {
+      const auto &field = field_list[ii];
+
+      if (dynamic_cast<const OneMethodFieldList *>(field.get()) != nullptr) {
+        const std::string &method_name =
+            dynamic_cast<const OneMethodFieldList *>(field.get())->name;
+
+        // std::cout << "handling " << method_name << std::endl;
+
+        std::string full_method_name;
+        if (incorrect_to_correct_class_name.count(class_it.second.class_name)) {
+          full_method_name =
+              incorrect_to_correct_class_name[class_it.second.class_name] +
+              "::" + method_name;
+        } else {
+          full_method_name = class_it.second.class_name + "::" + method_name;
+        }
+
+        // if (method_name_to_method_info_map_.find(full_method_name) ==
+        //     method_name_to_method_info_map_.end()) {
+        //   std::cout << std::string(
+        //                    "could not find method named " + full_method_name
+        //                    + " for class " + class_it.second.class_name + "
+        //                    type id " + std::to_string(class_it.first) + "
+        //                    field list id " +
+        //                    std::to_string(class_it.second.field_list_type_id)
+        //                    + " method type id " +
+        //                    std::to_string(field->type_id))
+        //             << std::endl;
+        // }
+
+        auto mi_it =
+            method_name_to_method_info_map_.equal_range(full_method_name);
+        if (mi_it.first != mi_it.second) {
+          // std::cout << std::hex << field->type_id << std::endl;
+          for (auto mi_it2 = mi_it.first; mi_it2 != mi_it.second; mi_it2++) {
+            if (field->type_id == mi_it2->second.type_id) {
+              MethodInfo mi;
+              mi.name = method_name;
+              mi.virtual_address = mi_it2->second.virtual_address;
+              data.methods.push_back(mi);
+              break;
+            }
+          }
+        } else if (type_id_to_method_info_map_.count(field->type_id)) {
+          // Finding by method name did not work...try to find by type id
+          auto it = type_id_to_method_info_map_.equal_range(field->type_id);
+          auto method_found_it = it.first;
+
+          auto suffix_matches = [&]() {
+            return method_found_it->second.name.substr(
+                       method_found_it->second.name.size() - method_name.size(),
+                       method_name.size()) == method_name;
+          };
+
+          for (; method_found_it != it.second && suffix_matches();
+               method_found_it++) {
+          }
+
+          if (suffix_matches()) {
+            // we found the method...extract prefix from first element
+            // (assume duplicate types indicates all methods from same
+            // class)
+            std::string correct_name = it.first->second.name;
+            correct_name = correct_name.substr(
+                0, correct_name.size() - method_name.size() - 2);
+            incorrect_to_correct_class_name[class_it.second.class_name] =
+                correct_name;
+
+            ii--;  // repeat last step and we will find the method now
+          }
+        }
+      } else if (dynamic_cast<const ParentClassFieldList *>(field.get()) !=
+                 nullptr) {
+        data.mangled_parent_names.push_back(
+            forward_ref_type_to_unique_name_map_[field->type_id]);
+      } else if (dynamic_cast<const MethodFieldList *>(field.get()) !=
+                 nullptr) {
+        const std::string &method_name =
+            dynamic_cast<const MethodFieldList *>(field.get())->name;
+        // std::cout << "** " << method_name << " " << field->type_id <<
+        // std::endl;
+
+        const auto &method_list =
+            method_list_type_id_to_method_list_map_[field->type_id];
+        // std::cout << method_list.size() << std::endl;
+        for (type_id_t method_type_id : method_list) {
+          field_list.push_back(std::make_shared<OneMethodFieldList>(
+              method_type_id, method_name));
+          size++;
+          // std::cout << "adding " << method_type_id << std::endl;
+        }
+      } else {
+        throw std::runtime_error("invalid field list type ");
+      }
+    }
+
+    if (data.methods.size() > 0) {
+      class_info_list.push_back(data);
+    }
+  }
+
+  return class_info_list;
 }

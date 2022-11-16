@@ -267,6 +267,9 @@ class TrieNode:
             retStr += str(child) + ', '
         return retStr.strip(' ,') + '}' 
 
+    def __hash__(self) -> int:
+        return hash(self.__str__())
+
     def size(self) -> int:
         if self.children == []:
             return int(1)
@@ -320,6 +323,15 @@ class TrieNode:
         for child in self.children:
             for item in child.preorderIter():
                 yield item
+
+    def prettyPrintTree(self, trieNodeToMethodSetMap, tab=''):
+        print(tab + str(self.value))
+        if self in trieNodeToMethodSetMap:
+            for method in trieNodeToMethodSetMap[self]:
+                print(tab + '  ' + str(method))
+        tab += '    '
+        for child in self.children:
+            child.prettyPrintTree(trieNodeToMethodSetMap, tab)
 
 # Lowest common ancestor of two nodes
 def trieNodesLCA(n1: TrieNode, n2: TrieNode) -> TrieNode:
