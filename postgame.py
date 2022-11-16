@@ -4,6 +4,7 @@ import uuid
 import hashlib
 import os
 import time
+import pygtrie
 from parseconfig import config
 from typing import List, Callable, Dict, Set, Any
 
@@ -49,7 +50,7 @@ class Method:
 
     def __str__(self) -> str:
         return ('' if self.name == 'unknown' else (self.name + ' ')) +\
-               (str(self.address)) +\
+               (hex(self.address + baseAddr)) +\
                ('' if self.type == '' else ' ' + self.type)
 
 class TraceEntry:
@@ -222,14 +223,15 @@ def findDestructors():
 runStep(findDestructors, 'finding destructors for each object trace...', 'destructors found for each boject trace')
 
 # Step 4: Split traces based on destructors
-splitTraces: List[Trace] = []
-def splitTracesFn():
-    global splitTraces
-    for trace in traces:
-        splitTraces += trace.split(destructors)
-runStep(splitTracesFn, 'splitting traces...', f'traces split')
-print(f'after splitting there are now {len(splitTraces)} traces')
-traces = splitTraces
+# TODO make this better
+# splitTraces: List[Trace] = []
+# def splitTracesFn():
+#     global splitTraces
+#     for trace in traces:
+#         splitTraces += trace.split(destructors)
+# runStep(splitTracesFn, 'splitting traces...', f'traces split')
+# print(f'after splitting there are now {len(splitTraces)} traces')
+# traces = splitTraces
 
 # TODO: Possible improvement: Perform the last steps iteratively. I.e., if splitting reveals a new destructor, then we may want to re-split. However, splitting seems like it shouldn't be happening too often, let alone re-splitting.
 
@@ -248,144 +250,91 @@ def findIf(target: Any, lst: List[Any], key: Callable[[Any], Any]=identity) -> A
     return None
 
 class KreoClass:
-    def __init__(self, destructor: Method):
+    def __init__(self, fingerprint: List[Method]):
         self.uuid = str(uuid.uuid4())
-        self.destructor = destructor
+        self.fingerprint = fingerprint
+        assert len(self.fingerprint) > 0
+
+    def fingerprintStr(fingerprint) -> str:
+        fingerprintstr = [str(f) for f in fingerprint]
+        return '/'.join(fingerprintstr)
 
     def __str__(self) -> str:
-        return 'KreoClass-' + self.uuid[0:5] + '@' + hex(self.destructor.address + baseAddr)
-
-class TrieNode:
-    def __init__(self, value: Any=None, parent=None):
-        self.value = value
-        self.parent = parent
-        self.children: List[TrieNode] = []
-
-    def __str__(self) -> str:
-        retStr: str = ('Root' if self.value is None else str(self.value)) + ': {'
-        for child in self.children:
-            retStr += str(child) + ', '
-        return retStr.strip(' ,') + '}' 
-
-    def __hash__(self) -> int:
-        return hash(self.__str__())
-
-    def size(self) -> int:
-        if self.children == []:
-            return int(1)
-
-        childSize = int(0)
-        for child in self.children:
-            childSize += child.size()
-        return childSize
-
-    def insert(self, childValue: Any) -> None:
-        # Unconditionally insert into children list.
-        self.children.append(TrieNode(childValue, self))
-        return self.children[-1]
-
-    def insertTraceIntoTrie(self, path: List[Method], key: Callable[[Any], Any]=identity, mkNew: Callable[[Method], Any]=None):
-        '''
-        Attempts to insert the given path into the TrieNode entry.
-        '''
-        if path == []:
-            return self
-
-        step = path[0]
-
-        # Attempt to find the class in the TrieNode's child.
-        matchingChild: TrieNode = findIf(step, self.children, lambda node: key(node.value))
-
-        if matchingChild == None:
-            # Class not in TrieNode's child, make a new child node and insert it (add it as a child)
-            if not mkNew:
-                raise Exception('Path not found and mkNew not provided')
-            newChildValue = mkNew(step)
-            matchingChild = self.insert(newChildValue)
-
-        return matchingChild.insertTraceIntoTrie(path[1:], key, mkNew)
-
-    def isRoot(self):
-        return self.parent == None
-
-    # Iterator of parent nodes up to and including this node, root node first.
-    def breadcrumbs(self):
-        reversedBcs = [self]
-        curNode = self
-        while curNode.parent:
-            curNode = curNode.parent
-            reversedBcs.append(curNode)
-        return reversed(reversedBcs)
-
-    # Generator gives trie starting from this node in preorder
-    def preorderIter(self):
-        yield self
-        for child in self.children:
-            for item in child.preorderIter():
-                yield item
-
-    def prettyPrintTree(self, trieNodeToMethodSetMap, tab=''):
-        print(tab + str(self.value))
-        if self in trieNodeToMethodSetMap:
-            for method in trieNodeToMethodSetMap[self]:
-                print(tab + '  ' + str(method))
-        tab += '    '
-        for child in self.children:
-            child.prettyPrintTree(trieNodeToMethodSetMap, tab)
-
-# Lowest common ancestor of two nodes
-def trieNodesLCA(n1: TrieNode, n2: TrieNode) -> TrieNode:
-    n1bcs = n1.breadcrumbs()
-    n2bcs = n2.breadcrumbs()
-    n1root = next(n1bcs)
-    n2root = next(n2bcs)
-    assert n1root is n2root, "Tried to find LCA of two nodes with different roots."
-    lastAncestor = n1root
-    while True:
-        try:
-            n1n = next(n1bcs)
-            n2n = next(n2bcs)
-        except StopIteration:
-            return lastAncestor
-
-        if n1n is n2n:
-            lastAncestor = n1n
-        else:
-            return lastAncestor
+        # the address associated with this class is the hex address of
+        # the last element in the fingerprint, representing the destructor
+        # associated with this class
+        return 'KreoClass-' + self.uuid[0:5] + '@' + (hex(self.fingerprint[-1].address + baseAddr) if len(self.fingerprint) > 0 else 'foobar')
 
 # Ideally, everything would form a nice trie. But what if it doesn't, eg in the case when we're just tracing weird sequence of functions that operate on an integer pointer? The simple algorithm of always inserting into the trie will never error out, but it will result in a trie where certain "destructors" are at the base of some tries and in the middle of others. So that's a rule we could use to exclude some of them: A class that appears in multiple different branches from the root should be removed
 # ^^^ But in fact, this happens automatically! Because the LCA will be the root, and we skip the root when we traverse over the tree to print final output!
 
-trieRootNode = TrieNode(None, None)
-methodToTrieNodeMap = dict()  # we need a way to know which trie nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the trie before processing.
+trie = pygtrie.StringTrie()
+methodToKreoClassMap = dict()  # we need a way to know which trie nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the trie before processing.
+
+kreoClassToMethodSetMap: Dict[KreoClass, Set[Method]] = dict()
+
 
 def constructTrie():
     global trieRootNode
-    global methodToTrieNodeMap
+    global methodToKreoClassMap
     for trace in traces:
-        # insert class into the trie if necessary. A dummy first fingerprint element added
-        # to the fingerprint for the root node
-        trieNode = trieRootNode.insertTraceIntoTrie(trace.fingerprint, lambda cls: cls.destructor, KreoClass)
 
-        # set LCAs if necessary
+        # print(trace.fingerprint)
+
+        # Insert class and any parents into the trie
+        for i in range(len(trace.fingerprint)):
+            partialFingerprint = trace.fingerprint[0:i + 1]
+            if KreoClass.fingerprintStr(partialFingerprint) not in trie.keys():
+                trie[KreoClass.fingerprintStr(partialFingerprint)] = KreoClass(partialFingerprint)
+
+
+        cls = trie[KreoClass.fingerprintStr(trace.fingerprint)]
+
         for method in trace.methods():
-            existingTrieNodeForMethod = methodToTrieNodeMap.get(method, None)
-            methodClassNodeLCA = trieNode if existingTrieNodeForMethod is None else trieNodesLCA(trieNode, existingTrieNodeForMethod)
-            if methodClassNodeLCA == trieRootNode:
-                # the classes are related but we did not discover a class to
-                # relate them, so create a new class and insert it in the trie
-                # below the root, then move the branches that contain the two
-                # nodes to be related to below the new trie node.
+            if method not in methodToKreoClassMap:
+                methodToKreoClassMap[method] = cls
+            else:
+                clsInMethodMap: KreoClass = methodToKreoClassMap[method]
 
-                # This brings up a problem though - you might not be able to
-                # find a class if it has been moved. You could have another
-                # class that you insert that has the same fingerprint as one
-                # of the classes you moved, but you wouldn't be able to find
-                # it since it moved.
-                methodClassNodeLCA = trieNode
+                if KreoClass.fingerprintStr(cls.fingerprint) == KreoClass.fingerprintStr(clsInMethodMap.fingerprint):
+                    # We inserted the object-trace into the same location as a preexisting
+                    # object-trace, so simply add the method to the map.
+                    methodToKreoClassMap[method] = cls
+                else:
+                    # find least common ancestor since entry in map is different than the
+                    # newly added trie class
 
-            methodToTrieNodeMap[method] = methodClassNodeLCA
+                    _, clsInMethodMapTrace = trie._get_node(KreoClass.fingerprintStr(clsInMethodMap.fingerprint))
+                    _, clsNodeTrace = trie._get_node(KreoClass.fingerprintStr(cls.fingerprint))
 
+                    def findLongestSharedTrace(t1, t2):
+                        for i in range(min(len(t1), len(t2))):
+                            t1Node = t1[i]
+                            t2Node = t2[i]
+                            if t1Node != t2Node:
+                                return t1[:i]
+                        if len(t1) > len(t2):
+                            return t2
+                        else:
+                            return t1
+
+                    sharedTrace = findLongestSharedTrace(clsInMethodMapTrace, clsNodeTrace)
+                    if sharedTrace == clsInMethodMapTrace:
+                        # Do nothing since the method's already in the parent class
+                        pass
+                    elif sharedTrace == clsNodeTrace:
+                        # Reinsert methods since new class is shared ancestor
+                        methodToKreoClassMap[method] = cls
+                    elif len(sharedTrace) > 1:
+                        # methodToKreoClassMap[method] = sharedTrace[-1].value # or something like this
+                        # TODO
+                        pass
+                    else:
+                        # print(f'classes {str(cls)} and {clsInMethodMap} are not common ancestors yet they share method {str(method)}')
+                        # TODO currently not worth creating another class because of how many false positive methods there are
+                        # that would cause the trie to do some weird stuff.
+                        pass
+        
 runStep(constructTrie, 'constructing trie...', 'trie constructed')
 
 # Step 6: Associate methods from torsos with classes
@@ -401,41 +350,69 @@ def md5File(fname):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
 
-# map trie nodes to methods now that method locations are fixed
-trieNodeToMethodSetMap: Dict[TrieNode, Set[Method]] = dict()
+# Move destructor functions into correct location in the trie. There is the
+# possibility that a parent object was never constructed but a child was. In
+# this case we know the destructor belongs to the parent but it currently
+# belongs to the child.
+for key in trie:
+    # Find fingerprint[-1] in methodToKreoClassMap and replace the reference
+    # with this class
+    node = trie[key]
+    if node.fingerprint[-1] in methodToKreoClassMap:
+        methodToKreoClassMap[node.fingerprint[-1]] = node
 
-for method, trieNode in methodToTrieNodeMap.items():
-    if trieNode not in trieNodeToMethodSetMap.keys():
-        trieNodeToMethodSetMap[trieNode] = set()
-    trieNodeToMethodSetMap[trieNode].add(method)
+# map trie nodes to methods now that method locations are fixed
+for method, trieNode in methodToKreoClassMap.items():
+    if trieNode not in kreoClassToMethodSetMap.keys():
+        kreoClassToMethodSetMap[trieNode] = set()
+    kreoClassToMethodSetMap[trieNode].add(method)
+
+def printTrie(t: pygtrie.StringTrie):
+    def printNode(node: pygtrie._Node, indent):
+        if isinstance(node.value, KreoClass):
+            print(indent + KreoClass.fingerprintStr(node.value.fingerprint))
+        else:
+            print(indent + 'n/a')
+        if node.value in kreoClassToMethodSetMap:
+            for method in kreoClassToMethodSetMap[node.value]:
+                print(indent + ' - ' + str(method))
+        indent += '    '
+        if node != pygtrie._EMPTY:
+            if isinstance(node.children, pygtrie._OneChild):
+                printNode(node.children.node, indent)
+            else:
+                for n in node.children:
+                    printNode(t._get_node(n)[0], indent)
+    printNode(t._root, '')
+
+printTrie(trie)
 
 structures: Dict[str, Dict[str, Any]] = dict()
-trieIter = trieRootNode.preorderIter()
-next(trieIter) # skip the root
-for trieNode in trieIter:
-    cls = trieNode.value
-    name = str(cls)
+for trieNode in trie:
+    node, parent = trie._get_node(trieNode)
+    cls: KreoClass = node.value
+    parentCls: KreoClass = node.value
 
-    # For now, while we only detect direct parent relationships, only add a member if we have a parent, and don't actually know anything about its size
-    # We are not detecting members so members should always be empty
-    members = dict()
-    if not trieNode.parent is trieRootNode:
-        parentClass = trieNode.parent.value
-        members['0x0'] = {
+    # For now, while we only detect direct parent relationships, only
+    # add a member if we have a parent, and don't actually know anything
+    # about its size
+    members = {
+        '0x0': {
             'base': False, # TODO: what does this one even mean?
-            'name': name + '_0x0',
+            'name': str(cls) + '_0x0',
             'offset': '0x0',
             'parent': True,
             'size': 4,
-            'struc': str(parentClass),
+            'struc': str(parentCls),
             'type': 'struc',
             'usages': [],
         }
+    }
 
     methods = dict()
     # If there are no methods associated with the trie node there might not be any methods in the set
-    if trieNode in trieNodeToMethodSetMap:
-        for method in trieNodeToMethodSetMap[trieNode]:
+    if cls in kreoClassToMethodSetMap:
+        for method in kreoClassToMethodSetMap[cls]:
             method.evaluateType()
             methodAddrStr = hex(method.address + baseAddr)
             methods[methodAddrStr] = {
@@ -448,7 +425,7 @@ for trieNode in trieIter:
 
     structures[str(cls)] = {
         'demangled_name': '', # TODO: use RTTI to get this if possible?
-        'name': name,
+        'name': str(cls),
         'members': members,
         'methods': methods,
         'size': 0, # TODO: this 

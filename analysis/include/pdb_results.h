@@ -10,10 +10,7 @@
 
 class PdbResults {
  public:
-  PdbResults(std::shared_ptr<std::map<uint32_t, ClassInfo>> ci,
-             std::shared_ptr<std::map<std::string, MethodList>> fl);
-
-  std::optional<uint32_t> FindClassIndex(const std::string &classname);
+  PdbResults(const std::vector<ClassData> &class_data);
 
   /// @brief Combines elements in the class info and field list maps that have
   /// the same class name (dbc file sometimes produces identical class
@@ -22,16 +19,10 @@ class PdbResults {
   /// type.
   void CombineClasses();
 
-  friend std::ostream &operator<<(std::ostream &os, const PdbResults &results);
-
-  void RemoveAllBut(
-      const std::map<std::string, std::set<std::string>> &child_to_parent_map);
-
   boost::json::value ToJson() const;
 
  private:
   static constexpr std::string_view kVersion{"1.0.0"};
 
-  std::shared_ptr<std::map<uint32_t, ClassInfo>> ci_;
-  std::shared_ptr<std::map<std::string, MethodList>> ml_;
+  std::vector<ClassData> class_data_;
 };
