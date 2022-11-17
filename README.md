@@ -1,4 +1,4 @@
-# (insert project name)
+# KreO
 
 This implements our hybrid dynamic-static technique to extract OO features from compiled C++
 binaries.
