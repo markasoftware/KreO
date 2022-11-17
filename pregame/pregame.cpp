@@ -1,8 +1,9 @@
+#include <rose.h>
+
 #include <Rose/BinaryAnalysis/Partitioner2/Engine.h>
 #include <Rose/BinaryAnalysis/Partitioner2/GraphViz.h>
 #include <Rose/Diagnostics.h>
 #include <Sawyer/CommandLine.h>
-#include <rose.h>
 
 using namespace Rose::BinaryAnalysis;
 using namespace Rose::Diagnostics;
