@@ -41,10 +41,10 @@ using namespace std::tr1;
 // ============================================================================
 /// @brief An entry in an object trace.
 class ObjectTraceEntry {
-public:
+ public:
   ObjectTraceEntry(ADDRINT procedure, bool isCall)
-    : procedure(procedure),
-    isCall(isCall) {}
+      : procedure(procedure),
+        isCall(isCall) {}
 
   // procedure's address
   ADDRINT procedure;
@@ -54,6 +54,11 @@ public:
 
   // set of directly called procedures TODO currently creating unordered_sets
   // for each ObjectTraceEntry causes the application to run out of memory
+
+  friend bool operator==(const ObjectTraceEntry& e1,
+                         const ObjectTraceEntry& e2) {
+    return e1.procedure == e2.procedure && e1.isCall == e2.isCall;
+  }
 };
 
 // ============================================================================
@@ -61,11 +66,11 @@ public:
 /// expected return address, calledProcedures set). calledProcedures initially
 /// empty.
 struct ShadowStackEntry {
-public:
+ public:
   ShadowStackEntry(ADDRINT objPtr, ADDRINT returnAddr, ADDRINT procedure)
-    : objPtr(objPtr),
-    returnAddr(returnAddr),
-    procedure(procedure) {}
+      : objPtr(objPtr),
+        returnAddr(returnAddr),
+        procedure(procedure) {}
 
   ADDRINT objPtr;
   ADDRINT returnAddr;
@@ -74,12 +79,21 @@ public:
 
 // ============================================================================
 KNOB<string> methodCandidatesPath(KNOB_MODE_WRITEONCE, "pintool",
-  "method-candidates", "out/method-candidates",
-  "Path to method candidates file.");
+                                  "method-candidates", "out/method-candidates",
+                                  "Path to method candidates file.");
+
+KNOB<string> gtMethodsPath(KNOB_MODE_WRITEONCE, "pintool", "gt-methods",
+                           "out/gt-methods",
+                           "Path to ground truth methods file.");
+
+KNOB<string> gtMethodsInstrumentedPath(
+    KNOB_MODE_WRITEONCE, "pintool", "gt-methods-instrumented",
+    "out/gt-methods-instrumented",
+    "Path to write list of instrumented ground truth methods");
 
 KNOB<string> objectTracesPath(KNOB_MODE_WRITEONCE, "pintool", "object-traces",
-  "out/object-traces",
-  "Path to object traces output file.");
+                              "out/object-traces",
+                              "Path to object traces output file.");
 
 // TODO: make these knobs:
 vector<ADDRINT> mallocProcedures;
@@ -88,6 +102,17 @@ vector<ADDRINT> freeProcedures;
 // Potential method candidates, populated from the method candidates found
 // during pregame
 unordered_set<ADDRINT> methodCandidateAddrs;
+unordered_set<ADDRINT> gtCalledMethods;
+void GtMethodCallback(ADDRINT methodAddr) {
+  assert(methodCandidateAddrs.count(methodAddr) == 1);
+  gtCalledMethods.insert(methodAddr);
+}
+
+// Ground truth method candidates, populated from ground truth method
+// candidates. Only used during evaluation and not used by KreO itself, just
+// used to measure method coverage.
+// TODO move method coverage to separate pintool independent of KreO.
+unordered_set<ADDRINT> gtMethodAddrs;
 
 // TODO: potential optimization: Don't store finishedObjectTraces separately
 // from activeObjectTraces; instead just have a single map<ADDRINT,
@@ -135,6 +160,13 @@ void ParsePregame() {
   while (methodCandidatesStream >> methodCandidate >> ws) {
     methodCandidateAddrs.insert(methodCandidate);
   }
+
+  ifstream gtMethodsStream(gtMethodsPath.Value());
+  ADDRINT gtMethod{};
+  while (gtMethodsStream >> gtMethod >> ws) {
+    gtMethodAddrs.insert(gtMethod);
+  }
+
   cout << "Populated method candidates" << endl;
 }
 
@@ -155,9 +187,20 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
       // Don't insert empty object trace
       delete it->second;
       it->second = nullptr;
-    }
-    else {
-      finishedObjectTraces.push_back(it->second);
+    } else {
+      const auto& finishedObjectTracesIt =
+          find_if(finishedObjectTraces.begin(),
+                  finishedObjectTraces.end(),
+                  [it](const vector<ObjectTraceEntry>* objectTrace) {
+                    return *objectTrace == *it->second;
+                  });
+      if (finishedObjectTracesIt == finishedObjectTraces.end()) {
+        finishedObjectTraces.push_back(it->second);
+      } else {
+        // Don't insert duplicate object trace
+        delete it->second;
+        it->second = nullptr;
+      }
     }
   }
   activeObjectTraces.erase(firstTrace, it);
@@ -179,28 +222,28 @@ void MallocBeforeCallback(ADDRINT size) { mallocSize = size; }
 void MallocAfterCallback(ADDRINT regionStart) {
 #ifndef SUPPRESS_MALLOC_ERRORS
   if (heapAllocations.find(regionStart) != heapAllocations.end()) {
-    LOG("PINTOOL WARNING: Malloc'ing a pointer that was already malloc'ed! "
-      "Maybe too many malloc procedures specified?\n");
+  //   LOG("PINTOOL WARNING: Malloc'ing a pointer that was already malloc'ed! "
+  //       "Maybe too many malloc procedures specified?\n");
     // TODO: could debug even further by searching for if the pointer lies
     // within an allocated region.
   }
 #endif
 
-  stringstream ss;
-  ss << "Malloc @ " << hex << regionStart << " (" << dec << mallocSize
-    << " bytes)" << endl;
-  LOG(ss.str());
+  // stringstream ss;
+  // ss << "Malloc @ " << hex << regionStart << " (" << dec << mallocSize
+  //    << " bytes)" << endl;
+  // LOG(ss.str());
   heapAllocations[regionStart] = regionStart + mallocSize;
 }
 
 void FreeCallback(ADDRINT freedRegionStart) {
-  stringstream ss;
-  ss << "Free @ " << hex << freedRegionStart << endl;
-  LOG(ss.str());
+  // stringstream ss;
+  // ss << "Free @ " << hex << freedRegionStart << endl;
+  // LOG(ss.str());
 
   if (freedRegionStart == 0) {
     // for whatever reason, real programs seem to be doing this??
-    LOG("WARNING: Freed nullptr?");
+    // LOG("WARNING: Freed nullptr?");
     return;
   }
 
@@ -208,7 +251,7 @@ void FreeCallback(ADDRINT freedRegionStart) {
 
   if (freedRegionIt == heapAllocations.end()) {
 #ifndef SUPPRESS_MALLOC_ERRORS
-    LOG("WARNING: Invalid pointer freed! Check the program-under-test.\n");
+    // LOG("WARNING: Invalid pointer freed! Check the program-under-test.\n");
     return;
 #endif
   }
@@ -248,23 +291,21 @@ void CallCallback(ADDRINT retAddr) { lastRetAddr = retAddr; }
 /// procedures are removed from it.
 void RemoveBlacklistedMethods() {
   for (auto traceIt = finishedObjectTraces.begin();
-    traceIt != finishedObjectTraces.end();) {
+       traceIt != finishedObjectTraces.end();) {
     vector<ObjectTraceEntry>* trace = *traceIt;
 
     for (auto entryIt = trace->begin(); entryIt != trace->end();) {
       if (blacklistedProcedures.count(entryIt->procedure)) {
         entryIt = trace->erase(entryIt);
-      }
-      else {
+      } else {
         entryIt++;
       }
     }
 
     if (trace->empty()) {
-      traceIt = finishedObjectTraces.erase(traceIt);
+      finishedObjectTraces.erase(traceIt++);
       delete trace;
-    }
-    else {
+    } else {
       traceIt++;
     }
   }
@@ -275,15 +316,15 @@ void RemoveBlacklistedMethods() {
 /// entire object trace if it contains a blacklisted method.
 void RemoveObjectTracesWithBlacklistedMethods() {
   for (auto traceIt = finishedObjectTraces.begin();
-    traceIt != finishedObjectTraces.end();) {
+       traceIt != finishedObjectTraces.end();) {
     vector<ObjectTraceEntry>* trace = *traceIt;
 
-    bool objectTraceRemoved{ false };
+    bool objectTraceRemoved{false};
 
     for (const ObjectTraceEntry& entry : *trace) {
       if (blacklistedProcedures.count(entry.procedure)) {
         objectTraceRemoved = true;
-        traceIt = finishedObjectTraces.erase(traceIt);
+        finishedObjectTraces.erase(traceIt);
         delete trace;
         break;
       }
@@ -303,57 +344,29 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
   // load, eg with brk syscall. here's a reasonable idea: Either in a mapped
   // memory region OR in an explicitly mallocated heap zone.
 
-  // No way the pointer can be larger than the stack base
-  if (ptr > stackBase) {
-    return false;
-  }
-
-  // If <= stack base and >= current stack, address valid.
-  if (ptr >= stackPtr) {
+  if (ptr >= stackPtr && ptr <= stackBase) {
+    // LOG("in stack\n");
     return true;
   }
 
   // If lies within heap allocated region, address valid.
-  auto it = heapAllocations.lower_bound(ptr);
-  if (it == heapAllocations.end()) {
-    return false;
-  }
-  else if (stackPtr <= it->second) {
-    return true;
+  auto it = heapAllocations.upper_bound(ptr);
+  if (it != heapAllocations.begin()) {
+    it--;
+    if (stackPtr < it->second) {
+      // LOG("in heap allocated region " + std::to_string(ptr) + ", " +
+      //     std::to_string(it->first) + ", " + std::to_string(it->second) + "\n");
+      return true;
+    }
   }
 
   return false;
-
-  // return true;
-  // return ptr >= lowAddr;
-
-  // currently, just check if it's in a mapped memory region. Theoretically, can
-  // be more precise by tracking, for example, if it's in a section that makes
-  // sense for objects to live in, and further by checking for example that if
-  // it's in the heap it's been allocated by malloc. But this stuff often is
-  // platform-specific and could break under obfuscation.
-
-  // TODO: check the time complexity of this! Based on different sources, it
-  // seems it could either be O(1), O(log n), or O(n)!
-
-  // auto it = mappedRegions.upper_bound(ptr);
-
-  // Previously && --it != mappedRegions.begin()  was also part of tihs
-  // conditional but I don't think tihs is right. Consider the region map {(0,
-  // 10), (20, 30)} with address 5. mappedRegions.upper_bound returns (20, 30),
-  // so you make sure this isn't begin() and then subtract from the it to ge (0,
-  // 10), then simply check the second element.
-  // return it != mappedRegions.begin() && ptr < --it->second;
-
-  // TODO: blacklisting: If a method is called once with an invalid object
-  // pointer, then it needs to be permanently blacklisted. I think the Lego
-  // paper describes this.
 }
 
 // ============================================================================
 /// @brief Inserts object trace entry into the active object traces
 static void InsertObjectTraceEntry(ADDRINT objPtr,
-  const ObjectTraceEntry& entry) {
+                                   const ObjectTraceEntry& entry) {
   auto objectTraceIt = activeObjectTraces.find(objPtr);
 
   if (objectTraceIt == activeObjectTraces.end()) {
@@ -415,8 +428,7 @@ static bool IgnoreReturn(ADDRINT actualRetAddr) {
     while (actualRetAddr != stackTop.returnAddr) {
       stackTop = ShadowStackRemoveAndReturnTop();
     }
-  }
-  else {
+  } else {
     return true;
   }
 }
@@ -428,30 +440,36 @@ static bool IgnoreReturn(ADDRINT actualRetAddr) {
 /// address, normalized by subtracting the base address.
 /// @param objPtr Address of object (this) pointer passed to the procedure. This
 /// pointer is not normalized.
-static void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr, ADDRINT objPtr) {
+static void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
+                                    ADDRINT objPtr) {
   if (stackBase == 0) {
     stackBase = stackPtr;
   }
 
-  stringstream ss;
-  ss << "Method called on possible objPtr: " << hex << objPtr
-    << " with procAddr " << procAddr << " and stack ptr " << stackPtr;
-  if (procedureSymbolNames.count(procAddr)) {
-    ss << " : " << procedureSymbolNames[procAddr];
+  // This is for debugging purposes, remove eventually
+  // if (gtMethodAddrs.count(procAddr) == 0) {
+  //   return;
+  // }
+
+  // stringstream ss;
+  // ss << "Method called on possible objPtr: " << hex << objPtr
+  //    << " with procAddr " << procAddr << " and stack ptr " << stackPtr;
+  // if (procedureSymbolNames.count(procAddr)) {
+  //   ss << " : " << procedureSymbolNames[procAddr];
+  // }
+  // ss << endl;
+  // LOG(ss.str());
+
+  // Method blacklisted, don't add to trace
+  if (blacklistedProcedures.find(procAddr) != blacklistedProcedures.end()) {
+    // LOG("blacklisted, not adding\n");
+    return;
   }
-  ss << endl;
-  LOG(ss.str());
 
   // Object pointer invalid, not possible method candidate
   if (!IsPossibleObjPtr(objPtr, stackPtr)) {
     blacklistedProcedures.insert(procAddr);
-    LOG("not a method\n");
-    return;
-  }
-
-  // Method blacklisted, don't add to trace
-  if (blacklistedProcedures.find(procAddr) != blacklistedProcedures.end()) {
-    LOG("blacklisted, not adding\n");
+    // LOG("not a method\n");
     return;
   }
 
@@ -467,12 +485,11 @@ static void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr, ADDRINT 
   // should always appear just after a `call` (or should it?)
   if (lastRetAddr == static_cast<ADDRINT>(-1)) {
     // return address invalid, don't add procedure to shadow stack
-    stringstream ss;
-    ss << "WARNING: Method executed without call! Likely not a method. At  0x "
-      << hex << procAddr << endl;
-    LOG(ss.str());
-  }
-  else {
+    // stringstream ss;
+    // ss << "WARNING: Method executed without call! Likely not a method. At  0x "
+    //    << hex << procAddr << endl;
+    // LOG(ss.str());
+  } else {
     shadowStack.push_back(ShadowStackEntry(objPtr, lastRetAddr, procAddr));
     stackEntryCount[lastRetAddr]++;
   }
@@ -503,14 +520,14 @@ static void RetCallback(ADDRINT returnAddr) {
     // is the case. Potentially do more in the future.
     auto objectTraceIt = activeObjectTraces.find(stackTop.objPtr);
     if (objectTraceIt == activeObjectTraces.end()) {
-      stringstream ss;
-      ss << "WARNING: Return being inserted into a brand new trace??? " << hex
-        << stackTop.objPtr << endl;
-      LOG(ss.str());
+      // stringstream ss;
+      // ss << "WARNING: Return being inserted into a brand new trace??? " << hex
+      //    << stackTop.objPtr << endl;
+      // LOG(ss.str());
     }
 
     InsertObjectTraceEntry(stackTop.objPtr,
-      ObjectTraceEntry(stackTop.procedure, false));
+                           ObjectTraceEntry(stackTop.procedure, false));
   }
 
   // if (stackEntryCount[returnAddr] != 0) {
@@ -554,7 +571,7 @@ static bool IsPossibleStackIncrease(INS ins) {
   UINT32 operandCount = INS_OperandCount(ins);
   for (UINT32 opIdx = 0; opIdx < operandCount; opIdx++) {
     if (INS_OperandWritten(ins, opIdx) &&
-      INS_OperandReg(ins, opIdx) == REG_STACK_PTR) {
+        INS_OperandReg(ins, opIdx) == REG_STACK_PTR) {
       return true;
     }
   }
@@ -591,15 +608,24 @@ void InstrumentInstruction(INS ins, void*) {
   ADDRINT insRelAddr = INS_Address(ins) - lowAddr;
   if (methodCandidateAddrs.count(insRelAddr) == 1) {
     INS_InsertCall(ins,
-      IPOINT_BEFORE,
-      reinterpret_cast<AFUNPTR>(MethodCandidateCallback),
-      IARG_ADDRINT,
-      insRelAddr,
-      IARG_REG_VALUE,
-      REG_STACK_PTR,
-      IARG_KREO_FIRST_ARG,
-      IARG_KREO_FIRST_ARG_VALUE,
-      IARG_END);
+                   IPOINT_BEFORE,
+                   reinterpret_cast<AFUNPTR>(MethodCandidateCallback),
+                   IARG_ADDRINT,
+                   insRelAddr,
+                   IARG_REG_VALUE,
+                   REG_STACK_PTR,
+                   IARG_KREO_FIRST_ARG,
+                   IARG_KREO_FIRST_ARG_VALUE,
+                   IARG_END);
+  }
+
+  if (gtMethodAddrs.count(insRelAddr) == 1) {
+    INS_InsertCall(ins,
+                   IPOINT_BEFORE,
+                   reinterpret_cast<AFUNPTR>(GtMethodCallback),
+                   IARG_ADDRINT,
+                   insRelAddr,
+                   IARG_END);
   }
 
   // The following types of instructions should be mutually exclusive.
@@ -609,23 +635,23 @@ void InstrumentInstruction(INS ins, void*) {
     alreadyInstrumented = true;
 
     INS_InsertCall(ins,
-      IPOINT_BEFORE,
-      reinterpret_cast<AFUNPTR>(StackIncreaseBeforeCallback),
-      IARG_REG_VALUE,
-      REG_STACK_PTR,
-      IARG_END);
+                   IPOINT_BEFORE,
+                   reinterpret_cast<AFUNPTR>(StackIncreaseBeforeCallback),
+                   IARG_REG_VALUE,
+                   REG_STACK_PTR,
+                   IARG_END);
     INS_InsertIfCall(ins,
-      IPOINT_AFTER,
-      reinterpret_cast<AFUNPTR>(StackIncreasePredicate),
-      IARG_REG_VALUE,
-      REG_STACK_PTR,
-      IARG_END);
+                     IPOINT_AFTER,
+                     reinterpret_cast<AFUNPTR>(StackIncreasePredicate),
+                     IARG_REG_VALUE,
+                     REG_STACK_PTR,
+                     IARG_END);
     INS_InsertThenCall(ins,
-      IPOINT_AFTER,
-      reinterpret_cast<AFUNPTR>(StackIncreaseCallback),
-      IARG_REG_VALUE,
-      REG_STACK_PTR,
-      IARG_END);
+                       IPOINT_AFTER,
+                       reinterpret_cast<AFUNPTR>(StackIncreaseCallback),
+                       IARG_REG_VALUE,
+                       REG_STACK_PTR,
+                       IARG_END);
   }
 
   if (INS_IsRet(ins)) {  // TODO: do we need to handle farret?
@@ -637,10 +663,10 @@ void InstrumentInstruction(INS ins, void*) {
     // internal assert.
     assert(INS_IsControlFlow(ins));
     INS_InsertCall(ins,
-      IPOINT_BEFORE,
-      reinterpret_cast<AFUNPTR>(RetCallback),
-      IARG_BRANCH_TARGET_ADDR,
-      IARG_END);
+                   IPOINT_BEFORE,
+                   reinterpret_cast<AFUNPTR>(RetCallback),
+                   IARG_BRANCH_TARGET_ADDR,
+                   IARG_END);
   }
 
   if (INS_IsCall(ins)) {
@@ -648,11 +674,11 @@ void InstrumentInstruction(INS ins, void*) {
     alreadyInstrumented = true;
 
     INS_InsertCall(ins,
-      IPOINT_BEFORE,
-      reinterpret_cast<AFUNPTR>(CallCallback),
-      IARG_ADDRINT,
-      INS_NextAddress(ins),
-      IARG_END);
+                   IPOINT_BEFORE,
+                   reinterpret_cast<AFUNPTR>(CallCallback),
+                   IARG_ADDRINT,
+                   INS_NextAddress(ins),
+                   IARG_END);
   }
 }
 
@@ -665,11 +691,11 @@ void InstrumentImage(IMG img, void*) {
   // track mapped memory regions
   for (UINT32 i = 0; i < IMG_NumRegions(img); i++) {
     mappedRegions[IMG_RegionLowAddress(img, i)] =
-      IMG_RegionHighAddress(img, i) + 1;
+        IMG_RegionHighAddress(img, i) + 1;
   }
 
   cout << hex << IMG_Name(img) << ", " << IMG_RegionLowAddress(img, 0) << ", "
-    << IMG_RegionHighAddress(img, 0) << endl;
+       << IMG_RegionHighAddress(img, 0) << endl;
 
   // TODO: what if the user specifies a routine that's already detected
   // automatically? Want to make sure we don't add it twice, but RTN isn't
@@ -718,48 +744,46 @@ void InstrumentImage(IMG img, void*) {
   // Insert malloc/free discovered by name into routine list
 
   if (RTN_Valid(discoveredMalloc)) {
-    LOG("Found malloc procedure by symbol in img " + IMG_Name(img) + "\n");
+    // LOG("Found malloc procedure by symbol in img " + IMG_Name(img) + "\n");
     mallocRtns.push_back(discoveredMalloc);
-  }
-  else {
-    LOG("Failed to find malloc procedure by symbol in img " + IMG_Name(img) +
-      "\n");
+  } else {
+    // LOG("Failed to find malloc procedure by symbol in img " + IMG_Name(img) +
+    //     "\n");
   }
 
   if (RTN_Valid(discoveredFree)) {
-    LOG("Found free procedure by symbol in img " + IMG_Name(img) + "\n");
+    // LOG("Found free procedure by symbol in img " + IMG_Name(img) + "\n");
     freeRtns.push_back(discoveredFree);
-  }
-  else {
-    LOG("Failed to find free procedure by symbol in img " + IMG_Name(img) +
-      "\n");
+  } else {
+    // LOG("Failed to find free procedure by symbol in img " + IMG_Name(img) +
+    //     "\n");
   }
 
   for (RTN mallocRtn : mallocRtns) {
     RTN_Open(mallocRtn);
     // save first argument
     RTN_InsertCall(mallocRtn,
-      IPOINT_BEFORE,
-      reinterpret_cast<AFUNPTR>(MallocBeforeCallback),
-      IARG_FUNCARG_ENTRYPOINT_VALUE,
-      0,
-      IARG_END);
+                   IPOINT_BEFORE,
+                   reinterpret_cast<AFUNPTR>(MallocBeforeCallback),
+                   IARG_FUNCARG_ENTRYPOINT_VALUE,
+                   0,
+                   IARG_END);
     RTN_InsertCall(mallocRtn,
-      IPOINT_AFTER,
-      reinterpret_cast<AFUNPTR>(MallocAfterCallback),
-      IARG_FUNCRET_EXITPOINT_VALUE,
-      IARG_END);
+                   IPOINT_AFTER,
+                   reinterpret_cast<AFUNPTR>(MallocAfterCallback),
+                   IARG_FUNCRET_EXITPOINT_VALUE,
+                   IARG_END);
     RTN_Close(mallocRtn);
   }
 
   for (RTN freeRtn : freeRtns) {
     RTN_Open(freeRtn);
     RTN_InsertCall(freeRtn,
-      IPOINT_BEFORE,
-      reinterpret_cast<AFUNPTR>(FreeCallback),
-      IARG_FUNCARG_ENTRYPOINT_VALUE,
-      0,
-      IARG_END);
+                   IPOINT_BEFORE,
+                   reinterpret_cast<AFUNPTR>(FreeCallback),
+                   IARG_FUNCARG_ENTRYPOINT_VALUE,
+                   0,
+                   IARG_END);
     RTN_Close(freeRtn);
   }
 }
@@ -776,7 +800,7 @@ void Fini(INT32 code, void*) {
   // Max number of entries per trace file generated to avoid generating trace
   // files that are ridiculously large. Object traces are not split between
   // files; however, so the exact number of entries in the trace may be larger.
-  const int kEntriesPerTraceFile{ 100'000 };
+  const int kEntriesPerTraceFile{100'000};
 
   cout << "Program run completed, writing object traces to disk..." << endl;
 
@@ -791,13 +815,14 @@ void Fini(INT32 code, void*) {
   RemoveBlacklistedMethods();
 
   cout << dec << "found " << finishedObjectTraces.size()
-    << " valid object traces" << endl;
+       << " valid unique object traces" << endl;
 
   string objectTracesPathStr = objectTracesPath.Value().c_str();
 
   int currEntry = 0;
   int currTrace = 0;
-  ofstream os(objectTracesPathStr.c_str());
+  ofstream os(
+      std::string(objectTracesPathStr.c_str() + std::string("_0")).c_str());
   // TODO: use a more structured trace format...currently all traces shoved into
   // files, which are broken up to avoid making files that are too large.
   for (const vector<ObjectTraceEntry>* trace : finishedObjectTraces) {
@@ -814,13 +839,23 @@ void Fini(INT32 code, void*) {
     if (currEntry >= kEntriesPerTraceFile) {
       os.close();
       std::string objTracePathEnumerated =
-        objectTracesPathStr + "_" + std::to_string(++currTrace);
+          objectTracesPathStr + "_" + std::to_string(++currTrace);
       os.open(objTracePathEnumerated.c_str());
 
       currEntry = 0;
     }
   }
 
+  string gtMethodsInstrumentedStr = gtMethodsInstrumentedPath.Value().c_str();
+  ofstream gtMethodCoverageStream(gtMethodsInstrumentedStr.c_str());
+  float coverage = static_cast<float>(gtCalledMethods.size()) /
+                   static_cast<float>(gtMethodAddrs.size());
+  gtMethodCoverageStream << gtMethodAddrs.size() << ", "
+                         << gtCalledMethods.size() << ", " << coverage << endl
+                         << "=====" << endl;
+  for (ADDRINT addr : gtCalledMethods) {
+    gtMethodCoverageStream << addr << endl;
+  }
   cout << "Done! Exiting normally." << endl;
 }
 

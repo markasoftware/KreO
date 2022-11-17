@@ -10,6 +10,8 @@ if not 'cfgMode' in config:
     config['cfgMode'] = 'fast'
 if not 'methodCandidatesPath' in config:
     config['methodCandidatesPath'] = 'out/method-candidates'
+if not 'gtMethodsPath' in config:
+    config['gtMethodsPath'] = 'out/gt-methods'
 if not 'objectTracesPath' in config:
     config['objectTracesPath'] = 'out/object-traces'
 if not 'resultsPath' in config:
