@@ -186,18 +186,19 @@ traces = []
 runStep(parseTraces, 'parsing traces...', f'traces parsed')
 print(f'found {len(traces)} traces')
 
-# Remove duplicate traces.
-def removeDuplicateTraces():
-    global traces
-    tracesSet: Set[Trace] = set()
-    for trace in traces:
-        if trace in tracesSet:
-            print(trace.traceEntries[0].method)
-        tracesSet.add(trace)
-    traces = list(tracesSet)
+# no longer necessary since done in game
+# # Remove duplicate traces.
+# def removeDuplicateTraces():
+#     global traces
+#     tracesSet: Set[Trace] = set()
+#     for trace in traces:
+#         if trace in tracesSet:
+#             print(trace.traceEntries[0].method)
+#         tracesSet.add(trace)
+#     traces = list(tracesSet)
 
-runStep(removeDuplicateTraces, 'removing duplicates...', f'duplicates removed')
-print(f'now are {len(traces)} unique traces')
+# runStep(removeDuplicateTraces, 'removing duplicates...', f'duplicates removed')
+# print(f'now are {len(traces)} unique traces')
 
 with open('out/object-traces-no-duplicates', 'w') as f:
     for trace in traces:
@@ -324,9 +325,7 @@ def constructTrie():
                         # Reinsert methods since new class is shared ancestor
                         methodToKreoClassMap[method] = cls
                     elif len(sharedTrace) > 1:
-                        # methodToKreoClassMap[method] = sharedTrace[-1].value # or something like this
-                        # TODO
-                        pass
+                        methodToKreoClassMap[method] = sharedTrace[-1][1].value
                     else:
                         # print(f'classes {str(cls)} and {clsInMethodMap} are not common ancestors yet they share method {str(method)}')
                         # TODO currently not worth creating another class because of how many false positive methods there are
@@ -366,8 +365,7 @@ for method, trieNode in methodToKreoClassMap.items():
     kreoClassToMethodSetMap[trieNode].add(method)
 
 indent = ''
-def traverse_callback(path_conv, path, children, cls=None):
-    # print("$$$ " + str(path))
+def print_trie(path_conv, path, children, cls=None):
     global indent
     path_c = path_conv(path)
     if path_c == '':
@@ -381,9 +379,7 @@ def traverse_callback(path_conv, path, children, cls=None):
     indent += '    '
     list(children)
     indent = indent[0:-4]
-
-trie.traverse(traverse_callback)
-
+trie.traverse(print_trie)
 
 structures: Dict[str, Dict[str, Any]] = dict()
 for trieNode in trie:
