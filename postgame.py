@@ -84,6 +84,7 @@ class Trace:
         # Fingerprint is in reverse order -- last call in the trace first
         self.head = list(map(lambda entry: entry.method, itertools.takewhile(lambda entry: entry.isCall, traceEntries)))
         self.fingerprint = list(map(lambda entry: entry.method, itertools.takewhile(lambda entry: not entry.isCall, reversed(traceEntries))))
+        self.fingerprint.reverse()
 
     def __str__(self) -> str:
         return '\n'.join(map(lambda te: te.__str__(), self.traceEntries))
@@ -278,9 +279,6 @@ def constructTrie():
     global trieRootNode
     global methodToKreoClassMap
     for trace in traces:
-
-        # print(trace.fingerprint)
-
         # Insert class and any parents into the trie
         for i in range(len(trace.fingerprint)):
             partialFingerprint = trace.fingerprint[0:i + 1]
@@ -367,39 +365,43 @@ for method, trieNode in methodToKreoClassMap.items():
         kreoClassToMethodSetMap[trieNode] = set()
     kreoClassToMethodSetMap[trieNode].add(method)
 
-def printTrie(t: pygtrie.StringTrie):
-    def printNode(node: pygtrie._Node, indent):
-        if isinstance(node.value, KreoClass):
-            print(indent + KreoClass.fingerprintStr(node.value.fingerprint))
-        else:
-            print(indent + 'n/a')
-        if node.value in kreoClassToMethodSetMap:
-            for method in kreoClassToMethodSetMap[node.value]:
-                print(indent + ' - ' + str(method))
-        indent += '    '
-        if node != pygtrie._EMPTY:
-            if isinstance(node.children, pygtrie._OneChild):
-                printNode(node.children.node, indent)
-            else:
-                for n in node.children:
-                    printNode(t._get_node(n)[0], indent)
-    printNode(t._root, '')
+indent = ''
+def traverse_callback(path_conv, path, children, cls=None):
+    # print("$$$ " + str(path))
+    global indent
+    path_c = path_conv(path)
+    if path_c == '':
+        print(indent + 'n/a')
+    else:
+        print(indent + str(path_c))
+        if cls in kreoClassToMethodSetMap:
+            for method in kreoClassToMethodSetMap[cls]:
+                print(indent + '* ' + str(method))
 
-printTrie(trie)
+    indent += '    '
+    list(children)
+    indent = indent[0:-4]
+
+trie.traverse(traverse_callback)
+
 
 structures: Dict[str, Dict[str, Any]] = dict()
 for trieNode in trie:
-    node, parent = trie._get_node(trieNode)
+    node, trace = trie._get_node(trieNode)
     cls: KreoClass = node.value
-    parentCls: KreoClass = node.value
+
+    parentCls: KreoClass = None
+    if len(trace) > 2:
+        parentCls = trace[-2][1].value
 
     # For now, while we only detect direct parent relationships, only
     # add a member if we have a parent, and don't actually know anything
     # about its size
-    members = {
-        '0x0': {
+    members = {}
+    if parentCls is not None:
+        members['0x0'] = {
             'base': False, # TODO: what does this one even mean?
-            'name': str(cls) + '_0x0',
+            'name': str(parentCls) + '_0x0',
             'offset': '0x0',
             'parent': True,
             'size': 4,
@@ -407,7 +409,6 @@ for trieNode in trie:
             'type': 'struc',
             'usages': [],
         }
-    }
 
     methods = dict()
     # If there are no methods associated with the trie node there might not be any methods in the set
