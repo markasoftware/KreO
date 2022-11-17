@@ -54,8 +54,13 @@ Because there are three separate scripts, and not all are in the same language, 
 An example configuration file with commented documentation is available at `arguments.example.json`.
 
 Now, for how to actually run the stages:
+1. `./pregame.sh <path/to/binary>` (must be done on Linux)
 1. `python pregame.py config.json`
 2. `python game.py config.json` (make sure `PIN_ROOT` is set, as described in the setup above. You may need to edit your `.bashrc` file, or user environment variable settings on Windows, if you don't want to manually specify it every time you launch a terminal).
 3. `python postgame.py config.json`
 
 The final output will be placed at the `finalOutput` path specified in the configuration!
+
+## Evaluation
+
+To evaluate, before running KreO, run `./analysis/scripts/preanalysis.sh <path/to/pdb/dump/file> <path/to/output/json>`. Then after KreO runs, run `./analysis/scripts/postanalysis.sh <path/to/gt/json> <path/to/gen/json>`
