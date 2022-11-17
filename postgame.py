@@ -6,14 +6,13 @@ import os
 import time
 import pygtrie
 from parseconfig import config
-from typing import List, Callable, Dict, Set, Any
+from typing import List, Callable, Dict, Set, Any, Union
 
 baseAddr = 0x400000
 
 class Method:
-    def __init__(self, address: int, name: str='unknown'):
+    def __init__(self, address):
         self.address = address
-        self.name = name
         self.type = ''
         # How many times the method has been seen in different parts of a trace:
         self.seenInHead = int(0)
@@ -49,7 +48,8 @@ class Method:
             self.type = 'meth'
 
     def __str__(self) -> str:
-        return ('' if self.name == 'unknown' else (self.name + ' ')) +\
+        name = findMethodName(self)
+        return ('' if name == None else (name + ' ')) +\
                (hex(self.address + baseAddr)) +\
                ('' if self.type == '' else ' ' + self.type)
 
@@ -62,10 +62,6 @@ class TraceEntry:
         if len(splitLine) == 2:
             self.method = findOrInsertMethod(int(splitLine[0]))
             self.isCall = int(splitLine[1]) == 1
-        elif len(splitLine) == 3:
-            # There's a method name in the trace
-            self.method = findOrInsertMethod(int(splitLine[1]), splitLine[0])
-            self.isCall = int(splitLine[2]) == 1
         else:
             raise Exception('Could not parse trace entry from line: "' + line + '"')
 
@@ -132,8 +128,9 @@ class Trace:
         return map(Trace, result)
 
 methods: Dict[int, Method] = dict() # map from address to method
+methodNames: Dict[Method, str] = dict()
 
-def findOrInsertMethod(address: int, name: str='unknown') -> Method:
+def findOrInsertMethod(address: int) -> Method:
     '''
     Attempts to find the method in the global methods map. If the function fails
     to find a method, one will be inserted.
@@ -141,8 +138,26 @@ def findOrInsertMethod(address: int, name: str='unknown') -> Method:
     global methods
 
     if address not in methods:
-        methods[address] = Method(address, name)
+        methods[address] = Method(address)
     return methods[address]
+
+def insertMethodName(methodAddress: int, name: str) -> None:
+    '''
+    Inserts the method in the methodNames map. Method name will only be inserted
+    if there exists a method in the methods map with the methodAddress given.
+    Therefore, method names should be inserted after the methods map is finalized.
+    '''
+    global methodNames
+    global methods
+    if methodAddress in methods:
+        methodNames[methods[methodAddress]] = name
+
+def findMethodName(method: Method) -> Union[str, None]:
+    '''
+    Finds and return the method name for the given method. Returns None if method name not found.
+    '''
+    global methodNames
+    return methodNames.get(method, None)
 
 def printTraces(traces):
     for trace in traces:
@@ -166,21 +181,21 @@ def parseTraces():
     curTrace: List[TraceEntry] = []
     # there can be multiple object trace files...find all of them
 
-    traceIndex = 0
-    while os.path.exists(config['objectTracesPath'] + "_" + str(traceIndex)):
-        for line in open(config['objectTracesPath'] + "_" + str(traceIndex)):
-            # each line ends with \n, empty line indicates new trace
-            if len(line) == 1:
-                if curTrace:
-                    traces.append(Trace(curTrace))
-                    curTrace = []
-            else:
-                curTrace.append(TraceEntry(line))
-        # finish the last trace
-        if curTrace:
-            traces.append(Trace(curTrace))
+    for line in open(config['objectTracesPath']):
+        # each line ends with \n, empty line indicates new trace
+        if len(line) == 1:
+            if curTrace:
+                traces.append(Trace(curTrace))
+                curTrace = []
+        else:
+            curTrace.append(TraceEntry(line))
+    # finish the last trace
+    if curTrace:
+        traces.append(Trace(curTrace))
 
-        traceIndex += 1
+    for line in open(config['objectTracesPath'] + '-name-map'):
+        splitlines = line.split()
+        insertMethodName(int(splitlines[0]), splitlines[1])
 
 traces = []
 runStep(parseTraces, 'parsing traces...', f'traces parsed')
@@ -413,7 +428,7 @@ for trieNode in trie:
             method.evaluateType()
             methodAddrStr = hex(method.address + baseAddr)
             methods[methodAddrStr] = {
-                'demangled_name': method.name,
+                'demangled_name': findMethodName(method) if findMethodName(method) != None else '',
                 'ea': methodAddrStr,
                 'import': False,
                 'name': method.type + "_" + methodAddrStr,

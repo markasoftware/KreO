@@ -222,8 +222,9 @@ void MallocBeforeCallback(ADDRINT size) { mallocSize = size; }
 void MallocAfterCallback(ADDRINT regionStart) {
 #ifndef SUPPRESS_MALLOC_ERRORS
   if (heapAllocations.find(regionStart) != heapAllocations.end()) {
-  //   LOG("PINTOOL WARNING: Malloc'ing a pointer that was already malloc'ed! "
-  //       "Maybe too many malloc procedures specified?\n");
+    //   LOG("PINTOOL WARNING: Malloc'ing a pointer that was already malloc'ed!
+    //   "
+    //       "Maybe too many malloc procedures specified?\n");
     // TODO: could debug even further by searching for if the pointer lies
     // within an allocated region.
   }
@@ -355,7 +356,8 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
     it--;
     if (stackPtr < it->second) {
       // LOG("in heap allocated region " + std::to_string(ptr) + ", " +
-      //     std::to_string(it->first) + ", " + std::to_string(it->second) + "\n");
+      //     std::to_string(it->first) + ", " + std::to_string(it->second) +
+      //     "\n");
       return true;
     }
   }
@@ -428,6 +430,8 @@ static bool IgnoreReturn(ADDRINT actualRetAddr) {
     while (actualRetAddr != stackTop.returnAddr) {
       stackTop = ShadowStackRemoveAndReturnTop();
     }
+
+    return false;
   } else {
     return true;
   }
@@ -486,7 +490,8 @@ static void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
   if (lastRetAddr == static_cast<ADDRINT>(-1)) {
     // return address invalid, don't add procedure to shadow stack
     // stringstream ss;
-    // ss << "WARNING: Method executed without call! Likely not a method. At  0x "
+    // ss << "WARNING: Method executed without call! Likely not a method. At  0x
+    // "
     //    << hex << procAddr << endl;
     // LOG(ss.str());
   } else {
@@ -521,7 +526,8 @@ static void RetCallback(ADDRINT returnAddr) {
     auto objectTraceIt = activeObjectTraces.find(stackTop.objPtr);
     if (objectTraceIt == activeObjectTraces.end()) {
       // stringstream ss;
-      // ss << "WARNING: Return being inserted into a brand new trace??? " << hex
+      // ss << "WARNING: Return being inserted into a brand new trace??? " <<
+      // hex
       //    << stackTop.objPtr << endl;
       // LOG(ss.str());
     }
@@ -797,11 +803,6 @@ void InstrumentUnloadImage(IMG img, void*) {
 }
 
 void Fini(INT32 code, void*) {
-  // Max number of entries per trace file generated to avoid generating trace
-  // files that are ridiculously large. Object traces are not split between
-  // files; however, so the exact number of entries in the trace may be larger.
-  const int kEntriesPerTraceFile{100'000};
-
   cout << "Program run completed, writing object traces to disk..." << endl;
 
   // end all in-progress traces, then print all to disk.
@@ -819,43 +820,36 @@ void Fini(INT32 code, void*) {
 
   string objectTracesPathStr = objectTracesPath.Value().c_str();
 
-  int currEntry = 0;
-  int currTrace = 0;
-  ofstream os(
-      std::string(objectTracesPathStr.c_str() + std::string("_0")).c_str());
+  ofstream os(objectTracesPathStr.c_str());
   // TODO: use a more structured trace format...currently all traces shoved into
   // files, which are broken up to avoid making files that are too large.
   for (const vector<ObjectTraceEntry>* trace : finishedObjectTraces) {
     for (const ObjectTraceEntry& entry : *trace) {
-      if (procedureSymbolNames.count(entry.procedure)) {
-        os << procedureSymbolNames[entry.procedure] << " ";
-      }
       os << entry.procedure << " " << entry.isCall << endl;
-
-      currEntry++;
     }
     os << endl;
+  }
 
-    if (currEntry >= kEntriesPerTraceFile) {
-      os.close();
-      std::string objTracePathEnumerated =
-          objectTracesPathStr + "_" + std::to_string(++currTrace);
-      os.open(objTracePathEnumerated.c_str());
-
-      currEntry = 0;
-    }
+  os.close();
+  os.open(std::string(objectTracesPathStr + "-name-map").c_str());
+  for (const auto& it : procedureSymbolNames) {
+    os << it.first << " " << it.second << endl;
   }
 
   string gtMethodsInstrumentedStr = gtMethodsInstrumentedPath.Value().c_str();
-  ofstream gtMethodCoverageStream(gtMethodsInstrumentedStr.c_str());
+  os.close();
+  os.open(gtMethodsInstrumentedStr.c_str());
+
   float coverage = static_cast<float>(gtCalledMethods.size()) /
                    static_cast<float>(gtMethodAddrs.size());
-  gtMethodCoverageStream << gtMethodAddrs.size() << ", "
-                         << gtCalledMethods.size() << ", " << coverage << endl
-                         << "=====" << endl;
+  os << "Ground truth methods: " << gtMethodAddrs.size()
+     << ", Called ground truth methods: " << gtCalledMethods.size()
+     << ", Coverage (%): " << coverage << endl
+     << "=====" << endl;
   for (ADDRINT addr : gtCalledMethods) {
-    gtMethodCoverageStream << addr << endl;
+    os << addr << endl;
   }
+
   cout << "Done! Exiting normally." << endl;
 }
 
