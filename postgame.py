@@ -5,6 +5,7 @@ import hashlib
 import os
 import time
 import pygtrie
+import subprocess
 from parseconfig import config
 from typing import List, Callable, Dict, Set, Any
 
@@ -20,31 +21,45 @@ class Method:
         self.seenTotal = int(0)
 
         self.destructorTailToTorsoRatioMax = 4
-        self.destructorTailToHeadRatioMax = 16
         self.constructorHeadToTorsoRatioMax = 4
-        self.constructorHeadToTailRatioMax = 16
 
     def seenInTorso(self):
         return self.seenTotal - self.seenInHead - self.seenInFingerprint
 
-    def isDestructor(self) -> bool:
+    def isInFingerprint(self) -> bool:
         return self.seenInFingerprint > 0
-        # return (self.seenInFingerprint > 0
-        #         and self.seenInTorso() <= self.seenInFingerprint // self.destructorTailToTorsoRatioMax
-        #         and self.seenInHead <= self.seenInFingerprint // self.destructorTailToHeadRatioMax) # TODO: more thought into this, other heuristics?
+
+    def isInHead(self) -> bool:
+        return self.seenInHead > 0
 
     def isConstructor(self) -> bool:
-        return self.seenInHead > 0
-        # return (self.seenInHead > 0
-        #         and self.seenInTorso() <= self.seenInHead // self.constructorHeadToTorsoRatioMax
-        #         and self.seenInFingerprint <= self.seenInHead // self.constructorHeadToTailRatioMax) # TODO maybe improve
+        '''
+        Returns true if method believed to be a destructor. While a method is
+        likely a constructor if it appears in the head, we make the assumption
+        that it cannot be a constructor if it appears in the fingerprint. Also,
+        if the method is not found mostly in the head but instead is found
+        somewhat regularly in the body of traces, it is likely not a constructor
+        either.
+        '''
+        return self.isInHead() and \
+               not self.isInFingerprint() and \
+               self.constructorHeadToTorsoRatioMax * self.seenInTorso() <= self.seenInHead
 
-    def evaluateType(self) -> None:
+    def isDestructor(self) -> bool:
+        '''
+        @see isConstructor. The same idea here but for destructors.
+        '''
+        return self.isInFingerprint() and \
+               not self.isInHead() and \
+               self.destructorTailToTorsoRatioMax * self.seenInTorso() <= self.seenInFingerprint
+
+    def updateType(self) -> None:
         # TODO other types may be viable options (virtual methods for example), but for now we don't care about them
-        # assert not (self.isConstructor() and self.isDestructor())
-        if self.isDestructor():
+        assert not (self.isConstructor() and self.isDestructor())
+
+        if self.isInFingerprint():
             self.type = 'dtor'
-        elif self.isConstructor():
+        elif self.isInHead():
             self.type = 'ctor'
         else:
             self.type = 'meth'
@@ -93,8 +108,12 @@ class Trace:
     def __eq__(self, other) -> bool:
         return self.__str__() == other.__str__()
 
-    # update all methods involved with this trace, to store number of appearances in each part of the trace.
     def updateMethodStatistics(self):
+        '''
+        Update call statistics for all methods associated with the trace.
+        Store number of appearances for each method in each part of the trace.
+        '''
+
         # Count the total number of times each method in the trace is seen
         # anywhere. Note that we will be modifying the global method's "seenCount".
         for entry in self.traceEntries:
@@ -109,9 +128,12 @@ class Trace:
             fingerprintMethod.seenInFingerprint += 1
 
     def methods(self):
+        '''
+        Return a list of methods in the trace.
+        '''
         return map(lambda entry: entry.method, filter(lambda entry: entry.isCall, self.traceEntries))
 
-    def split(self, constructors: Set[Method], destructors: Set[Method]):
+    def split(self):
         '''
         Given a set of destructors, return a list of traces created from this
         one. Returns just itself if no splitting is necessary.
@@ -131,13 +153,13 @@ class Trace:
         currEntry = iterateAndInsert()
         while currEntry is not None:
             # If entry is a destructor and we are returning from it, potentially split trace
-            if currEntry.method.isDestructor() and not currEntry.isCall:
+            if currEntry.method.isInFingerprint() and not currEntry.isCall:
                 # Iterate until curr entry not destructor
-                while currEntry is not None and currEntry.method.isDestructor():
+                while currEntry is not None and currEntry.method.isInFingerprint():
                     currEntry = iterateAndInsert()
 
                 # If curr entry is a constructor, split the trace
-                if currEntry is not None and currEntry.method.isConstructor():
+                if currEntry is not None and currEntry.method.isInHead():
                     # NOTE: must move currEntry from the current trace to the new currTrace
                     splitTraces.append(currTrace[0:-1])
                     currTrace = [currEntry]
@@ -148,15 +170,17 @@ class Trace:
         if currTrace != []:
             splitTraces.append(currTrace)
 
+        # Validate the traces generated are valid (all traces must have at least
+        # two entries) and none of the entries in any trace should be None
         for trace in splitTraces:
-            assert (len(trace) > 0)
+            assert (len(trace) >= 2)
             for entry in trace:
                 assert(entry is not None)
 
         return map(Trace, splitTraces)
 
-methods: Dict[int, Method] = dict() # map from address to method
-methodNames: Dict[Method, str] = dict()
+methods: Dict[int, Method] = dict()  # map from address to method
+methodNames: Dict[Method, str] = dict()  # map from method to method name
 
 def findOrInsertMethod(address: int) -> Method:
     '''
@@ -201,8 +225,11 @@ def runStep(function: Callable[[None], None], startMsg: str, endMsg: str)-> None
     endTime = time.perf_counter()
     print(f'{endMsg} ({endTime - startTime:0.2f}s)')
 
-# Step 1: Read traces from disk
+###############################################################################
+# Step Read traces from disk                                                  #
+###############################################################################
 
+# Set of ground truth methods (for testing purposes)
 gtMethods: Set[int] = set()
 
 def parseTraces():
@@ -218,14 +245,18 @@ def parseTraces():
                 traces.append(Trace(curTrace))
                 curTrace = []
         else:
-            curTrace.append(TraceEntry(line))
+            # TODO this is a hack to avoid the delete operator fix this in Game.cpp
+            if '233472' not in line:
+                curTrace.append(TraceEntry(line))
     # finish the last trace
     if curTrace:
         traces.append(Trace(curTrace))
 
     for line in open(config['objectTracesPath'] + '-name-map'):
         splitlines = line.split()
-        insertMethodName(int(splitlines[0]), splitlines[1])
+        p1 = subprocess.Popen(['demangle', '--noerror', '-n', splitlines[1]], stdout=subprocess.PIPE)
+        demangled_name = str(p1.stdout.read())
+        insertMethodName(int(splitlines[0]), demangled_name)
     
     for line in open(config['gtMethodsPath']):
         gtMethods.add(int(line))
@@ -234,7 +265,10 @@ traces = []
 runStep(parseTraces, 'parsing traces...', f'traces parsed')
 print(f'found {len(traces)} traces')
 
-# Step 2: Record how many times each method was seen in the head and fingerprint
+###############################################################################
+# Step: Record how many times each method was seen in the head and            #
+# fingerprint                                                                 #
+###############################################################################
 
 def updateAllMethodStatistics():
     global traces
@@ -246,37 +280,27 @@ def updateAllMethodStatistics():
     for trace in traces:
         trace.updateMethodStatistics()
 
-runStep(updateAllMethodStatistics, 'updating method statistics...', 'method statistics updated')
+runStep(updateAllMethodStatistics,
+    'updating method statistics...',
+    'method statistics updated')
 
-# Step 3: Decide what's a constructor/destructor
+###############################################################################
+# Step Split spurious traces                                                  #
+###############################################################################
 
-destructors: Set[Method] = set()
-constructors: Set[Method] = set()
-def findConstructorsDestructors():
-    global destructors
-    global constructors
-    global methods
-    destructors = set(filter(lambda method: method.isDestructor(), methods.values()))
-    constructors = set(filter(lambda method: method.isConstructor(), methods.values()))
-
-runStep(findConstructorsDestructors,
-    'finding constructors/destructors for each object trace...',
-    'constructors/destructors found for each object trace')
-
-# Step 4: Split spurious traces
 def splitTracesFn():
     global traces
     splitTraces: List[Trace] = []
     for trace in traces:
-        splitTraces += trace.split(constructors, destructors)
+        splitTraces += trace.split()
     traces = splitTraces
 runStep(splitTracesFn, 'splitting traces...', f'traces split')
 print(f'after splitting there are now {len(traces)} traces')
 
-# Note: splitting traces will not reveal new constructors/destructors; however, we do need to recompute the statistics
-runStep(updateAllMethodStatistics, 'updating method statistics again...', 'method statistics updated')
+###############################################################################
+# Step: Remove Duplicate traces after splitting                               #
+###############################################################################
 
-# Remove duplicate traces after splitting
 def removeDuplicateTraces():
     global traces
     tracesSet: Set[Trace] = set()
@@ -293,27 +317,40 @@ def removeDuplicateTraces():
 runStep(removeDuplicateTraces, 'removing duplicates...', f'duplicates removed')
 print(f'now are {len(traces)} unique traces')
 
-# TODO: possible improvement: Instead of just looking for the true fingerprint
-# of returns, maybe if we identify a suffix common to many object traces, we can
-# infer that a destructor is calling another method and account for it?
+###############################################################################
+# Step: Update method statistics again now. Splitting traces won't reveal new #
+# constructors/destructors; however, the number of times methods are seen in  #
+# the head/body/fingerprint does change.                                      #
+###############################################################################
 
-# Don't have to do this since any element in the fingerprint is considered a destructor currently
-# Step: Update fingerprints to only include methods that are destructors
-# def removeNondestructorsFromFingerprints():
-#     global destructors
-#     global methods
-#     global traces
-#     for trace in traces:
-#         trace.fingerprint = [method for method in trace.fingerprint if method in destructors]
-#     # Remove traces with empty fingerprints
-#     traces = list(filter(lambda trace: len(trace.fingerprint) > 0, traces))
-# runStep(removeNondestructorsFromFingerprints,
-#     'removing methods that aren\'t destructors from fingerprints...',
-#     'method removed')
+runStep(updateAllMethodStatistics,
+    'updating method statistics again...',
+    'method statistics updated')
 
-# Step 5: Look at fingerprints to determine hierarchy
+###############################################################################
+# Step: Remove from fingerprints any methods that are not identified as       #
+# destructors.                                                                #
+###############################################################################
+
+def removeNondestructorsFromFingerprints():
+    global methods
+    global traces
+    for trace in traces:
+        trace.fingerprint = [method for method in trace.fingerprint if method.isDestructor()]
+    # Remove traces with empty fingerprints
+    traces = list(filter(lambda trace: len(trace.fingerprint) > 0, traces))
+runStep(removeNondestructorsFromFingerprints,
+    'removing methods that aren\'t destructors from fingerprints...',
+    'method removed')
+
+###############################################################################
+# Step: Look at fingerprints to determine hierarchy. Insert entries into trie.#
+###############################################################################
 
 class KreoClass:
+    '''
+    Represents a value in a trie.
+    '''
     def __init__(self, fingerprint: List[Method]):
         self.uuid = str(uuid.uuid4())
         self.fingerprint = fingerprint
@@ -327,10 +364,8 @@ class KreoClass:
         # the address associated with this class is the hex address of
         # the last element in the fingerprint, representing the destructor
         # associated with this class
+        assert len(self.fingerprint) > 0
         return 'KreoClass-' + self.uuid[0:5] + '@' + (hex(self.fingerprint[-1].address + baseAddr) if len(self.fingerprint) > 0 else 'foobar')
-
-# Ideally, everything would form a nice trie. But what if it doesn't, eg in the case when we're just tracing weird sequence of functions that operate on an integer pointer? The simple algorithm of always inserting into the trie will never error out, but it will result in a trie where certain "destructors" are at the base of some tries and in the middle of others. So that's a rule we could use to exclude some of them: A class that appears in multiple different branches from the root should be removed
-# ^^^ But in fact, this happens automatically! Because the LCA will be the root, and we skip the root when we traverse over the tree to print final output!
 
 trie = pygtrie.StringTrie()
 methodToKreoClassMap = dict()  # we need a way to know which trie nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the trie before processing.
@@ -387,25 +422,30 @@ def constructTrie():
                     elif len(sharedTrace) > 1:
                         methodToKreoClassMap[method] = sharedTrace[-1][1].value
                     else:
+                        '''
+                        # Create class that will be inserted into the trie. This
+                        # class must have a new fingerprint that is the methods
+                        # that will be assigned to the class that the two
+                        # classes share.
+                        newClassFingerprint = [method]
+                        newClass = KreoClass(newClassFingerprint)
+                        trie[KreoClass.fingerprintStr(newClassFingerprint)] = newClass
+                        # Move method to new class in methodToKreoClassMap
+                        methodToKreoClassMap[method] = newClass
+
+                        # Update all fingerprints of the two classes that require to be moved
+                        
+                        # Move trie branches 
+                        
+                        # TODO this could cause weird tries that aren't tries
+                        '''
+                        
                         print(f'classes {str(cls)} and {clsInMethodMap} are not common ancestors yet they share method {str(method)}')
                         # TODO currently not worth creating another class because of how many false positive methods there are
                         # that would cause the trie to do some weird stuff.
                         pass
         
 runStep(constructTrie, 'constructing trie...', 'trie constructed')
-
-# Step 6: Associate methods from torsos with classes
-# Step 7: Static dataflow analysis
-
-# Output json in OOAnalyzer format
-
-# copied from https://stackoverflow.com/a/3431838/1233320
-def md5File(fname):
-    hash_md5 = hashlib.md5()
-    with open(fname, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
 
 # Move destructor functions into correct location in the trie. There is the
 # possibility that a parent object was never constructed but a child was. In
@@ -427,19 +467,30 @@ for method, trieNode in methodToKreoClassMap.items():
 indent = ''
 def print_trie(path_conv, path, children, cls=None):
     global indent
-    path_c = path_conv(path)
-    if path_c == '':
-        print(indent + 'n/a')
+    if cls is None:
+        print(f'{indent}n/a')
     else:
-        print(indent + str(path_c) + ' ' + str(cls.fingerprint[-1].isDestructor()))
+        path_c = path_conv(path)
+        lastFingerprintMethod = cls.fingerprint[-1]
+        print(f'{indent}{path_c} {str(cls)} {lastFingerprintMethod.isDestructor()} {lastFingerprintMethod.seenInHead} {lastFingerprintMethod.seenInFingerprint} {lastFingerprintMethod.seenInTorso()}')
         if cls in kreoClassToMethodSetMap:
             for method in kreoClassToMethodSetMap[cls]:
-                print(indent + '* ' + str(method))
+                print(f'{indent}* {method}')
 
     indent += '    '
     list(children)
     indent = indent[0:-4]
 trie.traverse(print_trie)
+
+# Output json in OOAnalyzer format
+
+# copied from https://stackoverflow.com/a/3431838/1233320
+def md5File(fname):
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 structures: Dict[str, Dict[str, Any]] = dict()
 for trieNode in trie:
@@ -470,7 +521,7 @@ for trieNode in trie:
     # If there are no methods associated with the trie node there might not be any methods in the set
     if cls in kreoClassToMethodSetMap:
         for method in kreoClassToMethodSetMap[cls]:
-            method.evaluateType()
+            method.updateType()
             methodAddrStr = hex(method.address + baseAddr)
             methods[methodAddrStr] = {
                 'demangled_name': findMethodName(method) if findMethodName(method) != None else '',
