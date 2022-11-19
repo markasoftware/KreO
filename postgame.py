@@ -370,99 +370,111 @@ class KreoClass:
 trie = pygtrie.StringTrie()
 methodToKreoClassMap = dict()  # we need a way to know which trie nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the trie before processing.
 
-kreoClassToMethodSetMap: Dict[KreoClass, Set[Method]] = dict()
-
 def constructTrie():
-    global trieRootNode
-    global methodToKreoClassMap
+    global trie
+    global traces
+
     for trace in traces:
         # Insert class and any parents into the trie
         for i in range(len(trace.fingerprint)):
             partialFingerprint = trace.fingerprint[0:i + 1]
             if KreoClass.fingerprintStr(partialFingerprint) not in trie.keys():
-                trie[KreoClass.fingerprintStr(partialFingerprint)] = KreoClass(partialFingerprint)
+                newCls = KreoClass(partialFingerprint)
+                trie[KreoClass.fingerprintStr(partialFingerprint)] = newCls
 
         cls = trie[KreoClass.fingerprintStr(trace.fingerprint)]
 
         for method in trace.methods():
             if method not in methodToKreoClassMap:
-                methodToKreoClassMap[method] = cls
-            else:
-                clsInMethodMap: KreoClass = methodToKreoClassMap[method]
-
-                if KreoClass.fingerprintStr(cls.fingerprint) == KreoClass.fingerprintStr(clsInMethodMap.fingerprint):
-                    # We inserted the object-trace into the same location as a preexisting
-                    # object-trace, so simply add the method to the map.
-                    methodToKreoClassMap[method] = cls
-                else:
-                    # find least common ancestor since entry in map is different than the
-                    # newly added trie class
-
-                    _, clsInMethodMapTrace = trie._get_node(KreoClass.fingerprintStr(clsInMethodMap.fingerprint))
-                    _, clsNodeTrace = trie._get_node(KreoClass.fingerprintStr(cls.fingerprint))
-
-                    def findLongestSharedTrace(t1, t2):
-                        for i in range(min(len(t1), len(t2))):
-                            t1Node = t1[i]
-                            t2Node = t2[i]
-                            if t1Node != t2Node:
-                                return t1[:i]
-                        if len(t1) > len(t2):
-                            return t2
-                        else:
-                            return t1
-
-                    sharedTrace = findLongestSharedTrace(clsInMethodMapTrace, clsNodeTrace)
-                    if sharedTrace == clsInMethodMapTrace:
-                        # Do nothing since the method's already in the parent class
-                        pass
-                    elif sharedTrace == clsNodeTrace:
-                        # Reinsert methods since new class is shared ancestor
-                        methodToKreoClassMap[method] = cls
-                    elif len(sharedTrace) > 1:
-                        methodToKreoClassMap[method] = sharedTrace[-1][1].value
-                    else:
-                        '''
-                        # Create class that will be inserted into the trie. This
-                        # class must have a new fingerprint that is the methods
-                        # that will be assigned to the class that the two
-                        # classes share.
-                        newClassFingerprint = [method]
-                        newClass = KreoClass(newClassFingerprint)
-                        trie[KreoClass.fingerprintStr(newClassFingerprint)] = newClass
-                        # Move method to new class in methodToKreoClassMap
-                        methodToKreoClassMap[method] = newClass
-
-                        # Update all fingerprints of the two classes that require to be moved
-                        
-                        # Move trie branches 
-                        
-                        # TODO this could cause weird tries that aren't tries
-                        '''
-                        
-                        print(f'classes {str(cls)} and {clsInMethodMap} are not common ancestors yet they share method {str(method)}')
-                        # TODO currently not worth creating another class because of how many false positive methods there are
-                        # that would cause the trie to do some weird stuff.
-                        pass
-        
+                methodToKreoClassMap[method] = set()
+            
+            methodToKreoClassMap[method].add(cls)
 runStep(constructTrie, 'constructing trie...', 'trie constructed')
 
-# Move destructor functions into correct location in the trie. There is the
-# possibility that a parent object was never constructed but a child was. In
-# this case we know the destructor belongs to the parent but it currently
-# belongs to the child.
-for key in trie:
-    # Find fingerprint[-1] in methodToKreoClassMap and replace the reference
-    # with this class
-    node = trie[key]
-    if node.fingerprint[-1] in methodToKreoClassMap:
-        methodToKreoClassMap[node.fingerprint[-1]] = node
+def reorganizeTrie():
+    global trie
+    global methodToKreoClassMap
 
-# map trie nodes to methods now that method locations are fixed
-for method, trieNode in methodToKreoClassMap.items():
-    if trieNode not in kreoClassToMethodSetMap.keys():
-        kreoClassToMethodSetMap[trieNode] = set()
-    kreoClassToMethodSetMap[trieNode].add(method)
+    for method, clsSet in methodToKreoClassMap.items():
+        assert(len(clsSet) >= 1)
+
+        if len(clsSet) == 1:
+            continue
+
+        def findLongestSharedTrace(traces):
+            minLenTrace = None
+            for trace in traces:
+                if minLenTrace is None or len(minLenTrace[1]) > len(trace[1]):
+                    minLenTrace = trace
+
+            for i in range(len(minLenTrace)):
+                for trace in traces:
+                    if trace[1][i] != traces[0][1][i]:
+                        return trace[1][:i]
+            
+            return minLenTrace[1]
+
+        clsTraces = list()
+        for cls in clsSet:
+            clsTraces.append(trie._get_node(KreoClass.fingerprintStr(cls.fingerprint)))
+
+        sharedTrace = findLongestSharedTrace(clsTraces)
+
+        if len(sharedTrace) > 1:
+            # LCA exists
+            methodToKreoClassMap[method] = set([sharedTrace[-1][1].value])
+        else:
+            # LCA doesn't exist, have to add class to trie
+            
+            # Create class that will be inserted into the trie. This
+            # class must have a new fingerprint that is the method
+            # that will be assigned to the class that the two
+            # classes share.
+            newClassFingerprint = [method]
+            newClass = KreoClass(newClassFingerprint)
+
+            trie[KreoClass.fingerprintStr(newClassFingerprint)] = newClass
+
+            # Move method to new class in methodToKreoClassMap
+            methodToKreoClassMap[method] = set([newClass])
+
+            # Remove from trie all classes that are being moved and update each class's fingerprint, then reinsert into trie
+            for cls in clsSet:
+                trie.pop(KreoClass.fingerprintStr(cls.fingerprint))
+                cls.fingerprint = newClass.fingerprint + cls.fingerprint
+                trie[KreoClass.fingerprintStr(cls.fingerprint)] = cls
+
+    # Each method is now associated with exactly one class
+    for clsSet in methodToKreoClassMap.values():
+        assert(len(clsSet) == 1)
+runStep(reorganizeTrie, 'reorganizing trie...', 'trie reorganized')
+
+def swimDestructors():
+    global trie
+    # Move destructor functions into correct location in the trie. There is the
+    # possibility that a parent object was never constructed but a child was. In
+    # this case we know the destructor belongs to the parent but it currently
+    # belongs to the child.
+    for key in trie:
+        # Find fingerprint[-1] in methodToKreoClassMap and replace the reference
+        # with this class
+        node = trie[key]
+        if node.fingerprint[-1] in methodToKreoClassMap:
+            methodToKreoClassMap[node.fingerprint[-1]] = set([node])
+runStep(swimDestructors, 'moving destructors up in trie...', 'destructors moved up')
+
+kreoClassToMethodSetMap: Dict[KreoClass, Set[Method]] = dict()
+
+def mapTrieNodesToMethods():
+    global methodToKreoClassMap
+    global kreoClassToMethodSetMap
+    # map trie nodes to methods now that method locations are fixed
+    for method, trieNode in methodToKreoClassMap.items():
+        trieNode = list(trieNode)[0]
+        if trieNode not in kreoClassToMethodSetMap.keys():
+            kreoClassToMethodSetMap[trieNode] = set()
+        kreoClassToMethodSetMap[trieNode].add(method)
+runStep(mapTrieNodesToMethods, 'mapping trie nodes to methods...', 'trie nodes mapped')
 
 indent = ''
 def print_trie(path_conv, path, children, cls=None):
