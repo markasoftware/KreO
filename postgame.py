@@ -245,9 +245,7 @@ def parseTraces():
                 traces.append(Trace(curTrace))
                 curTrace = []
         else:
-            # TODO this is a hack to avoid the delete operator fix this in Game.cpp
-            if '233472' not in line:
-                curTrace.append(TraceEntry(line))
+            curTrace.append(TraceEntry(line))
     # finish the last trace
     if curTrace:
         traces.append(Trace(curTrace))

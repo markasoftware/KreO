@@ -36,6 +36,11 @@ using namespace std::tr1;
 #define FREE_SYMBOL "free"
 #endif
 
+// Mangled delete operator (msvc-specific), not sure how applicable this is to
+// other compilers
+#define DELETE_OPERATOR_SIZE "??3@YAXPAXI@Z"
+#define DELETE_OPERATOR "??3@YAXPAX@Z"
+vector<string> deleteOperators;
 // custom structures
 
 // ============================================================================
@@ -168,6 +173,9 @@ void ParsePregame() {
   }
 
   cout << "Populated method candidates" << endl;
+
+  deleteOperators.push_back(DELETE_OPERATOR);
+  deleteOperators.push_back(DELETE_OPERATOR_SIZE);
 }
 
 // ============================================================================
@@ -260,6 +268,17 @@ void FreeCallback(ADDRINT freedRegionStart) {
   ADDRINT freedRegionEnd = freedRegionIt->second;
   EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
   heapAllocations.erase(freedRegionIt);
+}
+
+ADDRINT objectBeingDeleted{};
+void OnDeleteInstrumented(ADDRINT deletedObject) {
+  objectBeingDeleted = deletedObject;
+}
+
+void OnDeleteInstrumentationComplete() {
+  // TODO close trace that is being deleted. This isn't super necessary at the
+  // moment since the trace should be closed when free is called, but it might
+  // improve in case free isn't called directly after object destructor called.
 }
 
 // ============================================================================
@@ -746,6 +765,27 @@ void InstrumentImage(IMG img, void*) {
   // TODO: it seems that `free` in one library calls `free`
   // in another library (at least on gnu libc linux), because...
   RTN discoveredFree = RTN_FindByName(img, FREE_SYMBOL);
+
+  // TODO test this on compilers other than MSVC in the future
+  for (std::string operatorName : deleteOperators) {
+    RTN discoveredDelete = RTN_FindByName(img, operatorName.c_str());
+    if (RTN_Valid(discoveredDelete)) {
+      blacklistedProcedures.insert(RTN_Address(discoveredDelete) - lowAddr);
+
+      RTN_Open(discoveredDelete);
+      RTN_InsertCall(discoveredDelete,
+                     IPOINT_BEFORE,
+                     reinterpret_cast<AFUNPTR>(OnDeleteInstrumented),
+                     IARG_FUNCARG_ENTRYPOINT_VALUE,
+                     0,
+                     IARG_END);
+      RTN_InsertCall(discoveredDelete,
+                     IPOINT_AFTER,
+                     reinterpret_cast<AFUNPTR>(OnDeleteInstrumentationComplete),
+                     IARG_END);
+      RTN_Close(discoveredDelete);
+    }
+  }
 
   // Insert malloc/free discovered by name into routine list
 
