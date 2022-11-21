@@ -242,13 +242,13 @@ def parseTraces():
         # each line ends with \n, empty line indicates new trace
         if len(line) == 1:
             if curTrace:
-                traces.append(Trace(curTrace))
+                traces.add(Trace(curTrace))
                 curTrace = []
         else:
             curTrace.append(TraceEntry(line))
     # finish the last trace
     if curTrace:
-        traces.append(Trace(curTrace))
+        traces.add(Trace(curTrace))
 
     for line in open(config['objectTracesPath'] + '-name-map'):
         splitlines = line.split()
@@ -259,7 +259,7 @@ def parseTraces():
     for line in open(config['gtMethodsPath']):
         gtMethods.add(int(line))
 
-traces = []
+traces = set()
 runStep(parseTraces, 'parsing traces...', f'traces parsed')
 print(f'found {len(traces)} traces')
 
@@ -288,32 +288,14 @@ runStep(updateAllMethodStatistics,
 
 def splitTracesFn():
     global traces
-    splitTraces: List[Trace] = []
+    splitTraces: Set[Trace] = set()
     for trace in traces:
-        splitTraces += trace.split()
+        splitT = trace.split()
+        for trace in splitT:
+            splitTraces.add(trace)
     traces = splitTraces
 runStep(splitTracesFn, 'splitting traces...', f'traces split')
 print(f'after splitting there are now {len(traces)} traces')
-
-###############################################################################
-# Step: Remove Duplicate traces after splitting                               #
-###############################################################################
-
-def removeDuplicateTraces():
-    global traces
-    tracesSet: Set[Trace] = set()
-    for trace in traces:
-        tracesSet.add(trace)
-    traces = list(tracesSet)
-
-    with open('out/object-traces-no-duplicates', 'w') as f:
-        for trace in traces:
-            for entry in trace.traceEntries:
-                f.write(str(entry) + '\n')
-
-            f.write('\n')
-runStep(removeDuplicateTraces, 'removing duplicates...', f'duplicates removed')
-print(f'now are {len(traces)} unique traces')
 
 ###############################################################################
 # Step: Update method statistics again now. Splitting traces won't reveal new #
@@ -363,7 +345,7 @@ class KreoClass:
         # the last element in the fingerprint, representing the destructor
         # associated with this class
         assert len(self.fingerprint) > 0
-        return 'KreoClass-' + self.uuid[0:5] + '@' + (hex(self.fingerprint[-1].address + baseAddr) if len(self.fingerprint) > 0 else 'foobar')
+        return 'KreoClass-' + self.uuid[0:5] + '@' + hex(self.fingerprint[-1].address + baseAddr)
 
 trie = pygtrie.StringTrie()
 methodToKreoClassMap = dict()  # we need a way to know which trie nodes correspond to each method, so that if a method gets mapped to multiple places we can reassign it to the LCA. Will need to make this more robust if we eventually decide to do some rearrangements or deletions from the trie before processing.
@@ -482,10 +464,11 @@ def print_trie(path_conv, path, children, cls=None):
     else:
         path_c = path_conv(path)
         lastFingerprintMethod = cls.fingerprint[-1]
-        print(f'{indent}{path_c} {str(cls)} {lastFingerprintMethod.isDestructor()} {lastFingerprintMethod.seenInHead} {lastFingerprintMethod.seenInFingerprint} {lastFingerprintMethod.seenInTorso()}')
+        print(f'{indent}{path_c} {lastFingerprintMethod.isDestructor()} {lastFingerprintMethod.seenInHead} {lastFingerprintMethod.seenInFingerprint} {lastFingerprintMethod.seenInTorso()}')
         if cls in kreoClassToMethodSetMap:
             for method in kreoClassToMethodSetMap[cls]:
-                print(f'{indent}* {method}')
+                method.updateType()
+                print(f'{indent}* {method} {method.type} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso()}')
 
     indent += '    '
     list(children)

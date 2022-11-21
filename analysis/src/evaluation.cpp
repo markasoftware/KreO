@@ -109,8 +109,9 @@ int main(int argc, char *argv[]) {
         float f_score =
             ComputeF1(precision_recall.first, precision_recall.second);
 
-        std::cout << name << '\t' << precision_recall.first << "\t"
-                  << precision_recall.second << "\t" << f_score << std::endl;
+        std::cout << std::setprecision(2) << name << " & "
+                  << precision_recall.first << " & " << precision_recall.second
+                  << " & " << f_score << std::endl;
       };
 
   std::cout << "evaluation criteria\tprecision\trecall\tf-score" << std::endl;

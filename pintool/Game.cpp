@@ -554,30 +554,6 @@ static void RetCallback(ADDRINT returnAddr) {
     InsertObjectTraceEntry(stackTop.objPtr,
                            ObjectTraceEntry(stackTop.procedure, false));
   }
-
-  // if (stackEntryCount[returnAddr] != 0) {
-  //   // if the return is in the stack somewhere, find exactly where!
-  //   // pop off the top of stack until we find something matching our return
-  //   // address.
-  //   ShadowStackEntry stackTop(0, 0, 0);
-  //   do {
-  //     stackTop = shadowStack.back();
-  //     shadowStack.pop_back();
-  //     stackEntryCount[stackTop.returnAddr]--;
-  //     // TODO: this shouldn't cause a new object trace to be created, because
-  //     // the memory shouldn't be deallocated between the call and the
-  //     // return...but what if it does?
-  //     if (activeObjectTraces.count(stackTop.objPtr) == 0) {
-  //       stringstream ss;
-  //       ss << "WARNING: Return being inserted into a brand new trace??? " <<
-  //       hex
-  //          << stackTop.objPtr << endl;
-  //       LOG(ss.str());
-  //     }
-  //     InsertObjectTraceEntry(stackTop.objPtr,
-  //                            ObjectTraceEntry(stackTop.procedure, false));
-  //   } while (stackTop.returnAddr != returnAddr && !shadowStack.empty());
-  // }
 }
 
 static bool IsPossibleStackIncrease(INS ins) {
