@@ -173,7 +173,8 @@ class Trace:
         # Validate the traces generated are valid (all traces must have at least
         # two entries) and none of the entries in any trace should be None
         for trace in splitTraces:
-            assert (len(trace) >= 2)
+            assert (len(trace) >= 2), f'len trace = {len(trace)} {trace[0].method}'
+            assert (trace[0].isCall), f'method not call {trace[0].method}'
             for entry in trace:
                 assert(entry is not None)
 
@@ -252,8 +253,11 @@ def parseTraces():
 
     for line in open(config['objectTracesPath'] + '-name-map'):
         splitlines = line.split()
-        p1 = subprocess.Popen(['demangle', '--noerror', '-n', splitlines[1]], stdout=subprocess.PIPE)
-        demangled_name = str(p1.stdout.read())
+        try:
+            p1 = subprocess.Popen(['demangle', '--noerror', '-n', splitlines[1]], stdout=subprocess.PIPE)
+            demangled_name = str(p1.stdout.read())
+        except FileNotFoundError as _:
+            demangled_name = splitlines[1]
         insertMethodName(int(splitlines[0]), demangled_name)
     
     for line in open(config['gtMethodsPath']):

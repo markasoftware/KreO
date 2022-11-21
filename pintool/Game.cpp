@@ -11,10 +11,6 @@
 
 #include "pin.H"
 
-// If you don't want to log any debugging information, uncomment these lines out
-#undef LOG
-#define LOG(x)
-
 using namespace std;
 
 // HACK: on Windows, Pintool uses STLP, which puts lots of the C++11 standard
@@ -179,6 +175,32 @@ void ParsePregame() {
 }
 
 // ============================================================================
+void EndObjectTrace(ADDRINT objPtr) {
+  auto it = activeObjectTraces.find(objPtr);
+  if (it != activeObjectTraces.end()) {
+    if (it->second->empty()) {
+      // Don't insert empty object trace
+      delete it->second;
+      it->second = nullptr;
+    } else {
+      const auto& finishedObjectTracesIt =
+          find_if(finishedObjectTraces.begin(),
+                  finishedObjectTraces.end(),
+                  [it](const vector<ObjectTraceEntry>* objectTrace) {
+                    return *objectTrace == *it->second;
+                  });
+      if (finishedObjectTracesIt == finishedObjectTraces.end()) {
+        finishedObjectTraces.push_back(it->second);
+      } else {
+        // Don't insert duplicate object trace
+        delete it->second;
+        it->second = nullptr;
+      }
+    }
+    activeObjectTraces.erase(it);
+  }
+}
+
 /// @brief Ends any object traces whose object pointers reside within the given
 /// region, that is, within the set of values [regionStart, regionEnd).
 void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
@@ -279,6 +301,10 @@ void OnDeleteInstrumentationComplete() {
   // TODO close trace that is being deleted. This isn't super necessary at the
   // moment since the trace should be closed when free is called, but it might
   // improve in case free isn't called directly after object destructor called.
+  if (objectBeingDeleted != 0xffff'ffff) {
+    // EndObjectTrace(objectBeingDeleted);
+    objectBeingDeleted = 0xffff'ffff;
+  }
 }
 
 // ============================================================================
