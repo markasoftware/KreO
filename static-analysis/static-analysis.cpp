@@ -65,29 +65,52 @@ namespace Kreo {
         "the tool to list true functions and not thunk functions.";
 
     // See Rose issue #220
-    // In order to perform a calling convention analysis simultaneously with the general static analysis, we need to ensure that `RegisterStateGeneric::updateReadProperties` is called when registers are read with side effects enabled, and for some reason this doesn't appear to be the default behavior.
-    // class RegisterState : public InstructionSemantics::BaseSemantics::RegisterStateGeneric {
-		
-    //     // static allocating constructors
-    //     static RegisterStatePtr instance(const SValuePtr &protoval, const RegisterDictionaryPtr &regDict) {
-    //         return RegisterStatePtr(new RegisterState(protoval, regDict));
-    //     }
+    // In order to perform a calling convention analysis simultaneously with the general static analysis, we need to ensure that `RegisterStateGeneric::updateReadProperties` is called when registers are read with side effects enabled, and similarly for `RegisterStateGeneric::updateWriteProperties`, and for some reason this doesn't appear to be the default behavior.
+    class RiscOperators : public PartialSymbolic::RiscOperators {
+        // Real Constructors //
+    public:
+        // C++11 syntax for inheriting all constructors:
+        using PartialSymbolic::RiscOperators::RiscOperators;
 
-    //     // virtual constructors
-    //     virtual InstructionSemantics::BaseSemantics::RegisterStatePtr create(const SValuePtr &protoval, const RegisterDictionaryPtr &regDict) const override {
-    //         return instance(protoval, regDict);
-    //     }
+        // Static Allocating Constructors //
+    public:
+        static Base::RiscOperatorsPtr instanceFromProtoval(const Base::SValuePtr &protoval, const SmtSolver::Ptr &solver = SmtSolverPtr()) {
+            return Ptr(new RiscOperators(protoval, solver));
+        }
+        static Base::RiscOperatorsPtr instanceFromState(const Base::State::Ptr &state, const SmtSolver::Ptr &solver = SmtSolverPtr()) {
+            return Ptr(new RiscOperators(state, solver));
+        }
 
-    //     virtual InstructionSemantics::BaseSemantics::RegisterStatePtr clone() const override {
-    //         return RegisterStatePtr(new RegisterState(*this));
-    //     }
+        // Virtual constructors
+    public:
+        virtual Base::RiscOperatorsPtr create(const Base::SValuePtr &protoval,
+                                              const SmtSolverPtr &solver = SmtSolverPtr()) const override {
+            return instanceFromProtoval(protoval, solver);
+        }
 
-    //     // This is the only part that's different than RegisterStateGeneric: update the read properties!
-    //     virtual SValuePtr readRegister(RegisterDescriptor desc, const SValuePtr &dflt, RiscOperators *risc) override {
-    //         RegisterStateGeneric::readRegister(desc, dflt, risc);
-    //         updateReadProperties(desc);
-    //     }
-    // };
+        virtual Base::RiscOperatorsPtr create(const Base::State::Ptr &state, const SmtSolverPtr &solver = SmtSolverPtr()) const override {
+            return instanceFromState(state, solver);
+        }
+
+        // transfer functions
+    public:
+        virtual Base::SValuePtr readRegister(RegisterDescriptor reg, const Base::SValuePtr &dflt) override {
+            Base::SValuePtr retval = PartialSymbolic::RiscOperators::readRegister(reg, dflt);
+            PartialSymbolic::RegisterState::promote(currentState()->registerState())->updateReadProperties(reg);
+            return retval;
+        }
+
+        virtual void writeRegister(RegisterDescriptor reg, const Base::SValuePtr &a) override {
+            PartialSymbolic::RiscOperators::writeRegister(reg, a);
+            PartialSymbolic::RegisterState::promote(currentState()->registerState())
+                ->updateWriteProperties(reg, InstructionSemantics::BaseSemantics::IO_WRITE);
+        }
+
+        virtual Base::SValuePtr fpFromInteger(const Base::SValuePtr &intValue, SgAsmFloatType *fpType) {
+            // TODO there are probably some situations where we could say that the value is preserved, but a floating point isn't going to be an object pointer anyway.
+            return undefined_(fpType->get_nBits());
+        }
+    };
 
     class StaticObjectTrace {
     public:
@@ -169,6 +192,16 @@ namespace Kreo {
                                       CallingConvention::Definition::x86_64bit_stdcall());
     }
 
+    // construct an empty/initial state.
+    // Note that we pass use this function to create the input both to the initial RiscOperators object and also to the initial state for the start vertex of the dataflow analysis. The state we pass to riscoperators actually doesn't matter, because the dataflow analysis resets it whenever necessary.
+    Base::State::Ptr stateFromRegisters(const RegisterDictionary::Ptr &regDict) {
+        Base::SValue::Ptr protoval = PartialSymbolic::SValue::instance();
+        Base::RegisterState::Ptr registers = PartialSymbolic::RegisterState::instance(protoval, regDict);
+        Base::MemoryState::Ptr memory = PartialSymbolic::MemoryState::instance(protoval, protoval);
+        memory->byteRestricted(false); // because extracting bytes from a word results in new variables for this domain
+        return PartialSymbolic::State::instance(registers, memory);
+    }
+
     class AnalyzeProcedureResult {
     public:
         AnalyzeProcedureResult() : success(false), traces(), isMethod(false) { }
@@ -191,6 +224,9 @@ namespace Kreo {
     AnalyzeProcedureResult analyzeProcedure(const P2::Partitioner &partitioner,
                                             const Disassembler::BasePtr &disassembler,
                                             const P2::Function::Ptr &proc) {
+        if (proc->isThunk()) { // usually dosen't call methods or anything
+            return AnalyzeProcedureResult();
+        }
         // some of this is modeled off of the dataflow analysis in Rose/BinaryAnalysis/CallingConvention.C
 
         const CallingConventionGuess cc = guessCallingConvention(disassembler);
@@ -246,8 +282,7 @@ namespace Kreo {
         ///// RUN DATAFLOW /////
 
         const RegisterDictionary::Ptr regDict = partitioner.instructionProvider().registerDictionary();
-        Base::SValue::Ptr protoval = PartialSymbolic::SValue::instance(); // TODO: is this correct? Wouldn't we actually want each register to be initialized to a newly constructed svalue so that the name counter increases?
-        Base::RiscOperatorsPtr riscOperators = PartialSymbolic::RiscOperators::instanceFromRegisters(regDict); // no solver
+        Base::RiscOperatorsPtr riscOperators = RiscOperators::instanceFromState(stateFromRegisters(regDict));
         Base::DispatcherPtr cpu = partitioner.newDispatcher(riscOperators);
         P2::DataFlow::TransferFunction transferFn(cpu);
         transferFn.defaultCallingConvention(cc.defaultCallingConvention);
@@ -255,13 +290,16 @@ namespace Kreo {
         P2::DataFlow::Engine dfEngine(dfCfg, transferFn, mergeFn);
         dfEngine.name("kreo-static-tracer");
 
+
         // dfEngine.reset(State::Ptr()); // TODO what does this do, and why is it CalingConvention.C?
-        Base::RegisterStatePtr initialRegState = PartialSymbolic::RegisterState::instance(protoval, regDict);
-        Base::MemoryStatePtr initialMemState = PartialSymbolic::MemoryState::instance(protoval, protoval);
-        initialMemState->byteRestricted(false);
-        Base::StatePtr initialState = PartialSymbolic::State::instance(initialRegState, initialMemState);
-        dfEngine.insertStartingVertex(startVertexId, initialState);
-        dfEngine.runToFixedPoint(); // should run one iteration per vertex, since no loops.
+        dfEngine.insertStartingVertex(startVertexId, stateFromRegisters(regDict));
+        try {
+            dfEngine.runToFixedPoint(); // should run one iteration per vertex, since no loops.
+        } catch (const Base::NotImplemented &e) {
+            // TODO: use mlog properly here and elsewhere
+            std::cerr << "Not implemented error!" << e.what() << std::endl;
+            return AnalyzeProcedureResult();
+        }
 
         ///// ANALYZE DATAFLOW RESULTS FOR STATIC TRACES /////
 
@@ -337,8 +375,7 @@ namespace Kreo {
 
         ///// ANALYZE DATAFLOW RESULTS FOR CALLING CONVENTION /////
         Base::State::Ptr returnState = dfEngine.getInitialState(returnVertex->id());
-        bool isMethod = (!proc->isThunk())
-            && Base::RegisterStateGeneric::promote(returnState->registerState())->hasPropertyAny(cc.thisArgumentRegister, InstructionSemantics::BaseSemantics::IO_READ_BEFORE_WRITE);
+        bool isMethod = Base::RegisterStateGeneric::promote(returnState->registerState())->hasPropertyAny(cc.thisArgumentRegister, InstructionSemantics::BaseSemantics::IO_READ_BEFORE_WRITE);
 
         // All done!
         return AnalyzeProcedureResult(traces, isMethod);
