@@ -1,13 +1,21 @@
 #include <rose.h>
 
 #include <Rose/BinaryAnalysis/InstructionSemantics/PartialSymbolicSemantics.h>
-#include <Rose/BinaryAnalysis/Partitioner2.h>
-#include <Rose/BinaryAnalysis/Disassembler.h>
+#include <Rose/BinaryAnalysis/Partitioner2/Partitioner.h>
+#include <Rose/BinaryAnalysis/Partitioner2/Function.h>
+#include <Rose/BinaryAnalysis/Partitioner2/DataFlow.h>
+#include <Rose/BinaryAnalysis/Partitioner2/Engine.h>
+#include <Rose/BinaryAnalysis/Disassembler/Base.h>
+#include <Rose/BinaryAnalysis/CallingConvention.h>
+
+#include <Rose/Diagnostics.h>
+#include <Sawyer/CommandLine.h>
 
 #include <vector>
 #include <deque>
 #include <unordered_map>
 #include <unordered_set>
+#include <iterator>
 #include <iostream>
 #include <cassert>
 
@@ -46,49 +54,58 @@ namespace Kreo {
     // TODO: How does MemoryCellMap merging differ when aliasing is turned on or off in the Merger object?
 
     typedef P2::DataFlow::DfCfg DfCfg;
-    typedef boost::shared_ptr<class RegisterState> RegisterStatePtr;
+
+    // TODO change these to be appropriate for static analysis
+    static const char purpose[] =
+        "Generates a list of function candidates for a given binary specimen.";
+    static const char description[] =
+        "This tool disassembles the specified file and generates prints a list of "
+        "function candidates to standard output. Functions are printed in decimal, "
+        "a single function per line. Pass in --partition-split-thunks if you want "
+        "the tool to list true functions and not thunk functions.";
 
     // See Rose issue #220
     // In order to perform a calling convention analysis simultaneously with the general static analysis, we need to ensure that `RegisterStateGeneric::updateReadProperties` is called when registers are read with side effects enabled, and for some reason this doesn't appear to be the default behavior.
-    class RegisterState : public InstructionSemantics::BaseSemantics::RegisterStateGeneric {
+    // class RegisterState : public InstructionSemantics::BaseSemantics::RegisterStateGeneric {
 		
-        // static allocating constructors
-        static RegisterStatePtr instance(const SValuePtr &protoval, const RegisterDictionaryPtr &regDict) {
-            return RegisterStatePtr(new RegisterState(protoval, regDict));
-        }
+    //     // static allocating constructors
+    //     static RegisterStatePtr instance(const SValuePtr &protoval, const RegisterDictionaryPtr &regDict) {
+    //         return RegisterStatePtr(new RegisterState(protoval, regDict));
+    //     }
 
-        // virtual constructors
-        virtual InstructionSemantics::BaseSemantics::RegisterStatePtr create(const SValuePtr &protoval, const RegisterDictionaryPtr &regDict) const override {
-            return instance(protoval, regDict);
-        }
+    //     // virtual constructors
+    //     virtual InstructionSemantics::BaseSemantics::RegisterStatePtr create(const SValuePtr &protoval, const RegisterDictionaryPtr &regDict) const override {
+    //         return instance(protoval, regDict);
+    //     }
 
-        virtual InstructionSemantics::BaseSemantics::RegisterStatePtr clone() const override {
-            return RegisterStatePtr(new RegisterState(*this));
-        }
+    //     virtual InstructionSemantics::BaseSemantics::RegisterStatePtr clone() const override {
+    //         return RegisterStatePtr(new RegisterState(*this));
+    //     }
 
-        // This is the only part that's different than RegisterStateGeneric: update the read properties!
-        virtual SValuePtr readRegister(RegisterDescriptor desc, const SValuePtr &dflt, RiscOperators *risc) override {
-            RegisterStateGeneric::readRegister(desc, dflt, risc);
-            updateReadProperties(desc);
-        }
-    };
+    //     // This is the only part that's different than RegisterStateGeneric: update the read properties!
+    //     virtual SValuePtr readRegister(RegisterDescriptor desc, const SValuePtr &dflt, RiscOperators *risc) override {
+    //         RegisterStateGeneric::readRegister(desc, dflt, risc);
+    //         updateReadProperties(desc);
+    //     }
+    // };
 
     class StaticObjectTrace {
     public:
-        SValue objPtr;
+        Base::SValue::Ptr objPtr;
         std::vector<P2::Function::Ptr> fns;
 
-        StaticObjectTrace(const SValue &objPtr) : objPtr(objPtr) { }
+        StaticObjectTrace(const Base::SValue::Ptr &objPtr) : objPtr(objPtr) { }
+    };
 
-        void operator<<(std::ostream &os) const {
-            for (auto fn : fns) {
+    std::ostream &operator<<(std::ostream &os, const StaticObjectTrace &trace) {
+            for (auto fn : trace.fns) {
                 if (!fn->name().empty()) {
                     os << fn->name() << " ";
                 }
                 os << fn->address() << std::endl;
             }
-        }
-    };
+            return os;
+    }
 
     // // we use T directly (no shared pointers or other indirection) because in practice we'll be
     // // storing addresses, which are cheap to copy.
@@ -99,7 +116,7 @@ namespace Kreo {
     // 	std::unordered_map<T, size_t> valueIndices;
     // public:
     // 	void merge(const T &a, const T &b) {
-    // 		std::assert(valueIndices.count(a) != 0 && valueIndices.count(b) != 0);
+    // 		assert(valueIndices.count(a) != 0 && valueIndices.count(b) != 0);
     // 		parents[valueIndices[b]] = valueIndices[a];
     // 	}
 
@@ -125,42 +142,53 @@ namespace Kreo {
     // 	}
     // };
 
+    class CallingConventionGuess {
+    public:
+        CallingConventionGuess(RegisterDescriptor thisArgumentRegister, CallingConvention::Definition::Ptr defaultCallingConvention)
+            : thisArgumentRegister(thisArgumentRegister), defaultCallingConvention(defaultCallingConvention) { }
+
+        RegisterDescriptor thisArgumentRegister; // register where `this` ptr will be passed to methods.
+        CallingConvention::Definition::Ptr defaultCallingConvention; // reasonable default calling convention for non-method procedure calls.
+    };
+
     // Returns either rdi or ecx appropriately. For now we're ignoring 32-bit stdcall, because
     // tracking stack arguments is extra complexity.
-    RegisterDescriptor firstArgumentRegister(const Disassembler::BasePtr &assembler) {
+    CallingConventionGuess guessCallingConvention(const Disassembler::BasePtr &disassembler) {
         std::string isaName = disassembler->name();
         if (isaName == "i386") {
-            return RegisterDictionary::instancePentium4()->findOrThrow("ecx");
+            return CallingConventionGuess(RegisterDictionary::instancePentium4()->findOrThrow("ecx"),
+                                          CallingConvention::Definition::x86_32bit_stdcall());
         }
-        if (isaName == "amd64") {
-            return RegisterDictionary::instanceAmd64()->findOrThrow("rdi");
-        }
-
-        assert(false); // unsupported architecture
+        assert(isaName == "amd64");
+        return CallingConventionGuess(RegisterDictionary::instanceAmd64()->findOrThrow("rdi"),
+                                      CallingConvention::Definition::x86_64bit_stdcall());
     }
 
     class AnalyzeProcedureResult {
     public:
+        AnalyzeProcedureResult() : success(false), traces(), isMethod(false) { }
         AnalyzeProcedureResult(std::vector<StaticObjectTrace> traces, bool isMethod)
-            : traces(traces), isMethod(isMethod) { }
-
-        // print all traces, with a blank line between each, and a blank line at the end.
-        void operator<<(const std::ostream &os) {
-            for (const StaticObjectTrace &trace : traces) {
-                os << trace << std::endl;
-            }
-        }
+            : traces(traces), isMethod(isMethod), success(true) { }
 
         std::vector<StaticObjectTrace> traces;
         bool isMethod; // whether the procedure analyzed appears to have the correct calling convention for a method.
+        bool success;
     };
+
+    // print all traces, with a blank line between each, and a blank line at the end.
+    std::ostream &operator<<(std::ostream &os, const AnalyzeProcedureResult &apr) {
+            for (const StaticObjectTrace &trace : apr.traces) {
+                os << trace << std::endl;
+            }
+            return os;
+    }
 
     AnalyzeProcedureResult analyzeProcedure(const P2::Partitioner &partitioner,
                                             const Disassembler::BasePtr &disassembler,
                                             const P2::Function::Ptr &proc) {
         // some of this is modeled off of the dataflow analysis in Rose/BinaryAnalysis/CallingConvention.C
 
-        const RegisterDescriptor firstArgRegister = firstArgumentRegister(disassembler);
+        const CallingConventionGuess cc = guessCallingConvention(disassembler);
         DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner.cfg(), partitioner.findPlaceholder(proc->address()));
 
         ///// PREPROCESS GRAPH /////
@@ -200,26 +228,25 @@ namespace Kreo {
 
         if (returnVertex == dfCfg.vertices().end()) {
             std::cerr << "WARNING: BFS did not reach return vertex!" << std::endl;
-            return; // conceptually could continue to at least output the static object traces, since we only need the return vertex to determine the calling convention, but this indicates that something funky's up with the procedure generally so let's abort.
+            return AnalyzeProcedureResult(); // conceptually could continue to at least output the static object traces, since we only need the return vertex to determine the calling convention, but this indicates that something funky's up with the procedure generally so let's abort.
         }
 
         ///// RUN DATAFLOW /////
 
-        // TODO: construct risc operators and so forth
-        const RegisterDictionary *regDict = partitioner.instructionProvider().registerDictionary();
-        Base::SValuePtr protoval = PartialSymbolic::SValue::instance(); // TODO: is this correct? Wouldn't we actually want each register to be initialized to a newly constructed svalue so that the name counter increases?
-        Base::RegisterStatePtr regState = PartialSymbolic::RegisterState::instance(protoval, regDict);
-        Base::MemoryStatePtr memState = PartialSymbolic::MemoryState::instance(protoval, protoval);
-        Base::StatePtr state = PartialSymbolic::State::instance(regState, memState);
-        Base::RiscOperatorsPtr riscOperators = PartialSymbolic::RiscOperators::instance(state, SmtSolver::Ptr()); // no solver
-        P2::DataFlow::TransferFunction transferFn(partitioner, cpu);
-        transferFn.defaultCallingConvention(TODO);
-        P2::DataFlow::MergeFunction merge(cpu);
+        const RegisterDictionary::Ptr regDict = partitioner.instructionProvider().registerDictionary();
+        Base::SValue::Ptr protoval = PartialSymbolic::SValue::instance(); // TODO: is this correct? Wouldn't we actually want each register to be initialized to a newly constructed svalue so that the name counter increases?
+        Base::RiscOperatorsPtr riscOperators = PartialSymbolic::RiscOperators::instanceFromRegisters(regDict); // no solver
+        Base::DispatcherPtr cpu = partitioner.newDispatcher(riscOperators);
+        P2::DataFlow::TransferFunction transferFn(cpu);
+        transferFn.defaultCallingConvention(cc.defaultCallingConvention);
+        P2::DataFlow::MergeFunction mergeFn(cpu);
         P2::DataFlow::Engine dfEngine(dfCfg, transferFn, mergeFn);
         dfEngine.name("kreo-static-tracer");
-        transferFn.dfEngineName = dfEngine.name();
 
         // dfEngine.reset(State::Ptr()); // TODO what does this do, and why is it CalingConvention.C?
+        Base::RegisterStatePtr initialRegState = PartialSymbolic::RegisterState::instance(protoval, regDict);
+        Base::MemoryStatePtr initialMemState = PartialSymbolic::MemoryState::instance(protoval, protoval);
+        Base::StatePtr initialState = PartialSymbolic::State::instance(initialRegState, initialMemState);
         dfEngine.insertStartingVertex(startVertexId, initialState);
         dfEngine.runToFixedPoint(); // should run one iteration per vertex, since no loops.
 
@@ -234,11 +261,16 @@ namespace Kreo {
         std::unordered_map<size_t, size_t> vertexNumIncomingEdges;
         std::vector<DfCfg::ConstVertexIterator> readyVertices; // vertices with zero incoming edges
         std::vector<DfCfg::ConstVertexIterator> topoSortedVertices;
-        for (const DfCfg::Vertex &vertex : dfCfg.vertices()) {
-            size_t numIncomingEdges = vertex.inEdges().size();
-            vertexNumIncomingEdges.insert(vertex.id(), numIncomingEdges);
+        for (DfCfg::ConstVertexIterator vertex = dfCfg.vertices().begin();
+             vertex != dfCfg.vertices().end();
+             vertex++) {
+            // inEdges underlying iterator is not random access, so we cannot use any .size()
+            auto inEdges = vertex->inEdges();
+            // std::distance doesn't seem to work here for some reason -- probably some disconnect between Boost iterators and std iterators
+            size_t numIncomingEdges = std::distance(inEdges.begin(), inEdges.end());
+            vertexNumIncomingEdges.emplace(vertex->id(), numIncomingEdges);
             if (numIncomingEdges == 0) {
-                readyVertices.push_back(vertex.id());
+                readyVertices.push_back(vertex);
             }
         }
         while (!readyVertices.empty()) {
@@ -264,21 +296,21 @@ namespace Kreo {
                 continue;
             }
 
-            State::Ptr incomingState = dfEngine.initialState(vertex->id());
+            Base::State::Ptr incomingState = dfEngine.getInitialState(vertex->id());
             // Probably don't need the following check, I'd imaginine there's some way to tell if the register is not fully stored from the peekRegister result?
-            if (!RegisterStateGenericPtr::promote(incomingState->registerState())->is_wholly_stored(firstArgRegister)) {
+            if (!PartialSymbolic::RegisterState::promote(incomingState->registerState())->is_wholly_stored(cc.thisArgumentRegister)) {
                 continue; // don't know the first argument at this vertex
             }
-            SValuePtr firstArg = incomingState->registerState()->peekRegister(
-                firstArgRegister,
-                SValue::undefined_(),
-                riscOperators // TODO
+            Base::SValue::Ptr firstArg = incomingState->registerState()->peekRegister(
+                cc.thisArgumentRegister,
+                riscOperators->undefined_(cc.thisArgumentRegister.nBits()),
+                riscOperators.get()
                 );
 
             // find correct trace to insert into
             StaticObjectTrace *matchingTrace = NULL;
             for (StaticObjectTrace &trace : traces) {
-                if (trace.objPtr.mustEqual(firstArg)) {
+                if (trace.objPtr->mustEqual(firstArg)) {
                     assert(matchingTrace == NULL);
                     matchingTrace = &trace; // I hope this is defined behavior?
                 }
@@ -291,9 +323,9 @@ namespace Kreo {
         }
 
         ///// ANALYZE DATAFLOW RESULTS FOR CALLING CONVENTION /////
-        StatePtr returnState = dfEngine.initialState(returnVertex);
+        Base::State::Ptr returnState = dfEngine.getInitialState(returnVertex->id());
         bool isMethod = (!proc->isThunk())
-            && returnState->registerState()->hasPropertyAny(firstArgumentRegister, InstructionSemantics::BaseSemantics::IO_READ_BEFORE_WRITE);
+            && Base::RegisterStateGeneric::promote(returnState->registerState())->hasPropertyAny(cc.thisArgumentRegister, InstructionSemantics::BaseSemantics::IO_READ_BEFORE_WRITE);
 
         // All done!
         return AnalyzeProcedureResult(traces, isMethod);
@@ -305,13 +337,13 @@ int main(int argc, char *argv[]) {
 
     auto engine = P2::Engine::instance();
     // disable cheating. If someone was really using this to reverse engineer a program, they might want to at least enable export functions (I've seen a stripped windows executable that still exported a few functions for some reason).
-    engine.settings().partitioner.findingImportFunctions = false;
-    engine.settings().partitioner.findingExportFunctions = false;
-    engine.settings().partitioner.findingSymbolFunctions = false;
+    engine->settings().partitioner.findingImportFunctions = false;
+    engine->settings().partitioner.findingExportFunctions = false;
+    engine->settings().partitioner.findingSymbolFunctions = false;
 
-    std::vector<std::string> specimen = engine->parseCommandLine(argc, argv, purpose, description).unreachedArgs();
+    std::vector<std::string> specimen = engine->parseCommandLine(argc, argv, Kreo::purpose, Kreo::description).unreachedArgs();
     if (specimen.empty()) {
-        mlog[FATAL] << "no binary specimen specified; see --help\n";
+        Sawyer::Message::mlog[Sawyer::Message::FATAL] << "no binary specimen specified; see --help\n";
         exit(EXIT_FAILURE);
     }
 
