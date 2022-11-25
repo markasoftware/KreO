@@ -99,10 +99,15 @@ namespace Kreo {
 
     std::ostream &operator<<(std::ostream &os, const StaticObjectTrace &trace) {
             for (auto fn : trace.fns) {
-                if (!fn->name().empty()) {
-                    os << fn->name() << " ";
+                if (fn) {
+                    if (!fn->name().empty()) {
+                        os << fn->name() << " ";
+                    }
+                    os << fn->address() << std::endl;
+                } else {
+                    // TODO: figure out why this function might be null.
+                    os << "(unknown)" << std::endl;
                 }
-                os << fn->address() << std::endl;
             }
             return os;
     }
@@ -190,6 +195,10 @@ namespace Kreo {
 
         const CallingConventionGuess cc = guessCallingConvention(disassembler);
         DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner.cfg(), partitioner.findPlaceholder(proc->address()));
+        // uncomment to see the DfCfg graphs:
+        // std::cout << std::endl;
+        // dumpDfCfg(std::cout, dfCfg);
+        // std::cout << std::endl;
 
         ///// PREPROCESS GRAPH /////
 
@@ -208,12 +217,15 @@ namespace Kreo {
             if (exploredVertexIds.count(curVertex->id()) != 0) {
                 continue;
             }
+            exploredVertexIds.insert(curVertex->id());
 
             DfCfg::EdgeIterator edgeIt = curVertex->outEdges().begin();
             while (edgeIt != curVertex->outEdges().end()) {
                 // save the edge iterator because you can't increment an edge after erasing it.
                 DfCfg::EdgeIterator savedEdgeIt = edgeIt;
                 edgeIt++;
+                vertexQueue.push_back(savedEdgeIt->target());
+
                 // remove back edges, to eliminate loops
                 if (exploredVertexIds.count(savedEdgeIt->target()->id()) != 0) {
                     dfCfg.eraseEdge(savedEdgeIt);
@@ -246,6 +258,7 @@ namespace Kreo {
         // dfEngine.reset(State::Ptr()); // TODO what does this do, and why is it CalingConvention.C?
         Base::RegisterStatePtr initialRegState = PartialSymbolic::RegisterState::instance(protoval, regDict);
         Base::MemoryStatePtr initialMemState = PartialSymbolic::MemoryState::instance(protoval, protoval);
+        initialMemState->byteRestricted(false);
         Base::StatePtr initialState = PartialSymbolic::State::instance(initialRegState, initialMemState);
         dfEngine.insertStartingVertex(startVertexId, initialState);
         dfEngine.runToFixedPoint(); // should run one iteration per vertex, since no loops.
@@ -365,6 +378,7 @@ int main(int argc, char *argv[]) {
 
         if (analysisResult.isMethod) {
             // TODO: output method list and static object traces to different files.
+            std::cerr << "Is method!" << std::endl;
         }
     }
 }
