@@ -17,6 +17,8 @@ if not 'methodCandidatesPath' in config:
     config['methodCandidatesPath'] = join(scriptpath, 'out/method-candidates')
 if not 'gtMethodsPath' in config:
     config['gtMethodsPath'] = join(scriptpath, 'out/gt-methods')
+if not 'gtMethodsInstrumentedPath' in config:
+    config['gtMethodsInstrumentedPath'] = join(scriptpath, 'out/gt-methods-instrumented')
 if not 'objectTracesPath' in config:
     config['objectTracesPath'] = join(scriptpath, 'out/object-traces')
 if not 'resultsPath' in config:

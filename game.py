@@ -26,4 +26,11 @@ elif sys.platform == 'win32':
 else:
     raise Exception('Unsupported operating system: "' + sys.platform + '".')
 
-os.execvp(pin_executable_path, [pin_executable_path, '-t', pintool_shared_object, '--', config['binaryPath']])
+os.execvp(pin_executable_path,
+    [pin_executable_path,
+     '-t', pintool_shared_object,
+     '-method-candidates', config['methodCandidatesPath'],
+     '-gt-methods', config['gtMethodsPath'],
+     '-gt-methods-instrumented', config['gtMethodsInstrumentedPath'],
+     '-object-traces', config['objectTracesPath'],
+     '--', config['binaryPath']])
