@@ -11,6 +11,10 @@
 
 #include "pin.H"
 
+// #define LOG_INFO
+// #define LOG_WARN
+// #define LOG_ERROR
+
 using namespace std;
 
 // HACK: on Windows, Pintool uses STLP, which puts lots of the C++11 standard
@@ -37,7 +41,6 @@ using namespace std::tr1;
 #define DELETE_OPERATOR_SIZE "??3@YAXPAXI@Z"
 #define DELETE_OPERATOR "??3@YAXPAX@Z"
 vector<string> deleteOperators;
-// custom structures
 
 // ============================================================================
 /// @brief An entry in an object trace.
@@ -59,6 +62,11 @@ class ObjectTraceEntry {
   friend bool operator==(const ObjectTraceEntry& e1,
                          const ObjectTraceEntry& e2) {
     return e1.procedure == e2.procedure && e1.isCall == e2.isCall;
+  }
+
+  friend ostream& operator<<(ostream& os, const ObjectTraceEntry& o) {
+    os << "{" << o.procedure << ", " << o.isCall << "}";
+    return os;
   }
 };
 
@@ -112,7 +120,6 @@ void GtMethodCallback(ADDRINT methodAddr) {
 // Ground truth method candidates, populated from ground truth method
 // candidates. Only used during evaluation and not used by KreO itself, just
 // used to measure method coverage.
-// TODO move method coverage to separate pintool independent of KreO.
 unordered_set<ADDRINT> gtMethodAddrs;
 
 // TODO: potential optimization: Don't store finishedObjectTraces separately
@@ -175,63 +182,58 @@ void ParsePregame() {
 }
 
 // ============================================================================
+void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
+  if (it->second->empty()) {
+    // Don't insert empty object trace
+    delete it->second;
+    it->second = nullptr;
+  } else {
+    const auto& finishedObjectTracesIt =
+        find_if(finishedObjectTraces.begin(),
+                finishedObjectTraces.end(),
+                [it](const vector<ObjectTraceEntry>* objectTrace) {
+                  return *objectTrace == *it->second;
+                });
+    if (finishedObjectTracesIt == finishedObjectTraces.end()) {
+      if (it->second->size() == 1) {
+        cerr << "attempting to add object-trace with size 1 "
+             << it->second->at(0) << endl;
+        assert(false);
+      }
+
+      finishedObjectTraces.push_back(it->second);
+    } else {
+      // Don't insert duplicate object trace
+      delete it->second;
+      it->second = nullptr;
+    }
+  }
+}
+
+// ============================================================================
+/// @brief Ends object trace with object pointer address of objPtr.
 void EndObjectTrace(ADDRINT objPtr) {
   auto it = activeObjectTraces.find(objPtr);
   if (it != activeObjectTraces.end()) {
-    if (it->second->empty()) {
-      // Don't insert empty object trace
-      delete it->second;
-      it->second = nullptr;
-    } else {
-      const auto& finishedObjectTracesIt =
-          find_if(finishedObjectTraces.begin(),
-                  finishedObjectTraces.end(),
-                  [it](const vector<ObjectTraceEntry>* objectTrace) {
-                    return *objectTrace == *it->second;
-                  });
-      if (finishedObjectTracesIt == finishedObjectTraces.end()) {
-        finishedObjectTraces.push_back(it->second);
-      } else {
-        // Don't insert duplicate object trace
-        delete it->second;
-        it->second = nullptr;
-      }
-    }
+    EndObjectTraceIt(it);
     activeObjectTraces.erase(it);
   }
 }
 
-/// @brief Ends any object traces whose object pointers reside within the given
-/// region, that is, within the set of values [regionStart, regionEnd).
+// ============================================================================
+/// @brief Ends any object traces whose object pointers reside within the
+/// given region, that is, within the set of values [regionStart, regionEnd).
 void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
   // lower_bound means that the argument is the lower bound and that the
   // returned iterator points to an element greater than or equal to the
-  // argument. And, as you'd expect, upper_bound points /after/ the position you
-  // really want, to make it easy to use in the end condition of a loop..
+  // argument. And, as you'd expect, upper_bound points /after/ the position
+  // you really want, to make it easy to use in the end condition of a loop..
 
   auto firstTrace = activeObjectTraces.lower_bound(regionStart);
   auto lastTrace = activeObjectTraces.end();
   auto it = firstTrace;
   for (; it != lastTrace && it->first < regionEnd; it++) {
-    if (it->second->empty()) {
-      // Don't insert empty object trace
-      delete it->second;
-      it->second = nullptr;
-    } else {
-      const auto& finishedObjectTracesIt =
-          find_if(finishedObjectTraces.begin(),
-                  finishedObjectTraces.end(),
-                  [it](const vector<ObjectTraceEntry>* objectTrace) {
-                    return *objectTrace == *it->second;
-                  });
-      if (finishedObjectTracesIt == finishedObjectTraces.end()) {
-        finishedObjectTraces.push_back(it->second);
-      } else {
-        // Don't insert duplicate object trace
-        delete it->second;
-        it->second = nullptr;
-      }
-    }
+    EndObjectTraceIt(it);
   }
   activeObjectTraces.erase(firstTrace, it);
 }
@@ -252,60 +254,73 @@ void MallocBeforeCallback(ADDRINT size) { mallocSize = size; }
 void MallocAfterCallback(ADDRINT regionStart) {
 #ifndef SUPPRESS_MALLOC_ERRORS
   if (heapAllocations.find(regionStart) != heapAllocations.end()) {
-    //   LOG("PINTOOL WARNING: Malloc'ing a pointer that was already malloc'ed!
-    //   "
-    //       "Maybe too many malloc procedures specified?\n");
+    LOG("WARNING: Malloc'ing a pointer that was already malloc'ed!"
+        "Maybe too many malloc procedures specified?\n");
     // TODO: could debug even further by searching for if the pointer lies
     // within an allocated region.
   }
 #endif
 
-  // stringstream ss;
-  // ss << "Malloc @ " << hex << regionStart << " (" << dec << mallocSize
-  //    << " bytes)" << endl;
-  // LOG(ss.str());
+#ifdef LOG_INFO
+  stringstream ss;
+  ss << "Malloc @ " << regionStart << " (" << dec << mallocSize << " bytes)"
+     << endl;
+  LOG(ss.str());
+#endif
+
   heapAllocations[regionStart] = regionStart + mallocSize;
 }
 
 void FreeCallback(ADDRINT freedRegionStart) {
-  // stringstream ss;
-  // ss << "Free @ " << hex << freedRegionStart << endl;
-  // LOG(ss.str());
+#ifdef LOG_INFO
+  stringstream ss;
+  ss << "Free @ " << freedRegionStart << endl;
+  LOG(ss.str());
+#endif
 
   if (freedRegionStart == 0) {
+#ifdef LOG_WARN
     // for whatever reason, real programs seem to be doing this??
-    // LOG("WARNING: Freed nullptr?");
+    LOG("WARNING: Freed nullptr?");
+#endif
     return;
   }
 
   auto freedRegionIt = heapAllocations.find(freedRegionStart);
 
-  if (freedRegionIt == heapAllocations.end()) {
 #ifndef SUPPRESS_MALLOC_ERRORS
-    // LOG("WARNING: Invalid pointer freed! Check the program-under-test.\n");
+  if (freedRegionIt == heapAllocations.end()) {
+    LOG("WARNING: Invalid pointer freed! Check the program-under-test.\n");
     return;
-#endif
   }
+#endif
 
   ADDRINT freedRegionEnd = freedRegionIt->second;
   EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
   heapAllocations.erase(freedRegionIt);
 }
 
-ADDRINT objectBeingDeleted{};
 void OnDeleteInstrumented(ADDRINT deletedObject) {
-  objectBeingDeleted = deletedObject;
+#ifdef LOG_INFO
+  stringstream ss;
+  ss << "Delete @ " << deletedObject << endl;
+  LOG(ss.str());
+#endif
+
+  // Delete called, to verify delete is valid search for it in heapAllocations
+  auto freedRegionIt = heapAllocations.find(deletedObject);
+  if (freedRegionIt == heapAllocations.end()) {
+#ifdef LOG_WARN
+    LOG("Attempting to delete ptr that is not in heap allocated region\n");
+#endif
+    return;
+  }
+
+  EndObjectTrace(deletedObject);
+  heapAllocations.erase(freedRegionIt);
 }
 
-void OnDeleteInstrumentationComplete() {
-  // TODO close trace that is being deleted. This isn't super necessary at the
-  // moment since the trace should be closed when free is called, but it might
-  // improve in case free isn't called directly after object destructor called.
-  if (objectBeingDeleted != 0xffff'ffff) {
-    // EndObjectTrace(objectBeingDeleted);
-    objectBeingDeleted = 0xffff'ffff;
-  }
-}
+void OnDeleteInstrumentationComplete() {}
 
 // ============================================================================
 //                          Stack Pointer Observers
@@ -336,9 +351,11 @@ void CallCallback(ADDRINT retAddr) { lastRetAddr = retAddr; }
 /// traces. Also removes the trace if the trace is empty after blacklisted
 /// procedures are removed from it.
 void RemoveBlacklistedMethods() {
+  int i{0};
   for (auto traceIt = finishedObjectTraces.begin();
        traceIt != finishedObjectTraces.end();) {
     vector<ObjectTraceEntry>* trace = *traceIt;
+    assert(trace != nullptr);
 
     for (auto entryIt = trace->begin(); entryIt != trace->end();) {
       if (blacklistedProcedures.count(entryIt->procedure)) {
@@ -349,7 +366,7 @@ void RemoveBlacklistedMethods() {
     }
 
     if (trace->empty()) {
-      finishedObjectTraces.erase(traceIt++);
+      traceIt = finishedObjectTraces.erase(traceIt);
       delete trace;
     } else {
       traceIt++;
@@ -391,7 +408,6 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
   // memory region OR in an explicitly mallocated heap zone.
 
   if (ptr >= stackPtr && ptr <= stackBase) {
-    // LOG("in stack\n");
     return true;
   }
 
@@ -400,9 +416,6 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
   if (it != heapAllocations.begin()) {
     it--;
     if (stackPtr < it->second) {
-      // LOG("in heap allocated region " + std::to_string(ptr) + ", " +
-      //     std::to_string(it->first) + ", " + std::to_string(it->second) +
-      //     "\n");
       return true;
     }
   }
@@ -422,6 +435,13 @@ static void InsertObjectTraceEntry(ADDRINT objPtr,
     activeObjectTraces[objPtr] = new vector<ObjectTraceEntry>();
     objectTraceIt = activeObjectTraces.find(objPtr);
   }
+
+#ifdef LOG_INFO
+  stringstream ss;
+  ss << (entry.isCall ? "C" : "R") << " objPtr " << objPtr << " procAddr "
+     << entry.procedure << endl;
+  LOG(ss.str());
+#endif
 
   objectTraceIt->second->push_back(entry);
 }
@@ -500,25 +520,14 @@ static void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
   //   return;
   // }
 
-  // stringstream ss;
-  // ss << "Method called on possible objPtr: " << hex << objPtr
-  //    << " with procAddr " << procAddr << " and stack ptr " << stackPtr;
-  // if (procedureSymbolNames.count(procAddr)) {
-  //   ss << " : " << procedureSymbolNames[procAddr];
-  // }
-  // ss << endl;
-  // LOG(ss.str());
-
   // Method blacklisted, don't add to trace
   if (blacklistedProcedures.find(procAddr) != blacklistedProcedures.end()) {
-    // LOG("blacklisted, not adding\n");
     return;
   }
 
   // Object pointer invalid, not possible method candidate
   if (!IsPossibleObjPtr(objPtr, stackPtr)) {
     blacklistedProcedures.insert(procAddr);
-    // LOG("not a method\n");
     return;
   }
 
@@ -534,11 +543,12 @@ static void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
   // should always appear just after a `call` (or should it?)
   if (lastRetAddr == static_cast<ADDRINT>(-1)) {
     // return address invalid, don't add procedure to shadow stack
-    // stringstream ss;
-    // ss << "WARNING: Method executed without call! Likely not a method. At  0x
-    // "
-    //    << hex << procAddr << endl;
-    // LOG(ss.str());
+#ifdef LOG_WARN
+    stringstream ss;
+    ss << "Method executed without call! Likely not a method. procAddr "
+       << procAddr << endl;
+    LOG(ss.str());
+#endif
   } else {
     shadowStack.push_back(ShadowStackEntry(objPtr, lastRetAddr, procAddr));
     stackEntryCount[lastRetAddr]++;
@@ -566,19 +576,15 @@ static void RetCallback(ADDRINT returnAddr) {
   if (!IgnoreReturn(returnAddr)) {
     ShadowStackEntry stackTop = ShadowStackRemoveAndReturnTop();
 
-    // The object trace shouldn't start with a return, so log a warning if this
-    // is the case. Potentially do more in the future.
-    auto objectTraceIt = activeObjectTraces.find(stackTop.objPtr);
-    if (objectTraceIt == activeObjectTraces.end()) {
-      // stringstream ss;
-      // ss << "WARNING: Return being inserted into a brand new trace??? " <<
-      // hex
-      //    << stackTop.objPtr << endl;
-      // LOG(ss.str());
+    // If the first element in the object trace is a returned value, the
+    // function is likely a scalar/vector deleting destructor that is not
+    // actually a method of the class. Blacklist the method.
+    if (activeObjectTraces.find(stackTop.objPtr) == activeObjectTraces.end()) {
+      blacklistedProcedures.insert(stackTop.procedure);
+    } else {
+      InsertObjectTraceEntry(stackTop.objPtr,
+                             ObjectTraceEntry(stackTop.procedure, false));
     }
-
-    InsertObjectTraceEntry(stackTop.objPtr,
-                           ObjectTraceEntry(stackTop.procedure, false));
   }
 }
 
@@ -792,19 +798,27 @@ void InstrumentImage(IMG img, void*) {
   // Insert malloc/free discovered by name into routine list
 
   if (RTN_Valid(discoveredMalloc)) {
-    // LOG("Found malloc procedure by symbol in img " + IMG_Name(img) + "\n");
+#ifdef LOG_INFO
+    LOG("Found malloc procedure by symbol in img " + IMG_Name(img) + "\n");
+#endif
     mallocRtns.push_back(discoveredMalloc);
   } else {
-    // LOG("Failed to find malloc procedure by symbol in img " + IMG_Name(img) +
-    //     "\n");
+#ifdef LOG_INFO
+    LOG("Failed to find malloc procedure by symbol in img " + IMG_Name(img) +
+        "\n");
+#endif
   }
 
   if (RTN_Valid(discoveredFree)) {
-    // LOG("Found free procedure by symbol in img " + IMG_Name(img) + "\n");
+#ifdef LOG_INFO
+    LOG("Found free procedure by symbol in img " + IMG_Name(img) + "\n");
+#endif
     freeRtns.push_back(discoveredFree);
   } else {
-    // LOG("Failed to find free procedure by symbol in img " + IMG_Name(img) +
-    //     "\n");
+#ifdef LOG_INFO
+    LOG("Failed to find free procedure by symbol in img " + IMG_Name(img) +
+        "\n");
+#endif
   }
 
   for (RTN mallocRtn : mallocRtns) {
@@ -853,12 +867,14 @@ void Fini(INT32 code, void*) {
     EndObjectTracesInRegion(0, lastObjectTraceIt->first);
   }
 
-  cout << "Finished all object traces" << endl;
+  cout << "Finished all object traces. Removing blacklisted methods..." << endl;
 
   RemoveBlacklistedMethods();
 
-  cout << dec << "found " << finishedObjectTraces.size()
-       << " valid unique object traces" << endl;
+  cout << dec << "Blacklisted methods removed, found "
+       << finishedObjectTraces.size()
+       << " valid unique object traces. Writing object traces to a file..."
+       << endl;
 
   string objectTracesPathStr = objectTracesPath.Value().c_str();
 
