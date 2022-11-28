@@ -24,6 +24,10 @@ namespace P2 = Rose::BinaryAnalysis::Partitioner2;
 namespace Base = Rose::BinaryAnalysis::InstructionSemantics::BaseSemantics;
 namespace PartialSymbolic = Rose::BinaryAnalysis::InstructionSemantics::PartialSymbolicSemantics;
 
+using Sawyer::CommandLine::booleanParser;
+using Sawyer::CommandLine::anyParser;
+using Sawyer::CommandLine::Switch;
+
 /**
  * We build on top of Rose's built-in "Partial Symbolic Semantics" engine, which is able to perform
  * constant propagation and reason about offsets from abstract "terminal" locations (formed when
@@ -63,6 +67,17 @@ namespace Kreo {
         "function candidates to standard output. Functions are printed in decimal, "
         "a single function per line. Pass in --partition-split-thunks if you want "
         "the tool to list true functions and not thunk functions.";
+
+    class Settings {
+    public:
+        bool enableAliasAnalysis;
+        bool enableCallingConventionAnalysis;
+        bool enableSymbolProcedureDetection;
+        std::string methodCandidatesPath;
+        std::string staticTracesPath;
+    };
+
+    Settings settings;
 
     // See Rose issue #220
     // In order to perform a calling convention analysis simultaneously with the general static analysis, we need to ensure that `RegisterStateGeneric::updateReadProperties` is called when registers are read with side effects enabled, and similarly for `RegisterStateGeneric::updateWriteProperties`, and for some reason this doesn't appear to be the default behavior.
@@ -373,6 +388,8 @@ namespace Kreo {
             matchingTrace->fns.push_back(vertex->value().callee());
         }
 
+        // TODO: also make a trace for everything equal to the first argument register at the start of the procedure body!
+
         ///// ANALYZE DATAFLOW RESULTS FOR CALLING CONVENTION /////
         Base::State::Ptr returnState = dfEngine.getInitialState(returnVertex->id());
         bool isMethod = Base::RegisterStateGeneric::promote(returnState->registerState())->hasPropertyAny(cc.thisArgumentRegister, InstructionSemantics::BaseSemantics::IO_READ_BEFORE_WRITE);
@@ -385,19 +402,53 @@ namespace Kreo {
 int main(int argc, char *argv[]) {
     ROSE_INITIALIZE;
 
-    auto engine = P2::Engine::instance();
-    // disable cheating. If someone was really using this to reverse engineer a program, they might want to at least enable export functions (I've seen a stripped windows executable that still exported a few functions for some reason).
-    engine->settings().partitioner.findingImportFunctions = false;
-    engine->settings().partitioner.findingExportFunctions = false;
-    engine->settings().partitioner.findingSymbolFunctions = false;
+    //// COMMAND-LINE PARSING ////
 
-    std::vector<std::string> specimen = engine->parseCommandLine(argc, argv, Kreo::purpose, Kreo::description).unreachedArgs();
+    Sawyer::CommandLine::SwitchGroup kreoSwitchGroup("Kreo Pregame Options");
+    kreoSwitchGroup.insert(Switch("enable-alias-analysis")
+                           .argument("enable", booleanParser(Kreo::settings.enableAliasAnalysis), "true")
+                           .doc("Whether to output static traces."));
+    kreoSwitchGroup.insert(Switch("enable-calling-convention-analysis")
+                           .argument("enable", booleanParser(Kreo::settings.enableCallingConventionAnalysis), "true")
+                           .doc("Whether to try and determine which procedures actually use the \"this\" argument register, to narrow down the method candidate list."));
+    kreoSwitchGroup.insert(Switch("enable-symbol-procedure-detection")
+                           .argument("enable", booleanParser(Kreo::settings.enableSymbolProcedureDetection), "false")
+                           .doc("Whether to \"cheat\" and use debug information/symbols to help detect the procedure list. Desirable if using Kreo in the real world, undesirable when evaluating Kreo's performance on un-stripped binaries."));
+    kreoSwitchGroup.insert(Switch("method-candidates-path")
+                           .argument("path", anyParser(Kreo::settings.methodCandidatesPath)));
+    kreoSwitchGroup.insert(Switch("static-traces-path")
+                           .argument("path", anyParser(Kreo::settings.staticTracesPath)));
+
+    auto engine = P2::Engine::instance();
+    Sawyer::CommandLine::Parser cmdParser = engine->commandLineParser(Kreo::purpose, Kreo::description);
+    cmdParser.with(kreoSwitchGroup);
+    Sawyer::CommandLine::ParserResult parserResult = cmdParser.parse(argc, argv);
+    parserResult.apply(); // loads command-line options from the kreoSwitchGroup into the global `settings` object. Also does whatever the `engine` expects to parse its own command-line options.
+
+    if (Kreo::settings.methodCandidatesPath.empty()) {
+        Sawyer::Message::mlog[Sawyer::Message::FATAL] << "No method candidate path specified; see --help" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (Kreo::settings.staticTracesPath.empty()) {
+        Sawyer::Message::mlog[Sawyer::Message::FATAL] << "No static traces path specified; see --help" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    std::vector<std::string> specimen = parserResult.unreachedArgs();
+
     if (specimen.empty()) {
         Sawyer::Message::mlog[Sawyer::Message::FATAL] << "no binary specimen specified; see --help\n";
         exit(EXIT_FAILURE);
     }
 
+    //// PERFORM ANALYSIS ////
+
+
+    engine->settings().partitioner.findingImportFunctions = false; // this is just stuff from other files, right?
+    engine->settings().partitioner.findingExportFunctions = Kreo::settings.enableSymbolProcedureDetection;
+    engine->settings().partitioner.findingSymbolFunctions = Kreo::settings.enableSymbolProcedureDetection;
     P2::Partitioner partitioner = engine->partition(specimen); // Create and run partitioner
+
     engine->runPartitionerFinal(partitioner);
 
     Disassembler::BasePtr disassembler = engine->obtainDisassembler();
@@ -405,17 +456,31 @@ int main(int argc, char *argv[]) {
     // TODO: change?
     const size_t kMinAddress = 0x400000;
 
+    std::ofstream methodCandidatesStream(Kreo::settings.methodCandidatesPath);
+
+    std::ofstream staticTracesStream;
+    if (Kreo::settings.enableAliasAnalysis) {
+        staticTracesStream = std::ofstream(Kreo::settings.staticTracesPath, std::ios_base::out | std::ios_base::binary);
+    }
+
     for (const P2::Function::Ptr &proc : partitioner.functions()) {
-        auto analysisResult = Kreo::analyzeProcedure(partitioner, disassembler, proc);
+        bool isMethod = true;
+
+        if (Kreo::settings.enableAliasAnalysis) {
+            auto analysisResult = Kreo::analyzeProcedure(partitioner, disassembler, proc);
+            staticTracesStream << "# Analysis from procedure " << proc->name() << " @ " << proc->address()
+                               << " (" << analysisResult.traces.size() << " many traces):" << std::endl
+                               << analysisResult;
+
+            isMethod = analysisResult.isMethod;
+        }
         const size_t relativeProcAddr = proc->address() - kMinAddress;
 
-        std::cout << "# Analysis from procedure " << proc->name() << " @ " << proc->address()
-                  << " (" << analysisResult.traces.size() << " many traces):" << std::endl
-                  << analysisResult;
-
-        if (analysisResult.isMethod) {
-            // TODO: output method list and static object traces to different files.
-            std::cerr << "Is method!" << std::endl;
+        if (isMethod) {
+            if (!proc->name().empty()) {
+                methodCandidatesStream << proc->name() << " ";
+            }
+            methodCandidatesStream << relativeProcAddr << std::endl;
         }
     }
 }
