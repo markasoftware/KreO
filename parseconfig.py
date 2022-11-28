@@ -13,12 +13,20 @@ scriptpath = pathlib.Path(__file__).parent.absolute()
 config = json5.load(open(sys.argv[1]))
 if not 'cfgMode' in config:
     config['cfgMode'] = 'fast'
+if not 'enableAliasAnalysis' in config:
+    config['enableAliasAnalysis'] = True
+if not 'enableCallingConventionAnalysis' in config:
+    config['enableCallingConventionAnalysis'] = True
+if not 'enableSymbolProcedureDetection' in config:
+    config['enableSymbolProcedureDetection'] = False
 if not 'methodCandidatesPath' in config:
     config['methodCandidatesPath'] = join(scriptpath, 'out/method-candidates')
 if not 'gtMethodsPath' in config:
     config['gtMethodsPath'] = join(scriptpath, 'out/gt-methods')
 if not 'gtMethodsInstrumentedPath' in config:
     config['gtMethodsInstrumentedPath'] = join(scriptpath, 'out/gt-methods-instrumented')
+if not 'staticTracesPath' in config:
+    config['staticTracesPath'] = join(scriptpath, 'out/static-traces')
 if not 'objectTracesPath' in config:
     config['objectTracesPath'] = join(scriptpath, 'out/object-traces')
 if not 'resultsPath' in config:

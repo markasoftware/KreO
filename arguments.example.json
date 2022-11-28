@@ -1,7 +1,7 @@
 // Config file is in JSON5 format, supporting comments and hex numbers.
 {
     "binaryPath": "/path/to/your-executable",
-    "isa": "x86-64", // should be x86 or x86-64
+    "isa": "x86-64", // Must be x86 or x86-64. Must agree with the executable being analyzed.
 
     // We try to automatically detect memory allocation and deallocation procedures, but often fail. Use the following config options to specify manually. `new` and `delete` are the most important.
     // All addresses are relative to the image base offset!
@@ -17,6 +17,7 @@
 
     // "methodCandidatesPath": "method-candidates",
     // "objectTracesPath": "object-traces",
+    // "staticTracesPath": "static-traces",
     // "resultsPath": "results.json",
     // "resultsIndent": 4, // for pretty-printing final output json. Set to 0 for maximum compaction
     // TODO: maybe allow a "base folder" that all the other paths are inside of, to help separate executables?
