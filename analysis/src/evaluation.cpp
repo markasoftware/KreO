@@ -109,19 +109,19 @@ int main(int argc, char *argv[]) {
         float f_score =
             ComputeF1(precision_recall.first, precision_recall.second);
 
-        std::cout << std::setprecision(2) << name << " & "
-                  << precision_recall.first << " & " << precision_recall.second
-                  << " & " << f_score << std::endl;
+        std::cout << std::setprecision(2) << name << "&"
+                  << precision_recall.first << "&" << precision_recall.second
+                  << "&" << f_score << std::endl;
       };
 
   std::cout << "evaluation criteria\tprecision\trecall\tf-score" << std::endl;
-  run_test("methods_assigned_to_correct_class",
+  run_test("Methods Assigned to Correct Class",
            PrecisionAndRecallMethodsAssignedCorrectClass);
-  run_test("individual_classes", PrecisionAndRecallClasses);
-  run_test("constructors", PrecisionAndRecallConstructors);
-  run_test("destructors", PrecisionAndRecallDestructors);
-  run_test("methods", PrecisionAndRecallMethods);
-  run_test("inheritance_relationships",
+  run_test("Individual Classes", PrecisionAndRecallClasses);
+  run_test("Constructors", PrecisionAndRecallConstructors);
+  run_test("Destructors", PrecisionAndRecallDestructors);
+  run_test("Methods", PrecisionAndRecallMethods);
+  run_test("Class Graphs",
            PrecisionAndRecallParentChildRelationships);
 }
 
@@ -259,9 +259,9 @@ static std::pair<float, float> PrecisionAndRecallClasses(
   int32_t false_positives =
       FalsePositives(generated_data_excluding_empty_cls, true_positives);
 
-  std::cout << "ground truth classes: "
+  std::cerr << "ground truth classes: "
             << ground_truth_excluding_empty_cls.size() << std::endl;
-  std::cout << "generated classes: "
+  std::cerr << "generated classes: "
             << generated_data_excluding_empty_cls.size() << std::endl;
 
   return std::pair(ComputePrecision(true_positives, false_positives),
@@ -301,9 +301,9 @@ static std::pair<float, float> PrecisionAndRecallMethods(
   int32_t false_positives =
       FalsePositives(generated_data_methods, true_positives);
 
-  std::cout << "ground truth methods: " << ground_truth_methods.size()
+  std::cerr << "ground truth methods: " << ground_truth_methods.size()
             << std::endl;
-  std::cout << "generated methods: " << generated_data_methods.size()
+  std::cerr << "generated methods: " << generated_data_methods.size()
             << std::endl;
 
   return std::pair(ComputePrecision(true_positives, false_positives),
@@ -341,9 +341,9 @@ static std::pair<float, float> PrecisionAndRecallSpecificType(
   int32_t false_negatives = FalseNegatives(ground_truth_type, true_positives);
   int32_t false_positives = FalsePositives(generated_data_type, true_positives);
 
-  std::cout << "ground truth " << type << ": " << ground_truth_type.size()
+  std::cerr << "ground truth " << type << ": " << ground_truth_type.size()
             << std::endl;
-  std::cout << "generated " << type << ": " << generated_data_type.size()
+  std::cerr << "generated " << type << ": " << generated_data_type.size()
             << std::endl;
 
   return std::pair(ComputePrecision(true_positives, false_positives),
@@ -499,8 +499,6 @@ static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
   int32_t gen_size{0};
 
   for (const auto &[gen_cls, gt_cls] : matched_classes) {
-    // std::cout << gen_cls->mangled_name << " : " << gt_cls->mangled_name
-    //           << std::endl;
     // Count number of parents that the two classes share. The "ground truth"
     // for this measure is the total number of inheritance relationships. A true
     // positive would be when the generated and ground truth class share the
@@ -511,7 +509,6 @@ static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
     for (const std::string &parent_name : gen_cls->parent_mangled_names) {
       auto gt = get_gen_class_by_name(parent_name);
       if (gt.has_value()) {
-        // std::cout << gt->second->mangled_name << std::endl;
         if (std::find(gt_cls->parent_mangled_names.begin(),
                       gt_cls->parent_mangled_names.end(),
                       gt->second->mangled_name) !=

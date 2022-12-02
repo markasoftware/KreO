@@ -1700,6 +1700,7 @@
 						"0x41babd",
 						"0x41bad4",
 						"0x41baef",
+						"0x41cedd",
 						"0x427dbe",
 						"0x427dc6",
 						"0x427dcf"
@@ -1907,6 +1908,13 @@
 					"name": "virt_meth_0x419a90",
 					"type": "meth"
 				},
+				"0x41a650": {
+					"demangled_name": "",
+					"ea": "0x41a650",
+					"import": false,
+					"name": "meth_0x41a650",
+					"type": "meth"
+				},
 				"0x41abb0": {
 					"demangled_name": "",
 					"ea": "0x41abb0",
@@ -1919,6 +1927,13 @@
 					"ea": "0x41ad60",
 					"import": false,
 					"name": "meth_0x41ad60",
+					"type": "meth"
+				},
+				"0x41b760": {
+					"demangled_name": "",
+					"ea": "0x41b760",
+					"import": false,
+					"name": "meth_0x41b760",
 					"type": "meth"
 				},
 				"0x41b9b0": {
@@ -1942,6 +1957,13 @@
 					"name": "meth_0x41bb30",
 					"type": "meth"
 				},
+				"0x41bda0": {
+					"demangled_name": "",
+					"ea": "0x41bda0",
+					"import": false,
+					"name": "meth_0x41bda0",
+					"type": "meth"
+				},
 				"0x41c9a0": {
 					"demangled_name": "",
 					"ea": "0x41c9a0",
@@ -1949,11 +1971,88 @@
 					"name": "meth_0x41c9a0",
 					"type": "meth"
 				},
+				"0x41ceb0": {
+					"demangled_name": "",
+					"ea": "0x41ceb0",
+					"import": false,
+					"name": "meth_0x41ceb0",
+					"type": "meth"
+				},
+				"0x41d070": {
+					"demangled_name": "",
+					"ea": "0x41d070",
+					"import": false,
+					"name": "meth_0x41d070",
+					"type": "meth"
+				},
 				"0x41de20": {
 					"demangled_name": "",
 					"ea": "0x41de20",
 					"import": false,
 					"name": "meth_0x41de20",
+					"type": "meth"
+				},
+				"0x41e9e0": {
+					"demangled_name": "",
+					"ea": "0x41e9e0",
+					"import": false,
+					"name": "meth_0x41e9e0",
+					"type": "meth"
+				},
+				"0x41eb60": {
+					"demangled_name": "",
+					"ea": "0x41eb60",
+					"import": false,
+					"name": "meth_0x41eb60",
+					"type": "meth"
+				},
+				"0x423460": {
+					"demangled_name": "",
+					"ea": "0x423460",
+					"import": false,
+					"name": "meth_0x423460",
+					"type": "meth"
+				},
+				"0x423650": {
+					"demangled_name": "",
+					"ea": "0x423650",
+					"import": false,
+					"name": "meth_0x423650",
+					"type": "meth"
+				},
+				"0x423840": {
+					"demangled_name": "",
+					"ea": "0x423840",
+					"import": false,
+					"name": "meth_0x423840",
+					"type": "meth"
+				},
+				"0x423a30": {
+					"demangled_name": "",
+					"ea": "0x423a30",
+					"import": false,
+					"name": "meth_0x423a30",
+					"type": "meth"
+				},
+				"0x423c20": {
+					"demangled_name": "",
+					"ea": "0x423c20",
+					"import": false,
+					"name": "meth_0x423c20",
+					"type": "meth"
+				},
+				"0x423e10": {
+					"demangled_name": "",
+					"ea": "0x423e10",
+					"import": false,
+					"name": "meth_0x423e10",
+					"type": "meth"
+				},
+				"0x424000": {
+					"demangled_name": "",
+					"ea": "0x424000",
+					"import": false,
+					"name": "meth_0x424000",
 					"type": "meth"
 				},
 				"0x425d30": {
@@ -1989,6 +2088,20 @@
 					"ea": "0x427d60",
 					"import": false,
 					"name": "meth_0x427d60",
+					"type": "meth"
+				},
+				"0x427f60": {
+					"demangled_name": "",
+					"ea": "0x427f60",
+					"import": false,
+					"name": "meth_0x427f60",
+					"type": "meth"
+				},
+				"0x4280e0": {
+					"demangled_name": "",
+					"ea": "0x4280e0",
+					"import": false,
+					"name": "meth_0x4280e0",
 					"type": "meth"
 				}
 			},
@@ -2081,18 +2194,6 @@
 					"usages": [
 						"0x420049",
 						"0x4201a8"
-					]
-				},
-				"0x1c": {
-					"base": true,
-					"name": "mbr_0x1c",
-					"offset": "0x1c",
-					"parent": false,
-					"size": 4,
-					"struc": "",
-					"type": "",
-					"usages": [
-						"0x41cedd"
 					]
 				},
 				"0x28": {
@@ -2225,13 +2326,6 @@
 					"name": "meth_0x41a590",
 					"type": "meth"
 				},
-				"0x41a650": {
-					"demangled_name": "",
-					"ea": "0x41a650",
-					"import": false,
-					"name": "meth_0x41a650",
-					"type": "meth"
-				},
 				"0x41af60": {
 					"demangled_name": "",
 					"ea": "0x41af60",
@@ -2253,25 +2347,11 @@
 					"name": "meth_0x41b680",
 					"type": "meth"
 				},
-				"0x41b760": {
-					"demangled_name": "",
-					"ea": "0x41b760",
-					"import": false,
-					"name": "meth_0x41b760",
-					"type": "meth"
-				},
 				"0x41bce0": {
 					"demangled_name": "",
 					"ea": "0x41bce0",
 					"import": false,
 					"name": "meth_0x41bce0",
-					"type": "meth"
-				},
-				"0x41bda0": {
-					"demangled_name": "",
-					"ea": "0x41bda0",
-					"import": false,
-					"name": "meth_0x41bda0",
 					"type": "meth"
 				},
 				"0x41cc00": {
@@ -2295,25 +2375,11 @@
 					"name": "meth_0x41cdf0",
 					"type": "meth"
 				},
-				"0x41ceb0": {
-					"demangled_name": "",
-					"ea": "0x41ceb0",
-					"import": false,
-					"name": "meth_0x41ceb0",
-					"type": "meth"
-				},
 				"0x41cfb0": {
 					"demangled_name": "",
 					"ea": "0x41cfb0",
 					"import": false,
 					"name": "meth_0x41cfb0",
-					"type": "meth"
-				},
-				"0x41d070": {
-					"demangled_name": "",
-					"ea": "0x41d070",
-					"import": false,
-					"name": "meth_0x41d070",
 					"type": "meth"
 				},
 				"0x41e910": {
@@ -2323,25 +2389,11 @@
 					"name": "meth_0x41e910",
 					"type": "meth"
 				},
-				"0x41e9e0": {
-					"demangled_name": "",
-					"ea": "0x41e9e0",
-					"import": false,
-					"name": "meth_0x41e9e0",
-					"type": "meth"
-				},
 				"0x41eaa0": {
 					"demangled_name": "",
 					"ea": "0x41eaa0",
 					"import": false,
 					"name": "meth_0x41eaa0",
-					"type": "meth"
-				},
-				"0x41eb60": {
-					"demangled_name": "",
-					"ea": "0x41eb60",
-					"import": false,
-					"name": "meth_0x41eb60",
 					"type": "meth"
 				},
 				"0x41f720": {
@@ -2386,25 +2438,11 @@
 					"name": "meth_0x4233d0",
 					"type": "meth"
 				},
-				"0x423460": {
-					"demangled_name": "",
-					"ea": "0x423460",
-					"import": false,
-					"name": "meth_0x423460",
-					"type": "meth"
-				},
 				"0x4235c0": {
 					"demangled_name": "",
 					"ea": "0x4235c0",
 					"import": false,
 					"name": "meth_0x4235c0",
-					"type": "meth"
-				},
-				"0x423650": {
-					"demangled_name": "",
-					"ea": "0x423650",
-					"import": false,
-					"name": "meth_0x423650",
 					"type": "meth"
 				},
 				"0x4237b0": {
@@ -2414,25 +2452,11 @@
 					"name": "meth_0x4237b0",
 					"type": "meth"
 				},
-				"0x423840": {
-					"demangled_name": "",
-					"ea": "0x423840",
-					"import": false,
-					"name": "meth_0x423840",
-					"type": "meth"
-				},
 				"0x4239a0": {
 					"demangled_name": "",
 					"ea": "0x4239a0",
 					"import": false,
 					"name": "meth_0x4239a0",
-					"type": "meth"
-				},
-				"0x423a30": {
-					"demangled_name": "",
-					"ea": "0x423a30",
-					"import": false,
-					"name": "meth_0x423a30",
 					"type": "meth"
 				},
 				"0x423b90": {
@@ -2442,13 +2466,6 @@
 					"name": "meth_0x423b90",
 					"type": "meth"
 				},
-				"0x423c20": {
-					"demangled_name": "",
-					"ea": "0x423c20",
-					"import": false,
-					"name": "meth_0x423c20",
-					"type": "meth"
-				},
 				"0x423d80": {
 					"demangled_name": "",
 					"ea": "0x423d80",
@@ -2456,25 +2473,11 @@
 					"name": "meth_0x423d80",
 					"type": "meth"
 				},
-				"0x423e10": {
-					"demangled_name": "",
-					"ea": "0x423e10",
-					"import": false,
-					"name": "meth_0x423e10",
-					"type": "meth"
-				},
 				"0x423f70": {
 					"demangled_name": "",
 					"ea": "0x423f70",
 					"import": false,
 					"name": "meth_0x423f70",
-					"type": "meth"
-				},
-				"0x424000": {
-					"demangled_name": "",
-					"ea": "0x424000",
-					"import": false,
-					"name": "meth_0x424000",
 					"type": "meth"
 				},
 				"0x424d30": {
@@ -2519,25 +2522,11 @@
 					"name": "meth_0x427e90",
 					"type": "meth"
 				},
-				"0x427f60": {
-					"demangled_name": "",
-					"ea": "0x427f60",
-					"import": false,
-					"name": "meth_0x427f60",
-					"type": "meth"
-				},
 				"0x428020": {
 					"demangled_name": "",
 					"ea": "0x428020",
 					"import": false,
 					"name": "meth_0x428020",
-					"type": "meth"
-				},
-				"0x4280e0": {
-					"demangled_name": "",
-					"ea": "0x4280e0",
-					"import": false,
-					"name": "meth_0x4280e0",
 					"type": "meth"
 				},
 				"0x428380": {

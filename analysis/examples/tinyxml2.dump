@@ -2715,7 +2715,7 @@ S_PUB32: [0003:000013A8], Flags: 00000000, ??_C@_0GB@MFCMMDKI@?$DMinformation?$D
 
 0x1001 : Length = 70, Leaf = 0x1507 LF_ENUM
 	# members = 5,  type = T_INT4(0074) field list type 0x1000
-	enum name = _USER_ACTIVITY_PRESENCE, UDT(0x00001627)
+	enum name = _USER_ACTIVITY_PRESENCE, UDT(0x00001001)
 
 0x1002 : Length = 58, Leaf = 0x1203 LF_FIELDLIST
 	list[0] = LF_ENUMERATE, public, value = 0, name = 'PRESERVE_WHITESPACE'
@@ -2754,7 +2754,7 @@ S_PUB32: [0003:000013A8], Flags: 00000000, ??_C@_0GB@MFCMMDKI@?$DMinformation?$D
 
 0x1005 : Length = 82, Leaf = 0x1507 LF_ENUM
 	# members = 25,  type = T_INT4(0074) field list type 0x1004
-	enum name = ReplacesCorHdrNumericDefines, UDT(0x00001622)
+	enum name = ReplacesCorHdrNumericDefines, UDT(0x00001005)
 
 0x1006 : Length = 174, Leaf = 0x1203 LF_FIELDLIST
 	list[0] = LF_ENUMERATE, public, value = 0, name = 'TP_CALLBACK_PRIORITY_HIGH'
@@ -2765,7 +2765,7 @@ S_PUB32: [0003:000013A8], Flags: 00000000, ??_C@_0GB@MFCMMDKI@?$DMinformation?$D
 
 0x1007 : Length = 66, Leaf = 0x1507 LF_ENUM
 	# members = 5,  type = T_INT4(0074) field list type 0x1006
-	enum name = _TP_CALLBACK_PRIORITY, UDT(0x00001623)
+	enum name = _TP_CALLBACK_PRIORITY, UDT(0x00001007)
 
 0x1008 : Length = 66, Leaf = 0x1505 LF_STRUCTURE
 	# members = 0,  field list type 0x0000, FORWARD REF, 
@@ -2809,7 +2809,7 @@ S_PUB32: [0003:000013A8], Flags: 00000000, ??_C@_0GB@MFCMMDKI@?$DMinformation?$D
 
 0x100e : Length = 86, Leaf = 0x1507 LF_ENUM
 	# members = 6,  type = T_INT4(0074) field list type 0x100d
-	enum name = DISPLAYCONFIG_SCANLINE_ORDERING, UDT(0x00001626)
+	enum name = DISPLAYCONFIG_SCANLINE_ORDERING, UDT(0x0000100e)
 
 0x100f : Length = 186, Leaf = 0x1203 LF_FIELDLIST
 	list[0] = LF_ENUMERATE, public, value = 1, name = 'JOB_OBJECT_NET_RATE_CONTROL_ENABLE'
@@ -2819,7 +2819,7 @@ S_PUB32: [0003:000013A8], Flags: 00000000, ??_C@_0GB@MFCMMDKI@?$DMinformation?$D
 
 0x1010 : Length = 90, Leaf = 0x1507 LF_ENUM
 	# members = 4,  type = T_INT4(0074) field list type 0x100f
-	enum name = JOB_OBJECT_NET_RATE_CONTROL_FLAGS, UDT(0x00001624)
+	enum name = JOB_OBJECT_NET_RATE_CONTROL_FLAGS, UDT(0x00001010)
 
 0x1011 : Length = 262, Leaf = 0x1203 LF_FIELDLIST
 	list[0] = LF_ENUMERATE, public, value = 1, name = 'JOB_OBJECT_IO_RATE_CONTROL_ENABLE'
@@ -2830,7 +2830,7 @@ S_PUB32: [0003:000013A8], Flags: 00000000, ??_C@_0GB@MFCMMDKI@?$DMinformation?$D
 
 0x1012 : Length = 90, Leaf = 0x1507 LF_ENUM
 	# members = 5,  type = T_INT4(0074) field list type 0x1011
-	enum name = JOB_OBJECT_IO_RATE_CONTROL_FLAGS, UDT(0x00001625)
+	enum name = JOB_OBJECT_IO_RATE_CONTROL_FLAGS, UDT(0x00001012)
 
 0x1013 : Length = 10, Leaf = 0x1001 LF_MODIFIER
 	const, modifies type T_INT4(0074)
@@ -2878,7 +2878,7 @@ S_PUB32: [0003:000013A8], Flags: 00000000, ??_C@_0GB@MFCMMDKI@?$DMinformation?$D
 		member name = 'QuadPart'
 
 0x1018 : Length = 50, Leaf = 0x1506 LF_UNION
-	# members = 5,  field list type 0x1017, CONTAINS NESTED, SEALED, Size = 8	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x000015de)
+	# members = 5,  field list type 0x1017, CONTAINS NESTED, SEALED, Size = 8	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x00001018)
 
 0x1019 : Length = 42, Leaf = 0x1203 LF_FIELDLIST
 	list[0] = LF_MEMBER, public, type = T_ULONG(0022), offset = 0
@@ -3443,7 +3443,7 @@ NESTED, 	enum name = tinyxml2::XMLAttribute::<unnamed-enum-BUF_SIZE>, UDT(0x0000
 0x108c : Length = 42, Leaf = 0x1505 LF_STRUCTURE
 	# members = 0,  field list type 0x0000, FORWARD REF, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 0, class name = _iobuf, unique name = .?AU_iobuf@@, UDT(0x0000166d)
+	Size = 0, class name = _iobuf, unique name = .?AU_iobuf@@, UDT(0x000013fa)
 
 0x108d : Length = 10, Leaf = 0x1002 LF_POINTER
 	Pointer (NEAR32), Size: 4
@@ -8167,7 +8167,7 @@ NESTED, 	enum name = tinyxml2::StrPair::<unnamed-enum-NEEDS_FLUSH>, UDT(0x000013
 0x13f5 : Length = 70, Leaf = 0x1505 LF_STRUCTURE
 	# members = 0,  field list type 0x0000, FORWARD REF, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 0, class name = __crt_locale_pointers, unique name = .?AU__crt_locale_pointers@@, UDT(0x0000167d)
+	Size = 0, class name = __crt_locale_pointers, unique name = .?AU__crt_locale_pointers@@, UDT(0x00001400)
 
 0x13f6 : Length = 10, Leaf = 0x1002 LF_POINTER
 	Pointer (NEAR32), Size: 4
@@ -8182,7 +8182,7 @@ NESTED, 	enum name = tinyxml2::StrPair::<unnamed-enum-NEEDS_FLUSH>, UDT(0x000013
 0x13f8 : Length = 42, Leaf = 0x1505 LF_STRUCTURE
 	# members = 2,  field list type 0x13f7, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 8, class name = _ldiv_t, unique name = .?AU_ldiv_t@@, UDT(0x0000165e)
+	Size = 8, class name = _ldiv_t, unique name = .?AU_ldiv_t@@, UDT(0x000013f8)
 
 0x13f9 : Length = 26, Leaf = 0x1203 LF_FIELDLIST
 	list[0] = LF_MEMBER, public, type = T_32PVOID(0403), offset = 0
@@ -8191,7 +8191,7 @@ NESTED, 	enum name = tinyxml2::StrPair::<unnamed-enum-NEEDS_FLUSH>, UDT(0x000013
 0x13fa : Length = 42, Leaf = 0x1505 LF_STRUCTURE
 	# members = 1,  field list type 0x13f9, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 4, class name = _iobuf, unique name = .?AU_iobuf@@, UDT(0x0000166d)
+	Size = 4, class name = _iobuf, unique name = .?AU_iobuf@@, UDT(0x000013fa)
 
 0x13fb : Length = 62, Leaf = 0x1505 LF_STRUCTURE
 	# members = 0,  field list type 0x0000, FORWARD REF, 
@@ -8220,7 +8220,7 @@ NESTED, 	enum name = tinyxml2::StrPair::<unnamed-enum-NEEDS_FLUSH>, UDT(0x000013
 0x1400 : Length = 70, Leaf = 0x1505 LF_STRUCTURE
 	# members = 2,  field list type 0x13ff, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 8, class name = __crt_locale_pointers, unique name = .?AU__crt_locale_pointers@@, UDT(0x0000167d)
+	Size = 8, class name = __crt_locale_pointers, unique name = .?AU__crt_locale_pointers@@, UDT(0x00001400)
 
 0x1401 : Length = 22, Leaf = 0x1201 LF_ARGLIST argument count = 4
 	list[0] = 0x101E
@@ -8626,7 +8626,7 @@ NESTED, 	enum name = tinyxml2::StrPair::<unnamed-enum-NEEDS_FLUSH>, UDT(0x000013
 	# Parms = 3, Arg list type = 0x144c
 
 0x144e : Length = 50, Leaf = 0x1506 LF_UNION
-	# members = 0,  field list type 0x0000, FORWARD REF, Size = 0	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x000015de)
+	# members = 0,  field list type 0x0000, FORWARD REF, Size = 0	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x00001018)
 
 0x144f : Length = 10, Leaf = 0x1002 LF_POINTER
 	Pointer (NEAR32), Size: 4
@@ -10716,7 +10716,7 @@ NESTED, 	enum name = tinyxml2::StrPair::<unnamed-enum-NEEDS_FLUSH>, UDT(0x000013
 		member name = 'QuadPart'
 
 0x15de : Length = 50, Leaf = 0x1506 LF_UNION
-	# members = 4,  field list type 0x15dd, SEALED, Size = 8	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x000015de)
+	# members = 4,  field list type 0x15dd, SEALED, Size = 8	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x00001018)
 
 0x15df : Length = 54, Leaf = 0x1203 LF_FIELDLIST
 	list[0] = LF_MEMBER, public, type = T_ULONG(0022), offset = 0
@@ -11134,27 +11134,27 @@ NESTED, 	enum name = tinyxml2::StrPair::<unnamed-enum-NEEDS_FLUSH>, UDT(0x000013
 
 0x1622 : Length = 78, Leaf = 0x1507 LF_ENUM
 	# members = 25,  type = T_INT4(0074) field list type 0x1004
-	enum name = ReplacesCorHdrNumericDefines, UDT(0x00001622)
+	enum name = ReplacesCorHdrNumericDefines, UDT(0x00001005)
 
 0x1623 : Length = 66, Leaf = 0x1507 LF_ENUM
 	# members = 5,  type = T_INT4(0074) field list type 0x1006
-	enum name = _TP_CALLBACK_PRIORITY, UDT(0x00001623)
+	enum name = _TP_CALLBACK_PRIORITY, UDT(0x00001007)
 
 0x1624 : Length = 90, Leaf = 0x1507 LF_ENUM
 	# members = 4,  type = T_INT4(0074) field list type 0x100f
-	enum name = JOB_OBJECT_NET_RATE_CONTROL_FLAGS, UDT(0x00001624)
+	enum name = JOB_OBJECT_NET_RATE_CONTROL_FLAGS, UDT(0x00001010)
 
 0x1625 : Length = 86, Leaf = 0x1507 LF_ENUM
 	# members = 5,  type = T_INT4(0074) field list type 0x1011
-	enum name = JOB_OBJECT_IO_RATE_CONTROL_FLAGS, UDT(0x00001625)
+	enum name = JOB_OBJECT_IO_RATE_CONTROL_FLAGS, UDT(0x00001012)
 
 0x1626 : Length = 86, Leaf = 0x1507 LF_ENUM
 	# members = 6,  type = T_INT4(0074) field list type 0x100d
-	enum name = DISPLAYCONFIG_SCANLINE_ORDERING, UDT(0x00001626)
+	enum name = DISPLAYCONFIG_SCANLINE_ORDERING, UDT(0x0000100e)
 
 0x1627 : Length = 70, Leaf = 0x1507 LF_ENUM
 	# members = 5,  type = T_INT4(0074) field list type 0x1000
-	enum name = _USER_ACTIVITY_PRESENCE, UDT(0x00001627)
+	enum name = _USER_ACTIVITY_PRESENCE, UDT(0x00001001)
 
 0x1628 : Length = 2, Leaf = 0x1203 LF_FIELDLIST
 
@@ -11408,7 +11408,7 @@ NESTED, 	enum name = __vcrt_va_list_is_reference<__crt_locale_pointers *>::<unna
 0x165a : Length = 70, Leaf = 0x1505 LF_STRUCTURE
 	# members = 0,  field list type 0x0000, FORWARD REF, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 0, class name = __crt_locale_pointers, unique name = ?AU__crt_locale_pointers@@, UDT(0x0000167d)
+	Size = 0, class name = __crt_locale_pointers, unique name = ?AU__crt_locale_pointers@@, UDT(0x00001400)
 
 0x165b : Length = 10, Leaf = 0x1002 LF_POINTER
 	Pointer (NEAR32), Size: 4
@@ -11426,7 +11426,7 @@ NESTED, 	enum name = __vcrt_va_list_is_reference<__crt_locale_pointers *>::<unna
 0x165e : Length = 42, Leaf = 0x1505 LF_STRUCTURE
 	# members = 2,  field list type 0x13f7, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 8, class name = _ldiv_t, unique name = ?AU_ldiv_t@@, UDT(0x0000165e)
+	Size = 8, class name = _ldiv_t, unique name = ?AU_ldiv_t@@, UDT(0x000013f8)
 
 0x165f : Length = 74, Leaf = 0x1505 LF_STRUCTURE
 	# members = 0,  field list type 0x0000, FORWARD REF, 
@@ -11495,7 +11495,7 @@ NESTED, 	enum name = __vcrt_va_list_is_reference<wchar_t const *>::<unnamed-enum
 0x166d : Length = 42, Leaf = 0x1505 LF_STRUCTURE
 	# members = 1,  field list type 0x13f9, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 4, class name = _iobuf, unique name = ?AU_iobuf@@, UDT(0x0000166d)
+	Size = 4, class name = _iobuf, unique name = ?AU_iobuf@@, UDT(0x000013fa)
 
 0x166e : Length = 98, Leaf = 0x1505 LF_STRUCTURE
 	# members = 2,  field list type 0x158d, 
@@ -11565,7 +11565,7 @@ NESTED, 	enum name = __vcrt_va_list_is_reference<__crt_locale_pointers * const>:
 0x167d : Length = 70, Leaf = 0x1505 LF_STRUCTURE
 	# members = 2,  field list type 0x167c, 
 	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 8, class name = __crt_locale_pointers, unique name = ?AU__crt_locale_pointers@@, UDT(0x0000167d)
+	Size = 8, class name = __crt_locale_pointers, unique name = ?AU__crt_locale_pointers@@, UDT(0x00001400)
 
 0x167e : Length = 90, Leaf = 0x1505 LF_STRUCTURE
 	# members = 0,  field list type 0x0000, FORWARD REF, 
@@ -24739,62 +24739,6 @@ NESTED, 	enum name = TPI::<unnamed-enum-intv>, UDT(0x00001bd2)
 
 *** TYPES Mismatch Warnings
 
-WARNING: UDT mismatch for _LARGE_INTEGER
-<<<<<<
-0x1018 : Length = 50, Leaf = 0x1506 LF_UNION
-	# members = 5,  field list type 0x1017, CONTAINS NESTED, SEALED, Size = 8	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x000015de)
-
-******
-0x15de : Length = 50, Leaf = 0x1506 LF_UNION
-	# members = 4,  field list type 0x15dd, SEALED, Size = 8	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x000015de)
-
->>>>>>
-
-WARNING: UDT mismatch for _ldiv_t
-<<<<<<
-0x13f8 : Length = 42, Leaf = 0x1505 LF_STRUCTURE
-	# members = 2,  field list type 0x13f7, 
-	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 8, class name = _ldiv_t, unique name = .?AU_ldiv_t@@, UDT(0x0000165e)
-
-******
-0x165e : Length = 42, Leaf = 0x1505 LF_STRUCTURE
-	# members = 2,  field list type 0x13f7, 
-	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 8, class name = _ldiv_t, unique name = ?AU_ldiv_t@@, UDT(0x0000165e)
-
->>>>>>
-
-WARNING: UDT mismatch for _iobuf
-<<<<<<
-0x13fa : Length = 42, Leaf = 0x1505 LF_STRUCTURE
-	# members = 1,  field list type 0x13f9, 
-	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 4, class name = _iobuf, unique name = .?AU_iobuf@@, UDT(0x0000166d)
-
-******
-0x166d : Length = 42, Leaf = 0x1505 LF_STRUCTURE
-	# members = 1,  field list type 0x13f9, 
-	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 4, class name = _iobuf, unique name = ?AU_iobuf@@, UDT(0x0000166d)
-
->>>>>>
-
-WARNING: UDT mismatch for __crt_locale_pointers
-<<<<<<
-0x1400 : Length = 70, Leaf = 0x1505 LF_STRUCTURE
-	# members = 2,  field list type 0x13ff, 
-	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 8, class name = __crt_locale_pointers, unique name = .?AU__crt_locale_pointers@@, UDT(0x0000167d)
-
-******
-0x167d : Length = 70, Leaf = 0x1505 LF_STRUCTURE
-	# members = 2,  field list type 0x167c, 
-	Derivation list type 0x0000, VT shape type 0x0000
-	Size = 8, class name = __crt_locale_pointers, unique name = ?AU__crt_locale_pointers@@, UDT(0x0000167d)
-
->>>>>>
-
 WARNING: UDT mismatch for _s__CatchableType
 <<<<<<
 0x146d : Length = 62, Leaf = 0x1505 LF_STRUCTURE
@@ -25132,6 +25076,17 @@ WARNING: UDT mismatch for __m64
 
 >>>>>>
 
+WARNING: UDT mismatch for _LARGE_INTEGER
+<<<<<<
+0x15de : Length = 50, Leaf = 0x1506 LF_UNION
+	# members = 4,  field list type 0x15dd, SEALED, Size = 8	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x00001018)
+
+******
+0x1018 : Length = 50, Leaf = 0x1506 LF_UNION
+	# members = 5,  field list type 0x1017, CONTAINS NESTED, SEALED, Size = 8	,class name = _LARGE_INTEGER, unique name = .?AT_LARGE_INTEGER@@, UDT(0x00001018)
+
+>>>>>>
+
 WARNING: UDT mismatch for _EXCEPTION_REGISTRATION_RECORD
 <<<<<<
 0x161b : Length = 90, Leaf = 0x1505 LF_STRUCTURE
@@ -25278,6 +25233,21 @@ WARNING: UDT mismatch for __vcrt_assert_va_start_is_not_reference<wchar_t const 
 
 >>>>>>
 
+WARNING: UDT mismatch for _ldiv_t
+<<<<<<
+0x165e : Length = 42, Leaf = 0x1505 LF_STRUCTURE
+	# members = 2,  field list type 0x13f7, 
+	Derivation list type 0x0000, VT shape type 0x0000
+	Size = 8, class name = _ldiv_t, unique name = ?AU_ldiv_t@@, UDT(0x000013f8)
+
+******
+0x13f8 : Length = 42, Leaf = 0x1505 LF_STRUCTURE
+	# members = 2,  field list type 0x13f7, 
+	Derivation list type 0x0000, VT shape type 0x0000
+	Size = 8, class name = _ldiv_t, unique name = .?AU_ldiv_t@@, UDT(0x000013f8)
+
+>>>>>>
+
 WARNING: UDT mismatch for __vcrt_assert_va_start_is_not_reference<__crt_locale_pointers *>
 <<<<<<
 0x1666 : Length = 162, Leaf = 0x1505 LF_STRUCTURE
@@ -25338,6 +25308,21 @@ WARNING: UDT mismatch for __vcrt_va_list_is_reference<wchar_t const *>
 
 >>>>>>
 
+WARNING: UDT mismatch for _iobuf
+<<<<<<
+0x166d : Length = 42, Leaf = 0x1505 LF_STRUCTURE
+	# members = 1,  field list type 0x13f9, 
+	Derivation list type 0x0000, VT shape type 0x0000
+	Size = 4, class name = _iobuf, unique name = ?AU_iobuf@@, UDT(0x000013fa)
+
+******
+0x13fa : Length = 42, Leaf = 0x1505 LF_STRUCTURE
+	# members = 1,  field list type 0x13f9, 
+	Derivation list type 0x0000, VT shape type 0x0000
+	Size = 4, class name = _iobuf, unique name = .?AU_iobuf@@, UDT(0x000013fa)
+
+>>>>>>
+
 WARNING: UDT mismatch for __vcrt_va_list_is_reference<wchar_t const * const>
 <<<<<<
 0x1671 : Length = 114, Leaf = 0x1505 LF_STRUCTURE
@@ -25365,6 +25350,21 @@ WARNING: UDT mismatch for __vcrt_va_list_is_reference<__crt_locale_pointers * co
 	# members = 1,  field list type 0x1913, CONTAINS NESTED, 
 	Derivation list type 0x0000, VT shape type 0x0000
 	Size = 1, class name = __vcrt_va_list_is_reference<__crt_locale_pointers * const>, unique name = .?AU?$__vcrt_va_list_is_reference@QAU__crt_locale_pointers@@@@, UDT(0x00001914)
+
+>>>>>>
+
+WARNING: UDT mismatch for __crt_locale_pointers
+<<<<<<
+0x167d : Length = 70, Leaf = 0x1505 LF_STRUCTURE
+	# members = 2,  field list type 0x167c, 
+	Derivation list type 0x0000, VT shape type 0x0000
+	Size = 8, class name = __crt_locale_pointers, unique name = ?AU__crt_locale_pointers@@, UDT(0x00001400)
+
+******
+0x1400 : Length = 70, Leaf = 0x1505 LF_STRUCTURE
+	# members = 2,  field list type 0x13ff, 
+	Derivation list type 0x0000, VT shape type 0x0000
+	Size = 8, class name = __crt_locale_pointers, unique name = .?AU__crt_locale_pointers@@, UDT(0x00001400)
 
 >>>>>>
 
@@ -60127,6 +60127,7 @@ Mod::GetEnumILLines failed
 *** SECTION CONTRIBUTIONS
 
   Imod  Address        Size      Characteristics
+  003B  0001:00000000  00013BE2  E00000A0
   003B  0002:00000000  00000EBA  60000020
   0003  0002:00001D70  000000CD  60501020
   0003  0002:00001E70  000000CD  60501020
@@ -64050,3 +64051,245 @@ DBIOpenDbg(, dbgtypeSectionHdrOrig,) failed.
 0000890f D:\a\_work\1\s\src\vctools\crt\github\stl\inc\xtr1common
 00008948 D:\a\_work\1\s\src\vctools\crt\github\stl\inc\cstdlib
 0000897e D:\a\_work\1\s\src\vctools\crt\github\stl\inc\use_ansi.h
+000089b7 _USER_ACTIVITY_PRESENCE
+000089cf tinyxml2::Whitespace
+000089e4 ReplacesCorHdrNumericDefines
+00008a01 _TP_CALLBACK_PRIORITY
+00008a17 _CrtMemState
+00008a24 DISPLAYCONFIG_SCANLINE_ORDERING
+00008a44 JOB_OBJECT_NET_RATE_CONTROL_FLAGS
+00008a66 JOB_OBJECT_IO_RATE_CONTROL_FLAGS
+00008a87 tinyxml2::XMLError
+00008a9a _LARGE_INTEGER
+00008aa9 _LARGE_INTEGER::<unnamed-type-u>
+00008aca tinyxml2::XMLAttribute::<unnamed-enum-BUF_SIZE>
+00008afa tinyxml2::XMLAttribute
+00008b11 tinyxml2::XMLUnknown
+00008b26 tinyxml2::XMLPrinter::<unnamed-enum-ENTITY_RANGE>
+00008b58 tinyxml2::XMLPrinter
+00008b6d tinyxml2::XMLComment
+00008b82 tinyxml2::DynArray<char,10>
+00008b9e tinyxml2::MemPoolT<56>::<unnamed-enum-ITEMS_PER_BLOCK>
+00008bd5 tinyxml2::MemPoolT<56>
+00008bec tinyxml2::MemPoolT<56>::Block
+00008c0a tinyxml2::MemPoolT<56>::Item
+00008c27 tinyxml2::DynArray<tinyxml2::MemPoolT<60>::Block *,10>
+00008c5e tinyxml2::XMLConstHandle
+00008c77 tinyxml2::DynArray<tinyxml2::MemPoolT<40>::Block *,10>
+00008cae tinyxml2::DynArray<tinyxml2::MemPoolT<52>::Block *,10>
+00008ce5 tinyxml2::DynArray<tinyxml2::MemPoolT<56>::Block *,10>
+00008d1c tinyxml2::DynArray<char,20>
+00008d38 tinyxml2::MemPoolT<40>::<unnamed-enum-ITEMS_PER_BLOCK>
+00008d6f tinyxml2::MemPoolT<40>
+00008d86 tinyxml2::MemPoolT<40>::Block
+00008da4 tinyxml2::MemPoolT<40>::Item
+00008dc1 tinyxml2::MemPool
+00008dd3 tinyxml2::XMLNode
+00008de5 tinyxml2::DynArray<char const *,10>
+00008e09 tinyxml2::XMLDeclaration
+00008e22 tinyxml2::XMLText
+00008e34 tinyxml2::MemPoolT<60>::<unnamed-enum-ITEMS_PER_BLOCK>
+00008e6b tinyxml2::MemPoolT<60>
+00008e82 tinyxml2::MemPoolT<60>::Block
+00008ea0 tinyxml2::MemPoolT<60>::Item
+00008ebd tinyxml2::MemPoolT<52>::<unnamed-enum-ITEMS_PER_BLOCK>
+00008ef4 tinyxml2::MemPoolT<52>
+00008f0b tinyxml2::MemPoolT<52>::Block
+00008f29 tinyxml2::MemPoolT<52>::Item
+00008f46 tinyxml2::XMLElement::ElementClosingType
+00008f6f tinyxml2::XMLElement::<unnamed-enum-BUF_SIZE>
+00008f9d tinyxml2::XMLElement
+00008fb2 tinyxml2::StrPair::Mode
+00008fca tinyxml2::StrPair::<unnamed-enum-NEEDS_FLUSH>
+00008ff8 tinyxml2::StrPair
+0000900a tinyxml2::DynArray<tinyxml2::XMLNode *,10>
+00009035 tinyxml2::XMLVisitor
+0000904a tinyxml2::XMLDocument
+00009060 tinyxml2::XMLDocument::DepthTracker
+00009084 tinyxml2::XMLHandle
+00009098 _ldiv_t
+000090a0 _iobuf
+000090a7 __crt_locale_pointers
+000090bd .?AUTestUtil@?NB@??main@@YAHHPAPBD@Z@`8090b9f8
+000090ec std::_Invoker_strategy
+00009103 _s__CatchableType
+00009115 _TypeDescriptor
+00009125 tinyxml2::Entity
+00009136 std::bad_exception
+00009149 std::exception_ptr
+0000915c std::exception
+0000916b std::bad_alloc
+0000917a std::bad_array_new_length
+00009194 std::nested_exception
+000091aa _s__CatchableTypeArray
+000091c1 _PMD
+000091c6 _lldiv_t
+000091cf __std_exception_data
+000091e4 _TP_CALLBACK_ENVIRON_V3
+000091fc __crt_locale_data_public
+00009215 _CUSTOM_SYSTEM_EVENT_TRIGGER_CONFIG
+00009239 _EXCEPTION_RECORD
+0000924b _CONTEXT
+00009254 _EXCEPTION_POINTERS
+00009268 __m128
+0000926f _EVENT_DATA_DESCRIPTOR
+00009286 _EVENT_DESCRIPTOR
+00009298 _FLOATING_SAVE_AREA
+000092ac __m64
+000092b2 _FILETIME
+000092bc FT
+000092bf CastGuardVftables
+000092d1 _RS5_IMAGE_LOAD_CONFIG_DIRECTORY32
+000092f4 _IMAGE_LOAD_CONFIG_CODE_INTEGRITY
+00009316 ISA_AVAILABILITY
+00009327 _EXCEPTION_DISPOSITION
+0000933e _EXCEPTION_REGISTRATION_RECORD
+0000935d _crt_argv_mode
+0000936c __vcrt_assert_va_start_is_not_reference<__crt_locale_pointers * const>
+000093b3 __vcrt_va_list_is_reference<char const * const>::<unnamed-enum-__the_value>
+000093ff __vcrt_va_list_is_reference<char const * const>
+0000942f tagAR_STATE
+0000943b __scrt_no_argv_policy
+00009451 __scrt_no_environment_policy
+0000946e _GUID
+00009474 __vcrt_assert_va_start_is_not_reference<wchar_t const * const>
+000094b3 __vcrt_va_list_is_reference<__crt_locale_pointers *>::<unnamed-enum-__the_value>
+00009504 __vcrt_va_list_is_reference<__crt_locale_pointers *>
+00009539 __scrt_wide_argv_policy
+00009551 _TP_CALLBACK_ENVIRON_V3::<unnamed-type-u>
+0000957b _TP_CALLBACK_ENVIRON_V3::<unnamed-type-u>::<unnamed-type-s>
+000095b7 __vcrt_assert_va_start_is_not_reference<wchar_t const *>
+000095f0 __scrt_narrow_argv_policy
+0000960a _MACHINE_ATTRIBUTES
+0000961e __scrt_narrow_environment_policy
+0000963f __vcrt_assert_va_start_is_not_reference<__crt_locale_pointers *>
+00009680 __crt_fast_encoded_nullptr_t
+0000969d __vcrt_assert_va_start_is_not_reference<char const * const>
+000096d9 __vcrt_va_list_is_reference<wchar_t const *>::<unnamed-enum-__the_value>
+00009722 __vcrt_va_list_is_reference<wchar_t const *>
+0000974f __vcrt_va_list_is_reference<wchar_t const * const>::<unnamed-enum-__the_value>
+0000979e __vcrt_va_list_is_reference<wchar_t const * const>
+000097d1 __vcrt_va_list_is_reference<__crt_locale_pointers * const>::<unnamed-enum-__the_value>
+00009828 __vcrt_va_list_is_reference<__crt_locale_pointers * const>
+00009863 __scrt_wide_environment_policy
+00009882 _exception
+0000988d _s__RTTIBaseClassDescriptor
+000098a9 $_TypeDescriptor$_extraBytes_24
+000098c9 $_TypeDescriptor$_extraBytes_28
+000098e9 $_TypeDescriptor$_extraBytes_19
+00009909 $_TypeDescriptor$_extraBytes_21
+00009929 $_TypeDescriptor$_extraBytes_20
+00009949 std::bad_cast
+00009957 std::__non_rtti_object
+0000996e std::bad_typeid
+0000997e _s__RTTIBaseClassArray
+00009995 type_info
+0000999f _s__RTTIClassHierarchyDescriptor
+000099c0 __std_type_info_data
+000099d5 _s__RTTICompleteObjectLocator
+000099f3 __type_info_node
+00009a04 _SINGLE_LIST_ENTRY
+00009a17 _SLIST_HEADER
+00009a25 $_s__CatchableTypeArray$_extraBytes_12
+00009a4c _s__ThrowInfo
+00009a5a _crt_app_type
+00009a68 __scrt_native_startup_state
+00009a84 __scrt_winmain_policy
+00009a9a __scrt_nofile_policy
+00009aaf __scrt_file_policy
+00009ac2 __scrt_main_policy
+00009ad5 __scrt_enclavemain_policy
+00009aef __scrt_module_type
+00009b02 _IMAGE_DOS_HEADER
+00009b14 _onexit_table_t
+00009b24 _IMAGE_FILE_HEADER
+00009b37 _IMAGE_DATA_DIRECTORY
+00009b4d HINSTANCE__
+00009b59 _IMAGE_OPTIONAL_HEADER
+00009b70 _NT_TIB
+00009b78 _IMAGE_NT_HEADERS
+00009b8a _IMAGE_SECTION_HEADER
+00009ba0 _IMAGE_SECTION_HEADER::<unnamed-type-Misc>
+00009bcb PMD
+00009bcf TypeDescriptor
+00009bde _s_CatchableType
+00009bef _s_CatchableTypeArray
+00009c05 _STARTUPINFOW
+00009c13 EHExceptionRecord
+00009c25 EHExceptionRecord::EHParameters
+00009c45 _s_ThrowInfo
+00009c52 _RTC_ErrorNumber
+00009c63 EXCEPTION_DEBUGGER_ENUM
+00009c7b tagEXCEPTION_VISUALCPP_DEBUG_INFO
+00009c9d tagEXCEPTION_VISUALCPP_DEBUG_INFO::<unnamed-tag>::<unnamed-type-RuntimeError>
+00009ceb tagEXCEPTION_VISUALCPP_DEBUG_INFO::<unnamed-tag>::<unnamed-type-DebuggerProbe>
+00009d3a tagEXCEPTION_VISUALCPP_DEBUG_INFO::<unnamed-tag>::<unnamed-type-SetName>
+00009d83 _RTC_ALLOCA_NODE
+00009d94 <unnamed-enum-NAMEHASH_BUILD_START>
+00009db8 LEAF_ENUM_e
+00009dc4 CV_BuildInfo_e
+00009dd3 PDBINTV
+00009ddb PDBIMPV
+00009de3 PDBConsts
+00009ded PDBErrors
+00009df7 <unnamed-enum-wtiSymsNB09>
+00009e12 VerDataBlob
+00009e1e VerLinkInfo
+00009e2a SYM_ENUM_e
+00009e35 TRAMP_e
+00009e3d CV_CPU_TYPE_e
+00009e4b CV_HREG_e
+00009e55 CV_armswitchtype
+00009e66 CodeViewInfo::BinaryAnnotationOpcode
+00009e8b EnumThunk
+00009e95 EnumSrc
+00009e9d SrcHeaderW
+00009ea8 EnumSyms
+00009eb1 _MEMORY_BASIC_INFORMATION
+00009ecb lfClass2
+00009ed4 POVC
+00009ed9 Dbg
+00009edd LinkInfo
+00009ee6 SrcHeaderBlock
+00009ef5 SrcHeaderBlock::<unnamed-type-ft>
+00009f17 SO
+00009f1a HKEY__
+00009f21 LinkInfoW
+00009f2b IPDBError
+00009f35 SYMTYPE
+00009f3d TYPTYPE
+00009f45 Mod::<unnamed-enum-intv>
+00009f5e Mod
+00009f62 GSI::<unnamed-enum-intv>
+00009f7b GSI
+00009f7f DOVC
+00009f84 DBI::<unnamed-enum-intv>
+00009f9d DBGTYPE
+00009fa5 DBI
+00009fa9 PCC
+00009fad CV_prop_t
+00009fb7 SrcHeader
+00009fc1 PDB::<unnamed-enum-intv>
+00009fda PDB
+00009fde CV_prop32_t
+00009fea TPI::<unnamed-enum-intv>
+0000a003 TPI
+0000a007 lfClass
+0000a00f CV_Column_t
+0000a01b CV_Line_t
+0000a025 SrcHeaderOut
+0000a032 Src
+0000a036 Enum
+0000a03b Stream
+0000a042 CodeViewInfo::ComboID
+0000a058 CodeViewInfo::CrossScopeId
+0000a073 CodeViewInfo::DecoratedItemId
+0000a091 EnumLines
+0000a09b _tagSEARCHDEBUGINFO
+0000a0af _RTC_framedesc
+0000a0be _RTC_vardesc
+0000a0cb std::hash<float>
+0000a0dc std::hash<long double>
+0000a0f3 std::hash<double>
+0000a105 std::hash<std::nullptr_t>
+0000a11f $_TypeDescriptor$_extraBytes_27
