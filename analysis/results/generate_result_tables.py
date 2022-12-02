@@ -10,6 +10,7 @@ def gen_table(caption, results):
   \\begin{{tabular}}{{l|ccc|ccc|ccc}}
     \\toprule
     Program & \multicolumn{{3}}{{c|}}{{Lego}} & \multicolumn{{3}}{{c|}}{{\projname}} & \multicolumn{3}{{c}}{{OOAnalyzer}}\\\\
+    & Precision & Recall & F-Score & Precision & Recall & F-Score & Precision & Recall & F-Score\\\\
     \midrule
 '''
 
