@@ -3,10 +3,11 @@ import os
 SCRIPT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
 def gen_table(caption, results):
+    label = '-'.join(caption.split(' '))
     TABLE_START = f'''
 \\begin{{table*}}
     \caption{{Evaluation of Various Projects, {caption}}}
-  \label{{tab:class-graphs}}
+  \label{{tab:{label}}}
   \\begin{{tabular}}{{l|ccc|ccc|ccc}}
     \\toprule
     Program & \multicolumn{{3}}{{c|}}{{Lego}} & \multicolumn{{3}}{{c|}}{{\projname}} & \multicolumn{3}{{c}}{{OOAnalyzer}}\\\\
