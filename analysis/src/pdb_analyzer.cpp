@@ -25,8 +25,6 @@ void PdbAnalyzer::AnalyzePdbDump(const std::string &fname) {
 
   fstream.seekg(std::fstream::beg);
   FindTypeInfo(fstream);
-  // fstream.seekg(std::fstream::beg);
-  // FindInheritanceRelationships(fstream);
   fstream.seekg(std::fstream::beg);
   FindSectionHeaders(fstream);
   fstream.seekg(std::fstream::beg);
@@ -130,8 +128,6 @@ void PdbAnalyzer::FindTypeInfo(std::fstream &fstream) {
           GetHexValueAfterString(line, "list = ", list_type_id);
           std::string name;
           GetQuotedStrAfterString(line, "name = ", name);
-          // std::cout << "lf method " << name << ", " << list_type_id
-          //           << std::endl;
           field_list.push_back(
               std::make_shared<MethodFieldList>(list_type_id, name));
         } else if (line == kBlank) {
@@ -141,7 +137,6 @@ void PdbAnalyzer::FindTypeInfo(std::fstream &fstream) {
 
       field_list_type_id_to_field_list_map_[field_list_index] = field_list;
     } else if (Contains(line, "LF_METHODLIST")) {
-      // std::cout << line << std::endl;
       type_id_t method_list_type_id{};
       GetHexValueAfterString(line, kBlank, method_list_type_id);
 
@@ -165,9 +160,6 @@ void PdbAnalyzer::FindTypeInfo(std::fstream &fstream) {
           type_id_list.push_back(type_id);
         }
       }
-
-      // std::cout << "adding type id list " << method_list_type_id << ", "
-      //           << type_id_list.size() << std::endl;
 
       method_list_type_id_to_method_list_map_[method_list_type_id] =
           type_id_list;
@@ -467,8 +459,6 @@ std::vector<ClassData> PdbAnalyzer::ConstructClassInfo() {
         const std::string &method_name =
             dynamic_cast<const OneMethodFieldList *>(field.get())->name;
 
-        // std::cout << "handling " << method_name << std::endl;
-
         std::string full_method_name;
         if (incorrect_to_correct_class_name.count(class_it.second.class_name)) {
           full_method_name =
@@ -478,23 +468,9 @@ std::vector<ClassData> PdbAnalyzer::ConstructClassInfo() {
           full_method_name = class_it.second.class_name + "::" + method_name;
         }
 
-        // if (method_name_to_method_info_map_.find(full_method_name) ==
-        //     method_name_to_method_info_map_.end()) {
-        //   std::cout << std::string(
-        //                    "could not find method named " + full_method_name
-        //                    + " for class " + class_it.second.class_name + "
-        //                    type id " + std::to_string(class_it.first) + "
-        //                    field list id " +
-        //                    std::to_string(class_it.second.field_list_type_id)
-        //                    + " method type id " +
-        //                    std::to_string(field->type_id))
-        //             << std::endl;
-        // }
-
         auto mi_it =
             method_name_to_method_info_map_.equal_range(full_method_name);
         if (mi_it.first != mi_it.second) {
-          // std::cout << std::hex << field->type_id << std::endl;
           for (auto mi_it2 = mi_it.first; mi_it2 != mi_it.second; mi_it2++) {
             if (field->type_id == mi_it2->second.type_id) {
               MethodInfo mi;
@@ -510,9 +486,13 @@ std::vector<ClassData> PdbAnalyzer::ConstructClassInfo() {
           auto method_found_it = it.first;
 
           auto suffix_matches = [&]() {
-            return method_found_it->second.name.substr(
-                       method_found_it->second.name.size() - method_name.size(),
-                       method_name.size()) == method_name;
+            int method_name_start =
+                method_found_it->second.name.size() - method_name.size();
+            return method_name_start >= 2 &&
+                   method_found_it->second.name.substr(method_name_start) ==
+                       method_name &&
+                   method_found_it->second.name.substr(method_name_start - 2,
+                                                       2) == "::";
           };
 
           for (; method_found_it != it.second && suffix_matches();
@@ -540,17 +520,13 @@ std::vector<ClassData> PdbAnalyzer::ConstructClassInfo() {
                  nullptr) {
         const std::string &method_name =
             dynamic_cast<const MethodFieldList *>(field.get())->name;
-        // std::cout << "** " << method_name << " " << field->type_id <<
-        // std::endl;
 
         const auto &method_list =
             method_list_type_id_to_method_list_map_[field->type_id];
-        // std::cout << method_list.size() << std::endl;
         for (type_id_t method_type_id : method_list) {
           field_list.push_back(std::make_shared<OneMethodFieldList>(
               method_type_id, method_name));
           size++;
-          // std::cout << "adding " << method_type_id << std::endl;
         }
       } else {
         throw std::runtime_error("invalid field list type ");
