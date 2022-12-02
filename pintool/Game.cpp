@@ -515,9 +515,11 @@ bool IgnoreReturn(ADDRINT actualRetAddr) {
   if (stackEntryCount.find(actualRetAddr) != stackEntryCount.end()) {
     // Pop unmatched frames
     while (actualRetAddr != stackTop.returnAddr) {
-      stackTop = ShadowStackRemoveAndReturnTop();
+      ShadowStackRemoveAndReturnTop();
+      stackTop = shadowStack.back();
     }
 
+    assert(actualRetAddr == stackTop.returnAddr);
     return false;
   } else {
     return true;
