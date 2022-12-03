@@ -55,7 +55,7 @@ class TriePrinter:
         else:
             pathC = pathConv(path)
             lastFingerprintMethod = cls.fingerprint[-1]
-            print(f'{self.indent}{pathC} {lastFingerprintMethod.isDestructor()} {lastFingerprintMethod.seenInHead} {lastFingerprintMethod.seenInFingerprint} {lastFingerprintMethod.seenInTorso()}')
+            print(f'{self.indent}{pathC} {lastFingerprintMethod.isProbablyDestructor()} {lastFingerprintMethod.seenInHead} {lastFingerprintMethod.seenInFingerprint} {lastFingerprintMethod.seenInTorso()}')
             if cls in self.kreoClassToMethodSetMap:
                 for method in self.kreoClassToMethodSetMap[cls]:
                     method.updateType()
