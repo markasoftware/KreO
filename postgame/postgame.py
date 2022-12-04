@@ -5,7 +5,7 @@ import os
 import time
 import pygtrie
 import subprocess
-from typing import List, Callable, Dict, Set, Any
+from typing import List, Callable, Dict, Set, Any, Tuple
 from method import Method
 from object_trace import ObjectTrace, TraceEntry
 from method_store import MethodStore
@@ -59,7 +59,7 @@ class TriePrinter:
             if cls in self.kreoClassToMethodSetMap:
                 for method in self.kreoClassToMethodSetMap[cls]:
                     method.updateType()
-                    print(f'{self.indent}* {method} {method.type} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso()}')
+                    print(f'{self.indent}* {method} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso()}')
 
         self.indent += '    '
         list(children)
@@ -91,20 +91,28 @@ class Postgame:
         print(f'{endMsg} ({endTime - startTime:0.2f}s)')
 
     def parseTraces(self):
+        blacklistedMethods: Set[int] = set()
+        for line in open(config['blacklistedMethodsPath']):
+            blacklistedMethods.add(int(line))
+
+        def addIfValid(trace: List[TraceEntry]):
+            # Sanity check object-trace before adding to traces
+            if len(trace) >= 2:
+                self.traces.add(ObjectTrace(trace))
+
         curTrace: List[TraceEntry] = []
         # there can be multiple object trace files...find all of them
-
         for line in open(config['objectTracesPath']):
             # each line ends with \n, empty line indicates new trace
             if len(line) == 1:
-                if curTrace:
-                    self.traces.add(ObjectTrace(curTrace))
-                    curTrace = []
+                addIfValid(curTrace)
+                curTrace = []
             else:
-                curTrace.append(TraceEntry(line, self.methodStore.findOrInsertMethod, baseAddr))
+                addr = int(line.split()[1])
+                if addr not in blacklistedMethods:
+                    curTrace.append(TraceEntry(line, self.methodStore.findOrInsertMethod, baseAddr))
         # finish the last trace
-        if curTrace:
-            self.traces.add(ObjectTrace(curTrace))
+        addIfValid(curTrace)
 
         for line in open(config['objectTracesPath'] + '-name-map'):
             splitlines = line.split()
@@ -297,7 +305,7 @@ class Postgame:
 
     def main(self):
         ###############################################################################
-        # Step Read traces from disk                                                  #
+        # Step: Read traces from disk                                                 #
         ###############################################################################
         self.runStep(self.parseTraces, 'parsing traces...', f'traces parsed')
         print(f'found {len(self.traces)} traces')

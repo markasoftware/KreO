@@ -33,16 +33,14 @@ Any Windows-specific steps prefixed by _(Windows)_
 ## Notes About Projects Analyzed
 
 All projects were built using MSVC 2022 on a Windows 10 machine with the default
-x86 debug configuration.
+x86 debug configuration (sometimes referred to as win32 in projects).
 
-### TinyXML2
+* [TinyXML2](https://github.com/leethomason/tinyxml2): To run the pintool on the test suite, you must copy the [resources](https://github.com/leethomason/tinyxml2/tree/master/resources) directory to the directory where you run `game.py` from.
+* [CppCheck](https://github.com/danmar/cppcheck)
+* [Turbo Vision](https://github.com/magiblot/tvision)
+* [stlklearn](https://github.com/jxy-s/stlkrn.git)
 
-Clone TinyXML2 from [github](https://github.com/leethomason/tinyxml2). Build the
-project (debug). To run the pintool on the test suite, you must copy the
-[resources](https://github.com/leethomason/tinyxml2/tree/master/resources)
-directory to the directory where you run `game.py` from
-
-### AStyle
+### AStyle - TODO get this working
 
 Download AStyle for Windows from
 [sourceforge](https://sourceforge.net/projects/astyle/files/astyle/astyle%203.1/).
@@ -50,6 +48,3 @@ Open the newest MSVC project version and compile the executable.
 
 Note: currently no tests for this project, probably have to make some inputs up
 by hand to run system tests.
-
-### CppCheck
-
