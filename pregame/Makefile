@@ -44,7 +44,7 @@ MOSTLYCLEANFILES =
 # Assuming your source code is "pregame.cpp" to build an executable named "pregame".
 
 run: all
-	LD_LIBRARY_PATH=/usr/local/lib ./pregame --partition-split-thunks ${BINARY} > method-candidates
+	LD_LIBRARY_PATH=/usr/local/lib ./pregame --partition-split-thunks --method-candidates-path ${METHOD_CANDIDATES} --static-traces-path ${STATIC_TRACES} ${BINARY} 
 
 all: pregame
 
