@@ -21,6 +21,8 @@ if not 'enableSymbolProcedureDetection' in config:
     config['enableSymbolProcedureDetection'] = False
 if not 'methodCandidatesPath' in config:
     config['methodCandidatesPath'] = join(scriptpath, 'out/method-candidates')
+if not 'blacklistedMethodsPath' in config:
+    config['blacklistedMethodsPath'] = join(scriptpath, 'out/blacklisted-methods')
 if not 'gtMethodsPath' in config:
     config['gtMethodsPath'] = join(scriptpath, 'out/gt-methods')
 if not 'gtMethodsInstrumentedPath' in config:
