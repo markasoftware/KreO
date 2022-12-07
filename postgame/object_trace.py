@@ -52,12 +52,18 @@ class ObjectTrace:
             # Only count returns to avoid double counting the number of methods seen
             if not entry.isCall:
                 entry.method.seenTotal += 1
-                
+
         for headMethod in self.head:
             headMethod.seenInHead += 1
         # Count the number of methods seen in the fingerprint
         for fingerprintMethod in self.fingerprint:
             fingerprintMethod.seenInFingerprint += 1
+
+        # the initializer is the first method in the trace
+        self.traceEntries[0].method.isInitializer = True
+
+        # the finalizer is the last method in the trace
+        self.traceEntries[-1].method.isFinalizer = True
 
     def methods(self):
         '''
@@ -84,15 +90,11 @@ class ObjectTrace:
 
         currEntry = iterateAndInsert()
         while currEntry is not None:
-            # If entry is a destructor and we are returning from it, potentially split trace
-            if currEntry.method.isInFingerprint() and not currEntry.isCall:
-                # Iterate until curr entry not destructor
-                while currEntry is not None and currEntry.method.isInFingerprint():
-                    currEntry = iterateAndInsert()
-
-                # If curr entry is a constructor, split the trace
-                if currEntry is not None and currEntry.method.isInHead():
-                    # NOTE: must move currEntry from the current trace to the new currTrace
+            # If entry is a finalizer and we are returning from it, potentially split trace
+            if currEntry.method.isFinalizer and not currEntry.isCall:
+                # If next entry is an initializer, split the trace
+                currEntry = iterateAndInsert()
+                if currEntry is not None and currEntry.method.isInitializer and currEntry.isCall:
                     splitTraces.append(currTrace[0:-1])
                     currTrace = [currEntry]
 

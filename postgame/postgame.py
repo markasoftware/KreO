@@ -59,7 +59,7 @@ class TriePrinter:
             if cls in self.kreoClassToMethodSetMap:
                 for method in self.kreoClassToMethodSetMap[cls]:
                     method.updateType()
-                    print(f'{self.indent}* {method} {method.type} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso()}')
+                    print(f'{self.indent}* {method} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso()}')
 
         self.indent += '    '
         list(children)

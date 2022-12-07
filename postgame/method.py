@@ -12,6 +12,9 @@ class Method:
         self.destructorTailToTorsoRatioMax = 4
         self.constructorHeadToTorsoRatioMax = 4
 
+        self.isInitializer = False
+        self.isFinalizer = False
+
     def resetMethodStatistics(self):
         self.seenInHead = int(0)
         self.seenInFingerprint = int(0)
