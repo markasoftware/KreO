@@ -10,6 +10,8 @@ using virtual_address_t = uint64_t;
 static constexpr std::string_view kConstructorType{"ctor"};
 static constexpr std::string_view kDestructorType{"dtor"};
 
+static constexpr size_t kBaseAddr{0x400000};
+
 // ============================================================================
 struct MethodInfo {
   virtual_address_t address;
@@ -42,6 +44,10 @@ static std::vector<ClassInfo> ToClassInfo(const boost::json::value &json);
 
 // ============================================================================
 static std::vector<ClassInfo> LoadAndConvertJson(const std::string &json_str);
+
+// ============================================================================
+static std::set<MethodInfo> GetTypeSet(const std::vector<ClassInfo> &in,
+                                       const std::string_view &type);
 
 // ============================================================================
 /// @brief Computes precision and recall on the generated methods. The ground
@@ -88,16 +94,23 @@ MatchGenToGtClasses(const std::vector<ClassInfo> &ground_truth,
 static float ComputeF1(float precision, float recall);
 
 // ============================================================================
+static void LoadAndRecordGtMethodStats(
+    const std::string &gt_methods_instrumented_path,
+    const std::vector<ClassInfo> &ground_truth);
+
+// ============================================================================
 int main(int argc, char *argv[]) {
-  if (argc != 3) {
+  if (argc != 4) {
     std::cerr << "Usage: ./evaluation <path-to-ground-truth-json> "
-                 "<path-to-generated-json>"
+                 "<path-to-generated-json> "
+                 "<path-to-gt-methods-instrumented>"
               << std::endl;
     return EXIT_FAILURE;
   }
 
   auto gt_class_info_list = LoadAndConvertJson(argv[1]);
   auto gen_class_info_list = LoadAndConvertJson(argv[2]);
+  LoadAndRecordGtMethodStats(argv[3], gt_class_info_list);
 
   auto run_test =
       [=](const std::string &name,
@@ -121,8 +134,65 @@ int main(int argc, char *argv[]) {
   run_test("Constructors", PrecisionAndRecallConstructors);
   run_test("Destructors", PrecisionAndRecallDestructors);
   run_test("Methods", PrecisionAndRecallMethods);
-  run_test("Class Graphs",
-           PrecisionAndRecallParentChildRelationships);
+  run_test("Class Graphs", PrecisionAndRecallParentChildRelationships);
+}
+
+// ============================================================================
+static void LoadAndRecordGtMethodStats(
+    const std::string &gt_methods_instrumented_path,
+    const std::vector<ClassInfo> &ground_truth) {
+  std::ifstream gt_methods_instrumented(gt_methods_instrumented_path);
+
+  std::set<int> gt_methods_instrumented_set;
+
+  int addr{};
+  while (gt_methods_instrumented >> addr) {
+    gt_methods_instrumented_set.insert(addr + kBaseAddr);
+  }
+
+  // Find all constructors/destructors in ground truth
+  std::set<MethodInfo> ctor_set = GetTypeSet(ground_truth, "ctor");
+  std::set<MethodInfo> dtor_set = GetTypeSet(ground_truth, "dtor");
+
+  size_t ctor_instrumented{0};
+  size_t dtor_instrumented{0};
+
+  for (const MethodInfo &mi : ctor_set) {
+    if (gt_methods_instrumented_set.count(mi.address) != 0) {
+      ctor_instrumented++;
+    }
+    std::cout << mi.address << std::endl;
+  }
+
+  for (const MethodInfo &mi : dtor_set) {
+    if (gt_methods_instrumented_set.count(mi.address) != 0) {
+      dtor_instrumented++;
+    }
+  }
+
+  size_t gt_methods{0};
+  for (const ClassInfo &ci : ground_truth) {
+    for (const MethodInfo &mi : ci.method_set) {
+      gt_methods++;
+    }
+  }
+
+  std::cout << (gt_methods_instrumented_path + ".stats") << std::endl;
+  std::ofstream gt_method_info(gt_methods_instrumented_path + ".stats");
+
+  float gt_coverage_all_methods =
+      static_cast<float>(gt_methods_instrumented_set.size()) /
+      static_cast<float>(gt_methods);
+
+  float gt_coverage_ctor = static_cast<float>(ctor_instrumented) /
+                           static_cast<float>(ctor_set.size());
+
+  float gt_coverage_dtor = static_cast<float>(dtor_instrumented) /
+                           static_cast<float>(dtor_set.size());
+
+  gt_method_info << "all method coverage: " << gt_coverage_all_methods
+                 << ", ctor coverage: " << gt_coverage_ctor
+                 << ", dtor coverage: " << gt_coverage_dtor;
 }
 
 // ============================================================================
@@ -311,24 +381,26 @@ static std::pair<float, float> PrecisionAndRecallMethods(
 }
 
 // ============================================================================
+static std::set<MethodInfo> GetTypeSet(const std::vector<ClassInfo> &in,
+                                       const std::string_view &type) {
+  std::set<MethodInfo> type_set;
+  for (const auto &it : in) {
+    for (const auto &method : it.method_set) {
+      if (method.type == type) {
+        type_set.insert(method);
+      }
+    }
+  }
+  return type_set;
+}
+
+// ============================================================================
 static std::pair<float, float> PrecisionAndRecallSpecificType(
     const std::vector<ClassInfo> &ground_truth,
     const std::vector<ClassInfo> &generated_data,
     const std::string_view &type) {
-  auto to_type_set = [type](const std::vector<ClassInfo> &in) {
-    std::set<MethodInfo> constructors;
-    for (const auto &it : in) {
-      for (const auto &method : it.method_set) {
-        if (method.type == type) {
-          constructors.insert(method);
-        }
-      }
-    }
-    return constructors;
-  };
-
-  std::set<MethodInfo> ground_truth_type = to_type_set(ground_truth);
-  std::set<MethodInfo> generated_data_type = to_type_set(generated_data);
+  std::set<MethodInfo> ground_truth_type = GetTypeSet(ground_truth, type);
+  std::set<MethodInfo> generated_data_type = GetTypeSet(generated_data, type);
 
   int32_t true_positives{};
 

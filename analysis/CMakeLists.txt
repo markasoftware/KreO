@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.0)
-project(paxos_lock VERSION 0.1.0)
+project(analysis VERSION 0.1.0)
 
 find_package( 
     Boost 1.75 REQUIRED 

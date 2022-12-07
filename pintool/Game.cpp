@@ -969,12 +969,6 @@ void Fini(INT32 code, void*) {
   os.close();
   os.open(gtMethodsInstrumentedStr.c_str());
 
-  float coverage = static_cast<float>(gtCalledMethods.size()) /
-                   static_cast<float>(gtMethodAddrs.size());
-  os << "Ground truth methods: " << gtMethodAddrs.size()
-     << ", Called ground truth methods: " << gtCalledMethods.size()
-     << ", Coverage (%): " << coverage << endl
-     << "=====" << endl;
   for (ADDRINT addr : gtCalledMethods) {
     os << addr << endl;
   }
