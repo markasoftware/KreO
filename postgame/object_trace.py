@@ -47,7 +47,7 @@ class ObjectTrace:
         '''
 
         # Count the total number of times each method in the trace is seen
-        # anywhere. Note that we will be modifying the global method's "seenCount".
+        # anywhere. Note that we will be modifying the global method
         for entry in self.traceEntries:
             # Only count returns to avoid double counting the number of methods seen
             if not entry.isCall:
@@ -55,15 +55,18 @@ class ObjectTrace:
 
         for headMethod in self.head:
             headMethod.seenInHead += 1
+
         # Count the number of methods seen in the fingerprint
         for fingerprintMethod in self.fingerprint:
             fingerprintMethod.seenInFingerprint += 1
 
-        # the initializer is the first method in the trace
-        self.traceEntries[0].method.isInitializer = True
+        # the initializer is the first method in the trace (assuming first entry is call)
+        if self.traceEntries[0].isCall:
+            self.traceEntries[0].method.isInitializer = True
 
-        # the finalizer is the last method in the trace
-        self.traceEntries[-1].method.isFinalizer = True
+        # the finalizer is the last method in the trace (assuming last entry is return)
+        if not self.traceEntries[-1].isCall:
+            self.traceEntries[-1].method.isFinalizer = True
 
     def methods(self):
         '''

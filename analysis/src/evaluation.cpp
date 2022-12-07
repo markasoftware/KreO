@@ -94,56 +94,102 @@ MatchGenToGtClasses(const std::vector<ClassInfo> &ground_truth,
 static float ComputeF1(float precision, float recall);
 
 // ============================================================================
-static void LoadAndRecordGtMethodStats(
+static std::set<virtual_address_t> LoadAndRecordGtMethodStats(
     const std::string &gt_methods_instrumented_path,
     const std::vector<ClassInfo> &ground_truth);
 
 // ============================================================================
+static std::vector<ClassInfo> GetGtClassInfoInstrumentedList(
+    std::set<virtual_address_t> gt_methods_instrumented,
+    std::vector<ClassInfo> &gt_class_info_list);
+
+// ============================================================================
 int main(int argc, char *argv[]) {
-  if (argc != 4) {
+  if (argc != 6) {
     std::cerr << "Usage: ./evaluation <path-to-ground-truth-json> "
                  "<path-to-generated-json> "
-                 "<path-to-gt-methods-instrumented>"
+                 "<path-to-gt-methods-instrumented> <analysis-gt-out-path> "
+                 "<analysis-gt-out-instrumented-path>"
               << std::endl;
     return EXIT_FAILURE;
   }
 
   auto gt_class_info_list = LoadAndConvertJson(argv[1]);
   auto gen_class_info_list = LoadAndConvertJson(argv[2]);
-  LoadAndRecordGtMethodStats(argv[3], gt_class_info_list);
+  std::set<virtual_address_t> gt_methods_instrumented =
+      LoadAndRecordGtMethodStats(argv[3], gt_class_info_list);
 
-  auto run_test =
-      [=](const std::string &name,
-          std::function<std::pair<float, float>(const std::vector<ClassInfo> &,
-                                                const std::vector<ClassInfo> &)>
-              test) {
-        auto precision_recall = test(gt_class_info_list, gen_class_info_list);
+  std::string gt_out_path(argv[4]);
+  std::string gt_out_instrumented_path(argv[5]);
 
-        float f_score =
-            ComputeF1(precision_recall.first, precision_recall.second);
+  auto run_all_tests = [gen_class_info_list](
+                           const std::vector<ClassInfo> &gt_class_info_list,
+                           std::ofstream &ostream) {
+    ostream << "evaluation criteria\tprecision\trecall\tf-score" << std::endl;
 
-        std::cout << std::fixed << std::setprecision(2) << name << "&"
-                  << precision_recall.first << "&" << precision_recall.second
-                  << "&" << f_score << std::endl;
-      };
+    using PrecisionRecallFn = std::function<std::pair<float, float>(
+        const std::vector<ClassInfo> &, const std::vector<ClassInfo> &)>;
+    auto run_test = [&](
+                        const std::string &name, PrecisionRecallFn test) {
+      auto precision_recall = test(gt_class_info_list, gen_class_info_list);
 
-  std::cout << "evaluation criteria\tprecision\trecall\tf-score" << std::endl;
-  run_test("Methods Assigned to Correct Class",
-           PrecisionAndRecallMethodsAssignedCorrectClass);
-  run_test("Individual Classes", PrecisionAndRecallClasses);
-  run_test("Constructors", PrecisionAndRecallConstructors);
-  run_test("Destructors", PrecisionAndRecallDestructors);
-  run_test("Methods", PrecisionAndRecallMethods);
-  run_test("Class Graphs", PrecisionAndRecallParentChildRelationships);
+      float f_score =
+          ComputeF1(precision_recall.first, precision_recall.second);
+
+      ostream << std::fixed << std::setprecision(2) << name << "&"
+              << precision_recall.first << "&" << precision_recall.second << "&"
+              << f_score << std::endl;
+    };
+
+    run_test("Methods Assigned to Correct Class",
+             PrecisionAndRecallMethodsAssignedCorrectClass);
+    run_test("Individual Classes", PrecisionAndRecallClasses);
+    run_test("Constructors", PrecisionAndRecallConstructors);
+    run_test("Destructors", PrecisionAndRecallDestructors);
+    run_test("Methods", PrecisionAndRecallMethods);
+    run_test("Class Graphs", PrecisionAndRecallParentChildRelationships);
+  };
+
+  std::ofstream gt_out(gt_out_path);
+  run_all_tests(gt_class_info_list, gt_out);
+
+  auto gt_class_info_instrumented_list = GetGtClassInfoInstrumentedList(
+      gt_methods_instrumented, gt_class_info_list);
+
+  std::ofstream gt_out_instrumented(gt_out_instrumented_path);
+  run_all_tests(gt_class_info_instrumented_list, gt_out_instrumented);
 }
 
 // ============================================================================
-static void LoadAndRecordGtMethodStats(
+static std::vector<ClassInfo> GetGtClassInfoInstrumentedList(
+    std::set<virtual_address_t> gt_methods_instrumented,
+    std::vector<ClassInfo> &gt_class_info_list) {
+  std::vector<ClassInfo> gt_class_info_instrumented;
+
+  for (const ClassInfo &ci : gt_class_info_list) {
+    decltype(ci.method_set) new_method_set;
+    for (const MethodInfo &mi : ci.method_set) {
+      if (gt_methods_instrumented.count(mi.address) != 0) {
+        new_method_set.insert(mi);
+      }
+    }
+    if (new_method_set.size() != 0) {
+      ClassInfo instrumented_ci = ci;
+      instrumented_ci.method_set = new_method_set;
+      gt_class_info_instrumented.push_back(instrumented_ci);
+    }
+  }
+
+  return gt_class_info_instrumented;
+}
+
+// ============================================================================
+static std::set<virtual_address_t> LoadAndRecordGtMethodStats(
     const std::string &gt_methods_instrumented_path,
     const std::vector<ClassInfo> &ground_truth) {
   std::ifstream gt_methods_instrumented(gt_methods_instrumented_path);
 
-  std::set<int> gt_methods_instrumented_set;
+  std::set<virtual_address_t> gt_methods_instrumented_set;
 
   int addr{};
   while (gt_methods_instrumented >> addr) {
@@ -161,7 +207,6 @@ static void LoadAndRecordGtMethodStats(
     if (gt_methods_instrumented_set.count(mi.address) != 0) {
       ctor_instrumented++;
     }
-    std::cout << mi.address << std::endl;
   }
 
   for (const MethodInfo &mi : dtor_set) {
@@ -177,7 +222,6 @@ static void LoadAndRecordGtMethodStats(
     }
   }
 
-  std::cout << (gt_methods_instrumented_path + ".stats") << std::endl;
   std::ofstream gt_method_info(gt_methods_instrumented_path + ".stats");
 
   float gt_coverage_all_methods =
@@ -193,6 +237,8 @@ static void LoadAndRecordGtMethodStats(
   gt_method_info << "all method coverage: " << gt_coverage_all_methods
                  << ", ctor coverage: " << gt_coverage_ctor
                  << ", dtor coverage: " << gt_coverage_dtor;
+
+  return gt_methods_instrumented_set;
 }
 
 // ============================================================================
