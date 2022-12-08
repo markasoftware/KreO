@@ -395,7 +395,6 @@ int main(int argc, char *argv[]) {
                            .argument("path", anyParser(Kreo::settings.staticTracesPath)));
 
     auto engine = P2::Engine::instance();
-    engine->settings().partitioner.splittingThunks = true;
     Sawyer::CommandLine::Parser cmdParser = engine->commandLineParser(Kreo::purpose, Kreo::description);
     cmdParser.with(kreoSwitchGroup);
     Sawyer::CommandLine::ParserResult parserResult = cmdParser.parse(argc, argv);
@@ -419,6 +418,7 @@ int main(int argc, char *argv[]) {
 
     //// PERFORM ANALYSIS ////
 
+    engine->settings().partitioner.splittingThunks = true;
     engine->settings().partitioner.findingImportFunctions = false; // this is just stuff from other files, right?
     engine->settings().partitioner.findingExportFunctions = Kreo::settings.enableSymbolProcedureDetection;
     engine->settings().partitioner.findingSymbolFunctions = Kreo::settings.enableSymbolProcedureDetection;
@@ -445,6 +445,8 @@ int main(int argc, char *argv[]) {
 
     int numMethodsFound = 0;
     for (const P2::Function::Ptr &proc : partitioner.functions()) {
+        // there's already a conditional for chunks in the static analysis part, but if static analysis is disabled that won't be reached.
+        // We're essentially checking two conditions: 1., before static analysis, that it's not a thunk, and 2., after static analysis, that it uses the this pointer.
         if (proc->isThunk()) {
             continue;
         }
