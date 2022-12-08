@@ -50,15 +50,17 @@ class ObjectTrace:
         # anywhere. Note that we will be modifying the global method
         for entry in self.traceEntries:
             # Only count returns to avoid double counting the number of methods seen
-            if not entry.isCall:
-                entry.method.seenTotal += 1
+            if entry.isCall:
+                entry.method.seenInTorso += 1
 
         for headMethod in self.head:
             headMethod.seenInHead += 1
+            headMethod.seenInTorso -= 1
 
         # Count the number of methods seen in the fingerprint
         for fingerprintMethod in self.fingerprint:
             fingerprintMethod.seenInFingerprint += 1
+            fingerprintMethod.seenInTorso -= 1
 
         # the initializer is the first method in the trace (assuming first entry is call)
         if self.traceEntries[0].isCall:

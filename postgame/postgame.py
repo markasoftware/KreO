@@ -55,11 +55,11 @@ class TriePrinter:
         else:
             pathC = pathConv(path)
             lastFingerprintMethod = cls.fingerprint[-1]
-            print(f'{self.indent}{pathC} {lastFingerprintMethod.isProbablyDestructor()} {lastFingerprintMethod.seenInHead} {lastFingerprintMethod.seenInFingerprint} {lastFingerprintMethod.seenInTorso()}')
+            print(f'{self.indent}{pathC} {lastFingerprintMethod.isProbablyDestructor()} {lastFingerprintMethod.seenInHead} {lastFingerprintMethod.seenInFingerprint} {lastFingerprintMethod.seenInTorso}')
             if cls in self.kreoClassToMethodSetMap:
                 for method in self.kreoClassToMethodSetMap[cls]:
                     method.updateType()
-                    print(f'{self.indent}* {method} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso()}')
+                    print(f'{self.indent}* {method} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso}')
 
         self.indent += '    '
         list(children)
@@ -138,7 +138,7 @@ class Postgame:
 
     def removeNondestructorsFromFingerprints(self):
         for trace in self.traces:
-            trace.fingerprint = [method for method in trace.fingerprint if method.isProbablyDestructor()]
+            trace.fingerprint = list(filter(lambda method: method.isProbablyDestructor(), trace.fingerprint))
         # Remove traces with empty fingerprints
         self.traces = set(filter(lambda trace: len(trace.fingerprint) > 0, self.traces))
 
@@ -317,7 +317,7 @@ class Postgame:
         self.runStep(self.updateAllMethodStatistics, 'updating method statistics...', 'method statistics updated')
 
         ###############################################################################
-        # Step Split spurious traces                                                  #
+        # Step: Split spurious traces                                                 #
         ###############################################################################
         self.runStep(self.splitTracesFn, 'splitting traces...', f'traces split')
         print(f'after splitting there are now {len(self.traces)} traces')
@@ -334,6 +334,13 @@ class Postgame:
         # destructors.                                                                #
         ###############################################################################
         self.runStep(self.removeNondestructorsFromFingerprints, 'removing methods that aren\'t destructors from fingerprints...', 'method removed')
+
+        ###############################################################################
+        # Step: Update method statistics again now. Splitting traces won't reveal new #
+        # constructors/destructors; however, the number of times methods are seen in  #
+        # the head/body/fingerprint does change.                                      #
+        ###############################################################################
+        self.runStep(self.updateAllMethodStatistics, 'updating method statistics again...', 'method statistics updated')
 
         ###############################################################################
         # Step: Look at fingerprints to determine hierarchy. Insert entries into trie.#

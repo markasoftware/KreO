@@ -18,10 +18,7 @@ class Method:
     def resetMethodStatistics(self):
         self.seenInHead = int(0)
         self.seenInFingerprint = int(0)
-        self.seenTotal = int(0)
-
-    def seenInTorso(self):
-        return self.seenTotal - self.seenInHead - self.seenInFingerprint
+        self.seenInTorso = int(0)
 
     def isInFingerprint(self) -> bool:
         return self.seenInFingerprint > 0
@@ -40,7 +37,7 @@ class Method:
         '''
         return self.isInHead() and \
                not self.isInFingerprint() and \
-               self.constructorHeadToTorsoRatioMax * self.seenInTorso() <= self.seenInHead
+               self.constructorHeadToTorsoRatioMax * self.seenInTorso <= self.seenInHead
 
     def isProbablyDestructor(self) -> bool:
         '''
@@ -48,15 +45,15 @@ class Method:
         '''
         return self.isInFingerprint() and \
                not self.isInHead() and \
-               self.destructorTailToTorsoRatioMax * self.seenInTorso() <= self.seenInFingerprint
+               self.destructorTailToTorsoRatioMax * self.seenInTorso <= self.seenInFingerprint
 
     def updateType(self) -> None:
         # TODO other types may be viable options (virtual methods for example), but for now we don't care about them
         assert not (self.isProbablyConstructor() and self.isProbablyDestructor())
 
-        if self.isInFingerprint():
+        if self.isProbablyDestructor():
             self.type = 'dtor'
-        elif self.isInHead():
+        elif self.isProbablyConstructor():
             self.type = 'ctor'
         else:
             self.type = 'meth'
