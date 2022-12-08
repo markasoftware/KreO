@@ -137,54 +137,24 @@ namespace Kreo {
     };
 
     std::ostream &operator<<(std::ostream &os, const StaticObjectTrace &trace) {
-            for (auto fn : trace.fns) {
-                if (fn) {
-                    if (!fn->name().empty()) {
-                        os << fn->name() << " ";
-                    }
-                    os << fn->address() << std::endl;
-                } else {
-                    // TODO: figure out why this function might be null.
-                    os << "(unknown)" << std::endl;
-                }
-            }
+        if (trace.fns.size() <= 1) {
+            // A trace with one entry does not convey any information, i.e. is meaningless, so why print it?
             return os;
+        }
+        for (auto fn : trace.fns) {
+            if (fn) {
+                os << fn->address();
+                if (!fn->name().empty()) {
+                    os << " " << fn->name();
+                }
+                os << std::endl;
+            } else {
+                // TODO: figure out why this function might be null.
+                // os << "(unknown)" << std::endl;
+            }
+        }
+        return os;
     }
-
-    // // we use T directly (no shared pointers or other indirection) because in practice we'll be
-    // // storing addresses, which are cheap to copy.
-    // template<typename T>
-    // class UnionFind {
-    // private:
-    // 	std::vector<size_t> parents;
-    // 	std::unordered_map<T, size_t> valueIndices;
-    // public:
-    // 	void merge(const T &a, const T &b) {
-    // 		assert(valueIndices.count(a) != 0 && valueIndices.count(b) != 0);
-    // 		parents[valueIndices[b]] = valueIndices[a];
-    // 	}
-
-    // 	void add(T a) {
-    // 		if (valueIndices.count(a) == 0) {
-    // 			size_t newIdx = parents.size();
-    // 			parents.push_back(newIdx);
-    // 			valueIndices[a] = newIdx;
-    // 		}
-    // 	}
-
-    // 	std::vector<std::unordered_set<T>> concretize() const {
-    // 		std::vector<std::unordered_set<T>> result;
-
-    // 		for (auto pair : valueIndices) {
-    // 			if (pair.second > result.size()-1) {
-    // 				result.resize(pair.second);
-    // 			}
-    // 			result[pair.second].add(pair.first);
-    // 		}
-
-    // 		return result;
-    // 	}
-    // };
 
     class CallingConventionGuess {
     public:
@@ -220,12 +190,12 @@ namespace Kreo {
 
     class AnalyzeProcedureResult {
     public:
-        AnalyzeProcedureResult() : success(false), traces(), isMethod(false) { }
-        AnalyzeProcedureResult(std::vector<StaticObjectTrace> traces, bool isMethod)
-            : traces(traces), isMethod(isMethod), success(true) { }
+        AnalyzeProcedureResult() : success(false), traces(), usesThisPointer(false) { }
+        AnalyzeProcedureResult(std::vector<StaticObjectTrace> traces, bool usesThisPointer)
+            : traces(traces), usesThisPointer(usesThisPointer), success(true) { }
 
         std::vector<StaticObjectTrace> traces;
-        bool isMethod; // whether the procedure analyzed appears to have the correct calling convention for a method.
+        bool usesThisPointer; // whether the procedure analyzed appears to have the correct calling convention for a method.
         bool success;
     };
 
@@ -397,10 +367,10 @@ namespace Kreo {
 
         ///// ANALYZE DATAFLOW RESULTS FOR CALLING CONVENTION /////
         Base::State::Ptr returnState = dfEngine.getInitialState(returnVertex->id());
-        bool isMethod = Base::RegisterStateGeneric::promote(returnState->registerState())->hasPropertyAny(cc.thisArgumentRegister, InstructionSemantics::BaseSemantics::IO_READ_BEFORE_WRITE);
+        bool usesThisPointer = Base::RegisterStateGeneric::promote(returnState->registerState())->hasPropertyAny(cc.thisArgumentRegister, InstructionSemantics::BaseSemantics::IO_READ_BEFORE_WRITE);
 
         // All done!
-        return AnalyzeProcedureResult(traces, isMethod);
+        return AnalyzeProcedureResult(traces, usesThisPointer);
     }
 }
 
@@ -425,6 +395,7 @@ int main(int argc, char *argv[]) {
                            .argument("path", anyParser(Kreo::settings.staticTracesPath)));
 
     auto engine = P2::Engine::instance();
+    engine->settings().partitioner.splittingThunks = true;
     Sawyer::CommandLine::Parser cmdParser = engine->commandLineParser(Kreo::purpose, Kreo::description);
     cmdParser.with(kreoSwitchGroup);
     Sawyer::CommandLine::ParserResult parserResult = cmdParser.parse(argc, argv);
@@ -447,7 +418,6 @@ int main(int argc, char *argv[]) {
     }
 
     //// PERFORM ANALYSIS ////
-
 
     engine->settings().partitioner.findingImportFunctions = false; // this is just stuff from other files, right?
     engine->settings().partitioner.findingExportFunctions = Kreo::settings.enableSymbolProcedureDetection;
@@ -475,8 +445,12 @@ int main(int argc, char *argv[]) {
 
     int numMethodsFound = 0;
     for (const P2::Function::Ptr &proc : partitioner.functions()) {
+        if (proc->isThunk()) {
+            continue;
+        }
+
         const size_t relativeProcAddr = proc->address() - minAddress;
-        bool isMethod = true;
+        bool usesThisPointer = true; // assume it uses this pointer, possible set to false if static analysis is enabled and finds that the register is not in fact used.
 
         if (Kreo::settings.enableAliasAnalysis || Kreo::settings.enableCallingConventionAnalysis) {
             auto analysisResult = Kreo::analyzeProcedure(partitioner, disassembler, proc);
@@ -488,11 +462,11 @@ int main(int argc, char *argv[]) {
             }
 
             if (Kreo::settings.enableCallingConventionAnalysis) {
-                isMethod = analysisResult.isMethod;
+                usesThisPointer = analysisResult.usesThisPointer;
             }
         }
 
-        if (isMethod) {
+        if (usesThisPointer) {
             numMethodsFound++;
             methodCandidatesStream << relativeProcAddr << std::endl;
         }
