@@ -119,6 +119,7 @@ class Postgame:
         # finish the last trace
         addIfValid(curTrace)
 
+    def parseMethodNames(self):
         for line in open(config['objectTracesPath'] + '-name-map'):
             splitlines = line.split()
             try:
@@ -390,6 +391,8 @@ class Postgame:
             self.runStep(self.discoverMethodsStatically, 'discovering methods from static traces...', 'static methods discovered')
             # discoverMethodsStatically leaves the new methods assigned to sets of classes still
             self.runStep(self.reorganizeTrie, '2nd reorganizing trie...', '2nd trie reorganization complete')
+
+        self.runStep(self.parseMethodNames, 'parsing method names...', 'method names parsed')
 
         self.runStep(self.mapTrieNodesToMethods, 'mapping trie nodes to methods...', 'trie nodes mapped')
         self.runStep(self.generateJson, 'generating json...', 'json generated')
