@@ -316,13 +316,15 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
   // argument. And, as you'd expect, upper_bound points /after/ the position
   // you really want, to make it easy to use in the end condition of a loop..
 
-  for (auto it = activeObjectTraces.lower_bound(regionStart);
+  auto firstTrace = activeObjectTraces.lower_bound(regionStart);
+  auto it = firstTrace;
+  for (;
        it != activeObjectTraces.end() && it->first < regionEnd;
        it++) {
     EndObjectTraceIt(it);
-    activeObjectTraces.erase(it);
     assert(it->second == nullptr);
   }
+  activeObjectTraces.erase(firstTrace, it);
 }
 
 ///////////////////////
