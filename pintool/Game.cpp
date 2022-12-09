@@ -485,11 +485,20 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
     return true;
   }
 
+  // If lies within reg allocated region, address valid.
+  auto regIt = mappedRegions.upper_bound(ptr);
+  if (regIt != mappedRegions.begin()) {
+    regIt--;
+    if (ptr < regIt->second) {
+      return true;
+    }
+  }
+
   // If lies within heap allocated region, address valid.
-  auto it = heapAllocations.upper_bound(ptr);
-  if (it != heapAllocations.begin()) {
-    it--;
-    if (stackPtr < it->second) {
+  auto heapIt = heapAllocations.upper_bound(ptr);
+  if (heapIt != heapAllocations.begin()) {
+    heapIt--;
+    if (ptr < heapIt->second) {
       return true;
     }
   }
@@ -590,6 +599,7 @@ bool IgnoreReturn(ADDRINT actualRetAddr) {
 /// pointer is not normalized.
 void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
                              ADDRINT objPtr) {
+  // TODO: this is absolutely not the right way to find the bottom (highest address) in the stack:
   if (stackBase == 0) {
     stackBase = stackPtr;
   }
@@ -598,15 +608,13 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
 
   // Method blacklisted, don't add to trace
   if (blacklistedProcedures.find(procAddr) != blacklistedProcedures.end()) {
-    PIN_ReleaseLock(&checkObjectTraceLock);
-    return;
+      goto cleanup;
   }
 
   // Object pointer invalid, not possible method candidate
   if (!IsPossibleObjPtr(objPtr, stackPtr)) {
     blacklistedProcedures.insert(procAddr);
-    PIN_ReleaseLock(&checkObjectTraceLock);
-    return;
+    goto cleanup;
   }
 
   // The method candidate is valid. Add to the trace and shadow stack.
@@ -633,6 +641,7 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
 
   lastRetAddr = static_cast<ADDRINT>(-1);
 
+cleanup:
   PIN_ReleaseLock(&checkObjectTraceLock);
 }
 
