@@ -172,7 +172,6 @@ PIN_LOCK checkObjectTraceLock;
 /// traces. Also removes the trace if the trace is empty after blacklisted
 /// procedures are removed from it.
 void RemoveBlacklistedMethods() {
-  int i{0};
   for (auto traceIt = finishedObjectTraces.begin();
        traceIt != finishedObjectTraces.end();) {
     vector<ObjectTraceEntry>* trace = *traceIt;
@@ -248,7 +247,7 @@ void ParsePregame() {
 
   string objectTracesPathStr = objectTracesPath.Value().c_str();
 
-  ofstream os(objectTracesPathStr.c_str(), ofstream::out | ofstream::trunc);
+  ofstream os(objectTracesPathStr, ofstream::out | ofstream::trunc);
 }
 
 // ============================================================================
@@ -381,29 +380,26 @@ void FreeCallback(ADDRINT freedRegionStart) {
 #endif
 
   if (freedRegionStart == 0) {
-#ifdef LOG_WARN
-    // for whatever reason, real programs seem to be doing this??
-    LOG("WARNING: Freed nullptr?");
-#endif
+    // this is in fact well-defined and legal behavior
     return;
   }
 
   PIN_GetLock(&checkObjectTraceLock, 0);
 
   auto freedRegionIt = heapAllocations.find(freedRegionStart);
+  ADDRINT freedRegionEnd = freedRegionIt->second;
 
   if (freedRegionIt == heapAllocations.end()) {
 #ifdef LOG_WARN
     LOG("WARNING: Invalid pointer freed! Check the program-under-test.\n");
 #endif
-    PIN_ReleaseLock(&checkObjectTraceLock);
-    return;
+    goto cleanup;
   }
 
-  ADDRINT freedRegionEnd = freedRegionIt->second;
   EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
   heapAllocations.erase(freedRegionIt);
 
+cleanup:
   PIN_ReleaseLock(&checkObjectTraceLock);
 }
 
@@ -426,13 +422,13 @@ void OnDeleteInstrumented(ADDRINT deletedObject) {
 #ifdef LOG_WARN
     LOG("Attempting to delete ptr that is not in heap allocated region\n");
 #endif
-    PIN_ReleaseLock(&checkObjectTraceLock);
-    return;
+    goto cleanup;
   }
 
   EndObjectTrace(deletedObject);
   heapAllocations.erase(freedRegionIt);
 
+cleanup:
   PIN_ReleaseLock(&checkObjectTraceLock);
 }
 
@@ -538,7 +534,7 @@ ShadowStackEntry ShadowStackRemoveAndReturnTop() {
   shadowStack.pop_back();
 
   // Remove from stackEntryCount
-  auto& stackEntryIt = stackEntryCount.find(stackTop.returnAddr);
+  auto stackEntryIt = stackEntryCount.find(stackTop.returnAddr);
   stackEntryIt->second--;
   if (stackEntryIt->second == 0) {
     stackEntryCount.erase(stackEntryIt);
@@ -804,16 +800,17 @@ void InstrumentInstruction(INS ins, void*) {
 /// and instruments them properly.
 void InstrumentImage(IMG img, void*) {
   // This is just for debugging, curious if/why there would be multiple regions
-  assert(IMG_NumRegions(img) == 1);
+  // assert(IMG_NumRegions(img) == 1);
 
   // track mapped memory regions
   for (UINT32 i = 0; i < IMG_NumRegions(img); i++) {
+      cout << "Region " << dec << i << " from 0x" << hex << IMG_RegionLowAddress(img, i)
+           << " through 0x" << IMG_RegionHighAddress(img, i) << endl;
     mappedRegions[IMG_RegionLowAddress(img, i)] =
         IMG_RegionHighAddress(img, i) + 1;
   }
 
-  cout << hex << IMG_Name(img) << ", " << IMG_RegionLowAddress(img, 0) << ", "
-       << IMG_RegionHighAddress(img, 0) << endl;
+  cout << hex << IMG_Name(img) << ", " << dec << IMG_NumRegions(img) << hex << " many regions" << endl;
 
   // TODO: what if the user specifies a routine that's already detected
   // automatically? Want to make sure we don't add it twice, but RTN isn't
@@ -821,7 +818,7 @@ void InstrumentImage(IMG img, void*) {
   // duplicates! (just compare addresses?)
   vector<RTN> mallocRtns;
   vector<RTN> freeRtns;
-  if (IMG_IsMainExecutable(img)) {
+  if (IMG_IsMainExecutable(img)) { // TODO: change to target DLLs on demand
     lowAddr = IMG_LowAddress(img);
 
     // store all procedures with symbols into the global map for debugging use.

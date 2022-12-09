@@ -5,6 +5,7 @@ import os
 import time
 import pygtrie
 import subprocess
+from collections import defaultdict
 from typing import List, Callable, Dict, Set, Any, Tuple
 from method import Method
 from object_trace import ObjectTrace, TraceEntry
@@ -14,8 +15,6 @@ import sys
 sys.path.append('../')
 
 from parseconfig import config
-
-baseAddr = 0x400000
 
 def printTraces(traces):
     for trace in traces:
@@ -40,7 +39,7 @@ class KreoClass:
         # the last element in the fingerprint, representing the destructor
         # associated with this class
         assert len(self.fingerprint) > 0
-        return 'KreoClass-' + self.uuid[0:5] + '@' + hex(self.fingerprint[-1].address + baseAddr)
+        return 'KreoClass-' + self.uuid[0:5] + '@' + hex(self.fingerprint[-1].address)
 
 # =============================================================================
 class TriePrinter:
@@ -69,6 +68,7 @@ class TriePrinter:
 class Postgame:
     def __init__(self):
         self.traces: Set[ObjectTrace] = set()
+        self.staticTraces: Set[StaticTrace] = set()
         self.methodStore = MethodStore()
 
         self.trie = pygtrie.StringTrie()
@@ -78,7 +78,7 @@ class Postgame:
         # the LCA.
         self.methodToKreoClassMap: Dict[Method, Set[KreoClass]] = dict()
 
-        self.kreoClassToMethodSetMap: Dict[KreoClass, Set[Method]] = dict()
+        self.kreoClassToMethodSetMap: DefaultDict[KreoClass, Set[Method]] = defaultdict(set)
 
     def runStep(self, function: Callable[[None], None], startMsg: str, endMsg: str)-> None:
         '''
@@ -90,7 +90,9 @@ class Postgame:
         endTime = time.perf_counter()
         print(f'{endMsg} ({endTime - startTime:0.2f}s)')
 
-    def parseTraces(self):
+    def parseInput(self):
+        self.baseAddr = int(next(iter(open(config['baseAddressPath']))))
+
         blacklistedMethods: Set[int] = set()
         for line in open(config['blacklistedMethodsPath']):
             blacklistedMethods.add(int(line))
@@ -110,7 +112,7 @@ class Postgame:
             else:
                 addr = int(line.split()[1])
                 if addr not in blacklistedMethods:
-                    curTrace.append(TraceEntry(line, self.methodStore.findOrInsertMethod, baseAddr))
+                    curTrace.append(TraceEntry(line, self.methodStore.findOrInsertMethod))
         # finish the last trace
         addIfValid(curTrace)
 
@@ -123,18 +125,53 @@ class Postgame:
                 demangledName = splitlines[1]
             self.methodStore.insertMethodName(int(splitlines[0]), demangledName)
 
+    def parseStaticTraces(self):
+        curTrace: List[StaticTraceEntry] = []
+
+        def flushCurTrace():
+            if len(curTrace) > 0:
+                self.staticTraces.add(curTrace)
+
+        for line in open(config['staticTracesPath']):
+            if len(line) == 1:
+                flushCurTrace()
+            else:
+                curTrace.append(StaticTraceEntry(line))
+
+        flushCurTrace()
+
     def updateAllMethodStatistics(self):
         self.methodStore.resetAllMethodStatistics()
         for trace in self.traces:
             trace.updateMethodStatistics()
 
     def splitTracesFn(self):
-        splitTraces: Set[ObjectTrace] = set()
-        for trace in self.traces:
-            splitT = trace.split()
-            for trace in splitT:
-                splitTraces.add(trace)
-        self.traces = splitTraces
+        self.traces = set([splittedTrace for trace in self.traces for splittedTrace in trace.split()])
+
+    def splitStaticTraces(self):
+        self.staticTraces = set([splittedTrace for trace in self.staticTraces for splittedTrace in trace.split()])
+
+    def discoverMethodsStatically(self):
+        '''
+        Uses the data from the static traces to discover new methods and assign them to the appropriate class. Does not update how dynamically-detected methods are assigned, because their destructor fingerprints usually provide more information about hierarchy than we can hope to glean from such a simple static analysis (we just assign things to the LCA of all the classes of all dynamically detected methods in the traces).
+        '''
+        # In reality, this routine is only called after the first reorganization, so every dynamically detected method is already assigned to a single class, not a set, but we write assuming it is assigned to a set anyway to be safe (e.g., no next(iter(...)))
+        # We keep track of static stuff separately from dynamic until merging at the end. This is because static methods tend to be put too high up the inheritance tree compared to dynamic methods. A good portion of the statically detected methods would probably end up at the highest class in the hierarchy if we made them consider each other.
+        staticMethodStore: MethodStore = MethodStore()
+        staticMethodAddrToKreoClassMap = defaultdict(set)
+        
+        for staticTrace in self.staticTraces:
+            traceEntrySet = set(staticTrace.entries)
+            dynamicMethods = set(filter(lambda x: x, map(self.methodStore.getMethod, traceEntrySet)))
+            staticMethodAddrs = traceEntrySet - dynamicMethods
+            staticMethodsIter = map(staticMethodStore.findOrInsertMethod, staticMethodAddrs)
+            for staticMethod in staticMethodsIter:
+                for dynamicMethod in dynamicMethods:
+                    staticMethodToKreoClassMap[staticMethod].update(self.methodToKreoClassMap[dynamicMethod])
+
+        # merge in the static methods to the main stores
+        self.methodStore.update(staticMethodStore)
+        self.methodToKreoClassMap.update(staticMethodToKreoClassMap)
 
     def removeNondestructorsFromFingerprints(self):
         for trace in self.traces:
@@ -154,40 +191,40 @@ class Postgame:
             cls = self.trie[KreoClass.fingerprintStr(trace.fingerprint)]
 
             for method in trace.methods():
-                if method not in self.methodToKreoClassMap:
-                    self.methodToKreoClassMap[method] = set()
-                
                 self.methodToKreoClassMap[method].add(cls)
+
+    def trieLCA(self, classes: Set[KreoClass]) -> Optional[]:
+        def findLongestSharedTrace(traces):
+            minLenTrace = None
+            for trace in traces:
+                if minLenTrace is None or len(minLenTrace[1]) > len(trace[1]):
+                    minLenTrace = trace
+                    
+            for i in range(len(minLenTrace)):
+                for trace in traces:
+                    if trace[1][i] != traces[0][1][i]:
+                        return trace[1][:i]
+                
+            return minLenTrace[1]
+
+        clsTraces = list()
+        for cls in clsSet:
+            clsTraces.append(self.trie._get_node(KreoClass.fingerprintStr(cls.fingerprint)))
+
+        sharedTrace = findLongestSharedTrace(clsTraces)
+
+        if len(sharedTrace) > 1:
+            return sharedTrace[-1][1].value
+        else:
+            return None
 
     def reorganizeTrie(self):
         for method, clsSet in self.methodToKreoClassMap.items():
-            assert(len(clsSet) >= 1)
+            lca = self.trieLCA(clsSet)
 
-            if len(clsSet) == 1:
-                continue
-
-            def findLongestSharedTrace(traces):
-                minLenTrace = None
-                for trace in traces:
-                    if minLenTrace is None or len(minLenTrace[1]) > len(trace[1]):
-                        minLenTrace = trace
-
-                for i in range(len(minLenTrace)):
-                    for trace in traces:
-                        if trace[1][i] != traces[0][1][i]:
-                            return trace[1][:i]
-                
-                return minLenTrace[1]
-
-            clsTraces = list()
-            for cls in clsSet:
-                clsTraces.append(self.trie._get_node(KreoClass.fingerprintStr(cls.fingerprint)))
-
-            sharedTrace = findLongestSharedTrace(clsTraces)
-
-            if len(sharedTrace) > 1:
+            if lca:
                 # LCA exists
-                self.methodToKreoClassMap[method] = set([sharedTrace[-1][1].value])
+                self.methodToKreoClassMap[method] = set([lca])
             else:
                 # LCA doesn't exist, have to add class to trie
                 
@@ -274,9 +311,9 @@ class Postgame:
             if cls in self.kreoClassToMethodSetMap:
                 for method in self.kreoClassToMethodSetMap[cls]:
                     method.updateType()
-                    methodAddrStr = hex(method.address + baseAddr)
+                    methodAddrStr = hex(method.address + self.baseAddr)
                     methods[methodAddrStr] = {
-                        'demangled_name': self.methodStore.getMethodName(method) if self.methodStore.getMethodName(method) != None else '',
+                        'demangled_name': method.name if method.name else '',
                         'ea': methodAddrStr,
                         'import': False,
                         'name': method.type + "_" + methodAddrStr,
@@ -305,9 +342,9 @@ class Postgame:
 
     def main(self):
         ###############################################################################
-        # Step: Read traces from disk                                                 #
+        # Step: Read traces and other info from disk                                  #
         ###############################################################################
-        self.runStep(self.parseTraces, 'parsing traces...', f'traces parsed')
+        self.runStep(self.parseInput, 'parsing input...', f'input parsed')
         print(f'found {len(self.traces)} traces')
 
         ###############################################################################
@@ -348,6 +385,14 @@ class Postgame:
         self.runStep(self.constructTrie, 'constructing trie...', 'trie constructed')
         self.runStep(self.reorganizeTrie, 'reorganizing trie...', 'trie reorganized')
         self.runStep(self.swimDestructors, 'moving destructors up in trie...', 'destructors moved up')
+
+        if config['enableAliasAnalysis']:
+            self.runStep(self.parseStaticTraces, 'parsing static traces...', 'static traces parsed')
+            self.runStep(self.splitStaticTraces, 'splitting static traces...', 'static traces split')
+            self.runStep(self.discoverMethodsStatically, 'discovering methods from static traces...', 'static methods discovered')
+            # discoverMethodsStatically leaves the new methods assigned to sets of classes still
+            self.runStep(self.reorganizeTrie, '2nd reorganizing trie...', '2nd trie reorganization complete')
+
         self.runStep(self.mapTrieNodesToMethods, 'mapping trie nodes to methods...', 'trie nodes mapped')
         self.runStep(self.generateJson, 'generating json...', 'json generated')
 

@@ -6,29 +6,29 @@ class MethodStore:
         self._methods: Dict[int, Method] = dict()  # map from address to method
         self._methodNames: Dict[Method, str] = dict()  # map from method to method name
 
-    def findOrInsertMethod(self, address: int, baseAddr: int) -> Method:
+    def findOrInsertMethod(self, address: int) -> Method:
         '''
         Attempts to find the method in the global methods map. If the function fails
         to find a method, one will be inserted.
         '''
         if address not in self._methods:
-            self._methods[address] = Method(address, baseAddr, self.getMethodName)
+            self._methods[address] = Method(address, self.getMethodName)
         return self._methods[address]
 
-    def insertMethodName(self, methodAddress: int, name: str) -> None:
-        '''
-        Inserts the method in the methodNames map. Method name will only be inserted
-        if there exists a method in the methods map with the methodAddress given.
-        Therefore, method names should be inserted after the methods map is finalized.
-        '''
-        if methodAddress in self._methods:
-            self._methodNames[self._methods[methodAddress]] = name
+    def getMethod(self, address: int) -> Optional[Method]:
+        return self._methods[address] if address in self._methods else None
 
-    def getMethodName(self, method: Method) -> str:
+    def insertMethodName(self, address: int, name: str):
+        meth = self.getMethod(address)
+        if meth != None:
+            meth.name = name
+
+    def update(self, other: MethodStore):
         '''
-        Finds and return the method name for the given method. Returns None if method name not found.
+        Merge the other store into this one, modifying self in-place.
         '''
-        return self._methodNames.get(method, None)
+        self._methods.update(other._methods)
+        self._methodNames.update(other._methodNames)
 
     def resetAllMethodStatistics(self):
         for method in self._methods.values():

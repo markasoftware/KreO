@@ -1,10 +1,8 @@
 from typing import Callable
 
 class Method:
-    def __init__(self, address: int, baseAddr: int, getMethodNameFn: Callable[[int], str]):
+    def __init__(self, address: int):
         self.address = address
-        self.baseAddr = baseAddr
-        self.getMethodNameFn = getMethodNameFn
         self.type = ''
         # How many times the method has been seen in different parts of a trace:
         self.resetMethodStatistics()
@@ -14,6 +12,7 @@ class Method:
 
         self.isInitializer = False
         self.isFinalizer = False
+        self.name = None
 
     def resetMethodStatistics(self):
         self.seenInHead = int(0)
@@ -59,7 +58,6 @@ class Method:
             self.type = 'meth'
 
     def __str__(self) -> str:
-        name = self.getMethodNameFn(self)
-        return ('' if name == None else (name + ' ')) +\
-               (hex(self.address + self.baseAddr)) +\
+        return ('' if self.name == None else (self.name + ' ')) +\
+               hex(self.address) +\
                ('' if self.type == '' else ' ' + self.type)

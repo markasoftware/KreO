@@ -76,6 +76,7 @@ namespace Kreo {
         bool enableSymbolProcedureDetection;
         std::string methodCandidatesPath;
         std::string staticTracesPath;
+        std::string baseOffsetPath;
     };
 
     Settings settings;
@@ -389,6 +390,8 @@ int main(int argc, char *argv[]) {
     kreoSwitchGroup.insert(Switch("enable-symbol-procedure-detection")
                            .argument("enable", booleanParser(Kreo::settings.enableSymbolProcedureDetection), "false")
                            .doc("Whether to \"cheat\" and use debug information/symbols to help detect the procedure list. Desirable if using Kreo in the real world, undesirable when evaluating Kreo's performance on un-stripped binaries."));
+    kreoSwitchGroup.insert(Switch("base-offset-path")
+                           .argument("path", anyParser(Kreo::settings.baseOffsetPath)));
     kreoSwitchGroup.insert(Switch("method-candidates-path")
                            .argument("path", anyParser(Kreo::settings.methodCandidatesPath)));
     kreoSwitchGroup.insert(Switch("static-traces-path")
@@ -433,8 +436,9 @@ int main(int argc, char *argv[]) {
     MemoryMap::Ptr memoryMap = engine->memoryMap();
     // std::cerr << "Dumping memory map" << std::endl;
     // memoryMap->dump(std::cerr);
-    size_t minAddress = memoryMap->nodes().begin()->key().least();
-    std::cerr << "Detected minimum address as " << minAddress << std::endl;
+    size_t baseOffset = memoryMap->nodes().begin()->key().least();
+    std::cerr << "Detected minimum address as " << baseOffset << std::endl;
+    std::ofstream(Kreo::settings.baseOffsetPath) << baseOffset << std::endl;
 
     std::ofstream methodCandidatesStream(Kreo::settings.methodCandidatesPath);
 
@@ -451,7 +455,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        const size_t relativeProcAddr = proc->address() - minAddress;
+        const size_t relativeProcAddr = proc->address() - baseOffset;
         bool usesThisPointer = true; // assume it uses this pointer, possible set to false if static analysis is enabled and finds that the register is not in fact used.
 
         if (Kreo::settings.enableAliasAnalysis || Kreo::settings.enableCallingConventionAnalysis) {

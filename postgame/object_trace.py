@@ -3,13 +3,13 @@ from typing import List, Callable
 from method import Method
 
 class TraceEntry:
-    def __init__(self, line: str, findOrInsertMethod: Callable[[int, int], Method], baseAddr: int):
+    def __init__(self, line: str, findOrInsertMethod: Callable[[int], Method]):
         '''
         Contruct a trace entry from the given trace entry
         '''
         splitLine = line.split()
         if len(splitLine) == 2:
-            self.method = findOrInsertMethod(int(splitLine[0]), baseAddr)
+            self.method = findOrInsertMethod(int(splitLine[0]))
             self.isCall = int(splitLine[1]) == 1
         else:
             raise Exception('Could not parse trace entry from line: "' + line + '"')
@@ -32,13 +32,13 @@ class ObjectTrace:
         self.fingerprint.reverse()
 
     def __str__(self) -> str:
-        return '\n'.join(map(lambda te: te.__str__(), self.traceEntries))
+        return '\n'.join(map(str, self.traceEntries))
 
     def __hash__(self):
         return hash(self.__str__())
 
     def __eq__(self, other) -> bool:
-        return self.__str__() == other.__str__()
+        return self.entries == other.entries
 
     def updateMethodStatistics(self):
         '''
