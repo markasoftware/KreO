@@ -27,6 +27,7 @@ namespace PartialSymbolic = Rose::BinaryAnalysis::InstructionSemantics::PartialS
 
 using Sawyer::CommandLine::booleanParser;
 using Sawyer::CommandLine::anyParser;
+using Sawyer::CommandLine::positiveIntegerParser;
 using Sawyer::CommandLine::Switch;
 
 /**
@@ -77,9 +78,13 @@ namespace Kreo {
         std::string methodCandidatesPath;
         std::string staticTracesPath;
         std::string baseOffsetPath;
+
+        rose_addr_t debugFunctionAddr = 0;
     };
 
     Settings settings;
+
+    PartialSymbolic::Formatter formatter;
 
     // See Rose issue #220
     // In order to perform a calling convention analysis simultaneously with the general static analysis, we need to ensure that `RegisterStateGeneric::updateReadProperties` is called when registers are read with side effects enabled, and similarly for `RegisterStateGeneric::updateWriteProperties`, and for some reason this doesn't appear to be the default behavior.
@@ -189,6 +194,54 @@ namespace Kreo {
         return PartialSymbolic::State::instance(registers, memory);
     }
 
+    enum class LoopRemoverVertexState {
+        Unvisited,
+        InProgress,
+        Complete,
+    };
+
+    // Remove loops from a graph, in the style of https://github.com/zhenv5/breaking_cycles_in_noisy_hierarchies/blob/master/remove_cycle_edges_by_dfs.py
+    class LoopRemover {
+    public:
+        LoopRemover(DfCfg *graph) : graph(graph) { }
+
+        void removeLoops(DfCfg::VertexIterator startVertex) {
+            assert(getVertexState(startVertex->id()) == LoopRemoverVertexState::Unvisited);
+            vertexStates[startVertex->id()] = LoopRemoverVertexState::InProgress;
+
+            DfCfg::EdgeIterator edgeIt = startVertex->outEdges().begin();
+            while (edgeIt != startVertex->outEdges().end()) {
+                DfCfg::EdgeIterator savedEdgeIt = edgeIt;
+                edgeIt++;
+
+                switch (getVertexState(savedEdgeIt->target()->id())) {
+                Unvisited:
+                    removeLoops(savedEdgeIt->target());
+                    break;
+                InProgress:
+                    graph->eraseEdge(savedEdgeIt);
+                    break;
+
+                    // else, it has already been visited, we don't need to deal with it.
+                }
+            }
+
+            vertexStates[startVertex->id()] = LoopRemoverVertexState::Complete;
+        }
+
+    private:
+        LoopRemoverVertexState getVertexState(size_t id) {
+            if (vertexStates.count(id) == 0) {
+                return LoopRemoverVertexState::Unvisited;
+            } else {
+                return vertexStates[id];
+            }
+        }
+
+        DfCfg *graph;
+        std::unordered_map<size_t, LoopRemoverVertexState> vertexStates;
+    };
+
     class AnalyzeProcedureResult {
     public:
         AnalyzeProcedureResult() : success(false), traces(), usesThisPointer(false) { }
@@ -211,6 +264,7 @@ namespace Kreo {
     AnalyzeProcedureResult analyzeProcedure(const P2::Partitioner &partitioner,
                                             const Disassembler::BasePtr &disassembler,
                                             const P2::Function::Ptr &proc) {
+        bool debugFunction = proc->address() == Kreo::settings.debugFunctionAddr;
         if (proc->isThunk()) { // usually dosen't call methods or anything
             return AnalyzeProcedureResult();
         }
@@ -218,6 +272,14 @@ namespace Kreo {
 
         const CallingConventionGuess cc = guessCallingConvention(disassembler);
         DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner.cfg(), partitioner.findPlaceholder(proc->address()));
+        if (debugFunction) {
+            std::string dfCfgDotFileName = "dfcfg-" + proc->name() + ".dot";
+            std::cerr << "Printing dot to " << dfCfgDotFileName << std::endl;
+            std::ofstream dfCfgDotFile(dfCfgDotFileName);
+            P2::DataFlow::dumpDfCfg(dfCfgDotFile, dfCfg);
+        }
+        std::ofstream dfCfgGraphvizFile("dfcfg-" + proc->name() + ".dot");
+        P2::DataFlow::dumpDfCfg(dfCfgGraphvizFile, dfCfg);
         // uncomment to see the DfCfg graphs:
         // std::cout << std::endl;
         // dumpDfCfg(std::cout, dfCfg);
@@ -225,47 +287,17 @@ namespace Kreo {
 
         ///// PREPROCESS GRAPH /////
 
-        // Perform BFS over the graph, removing back-edges.
-        std::unordered_set<size_t> exploredVertexIds;
-        std::deque<DfCfg::VertexIterator> vertexQueue;
-
         size_t startVertexId = 0;
-        vertexQueue.push_back(dfCfg.findVertex(startVertexId));
-        DfCfg::ConstVertexIterator returnVertex = dfCfg.vertices().end();
+        LoopRemover loopRemover(&dfCfg);
+        loopRemover.removeLoops(dfCfg.findVertex(startVertexId));
 
-        while (!vertexQueue.empty()) {
-            DfCfg::VertexIterator curVertex = vertexQueue.front();
-            vertexQueue.pop_front();
-
-            if (exploredVertexIds.count(curVertex->id()) != 0) {
-                continue;
-            }
-            exploredVertexIds.insert(curVertex->id());
-
-            DfCfg::EdgeIterator edgeIt = curVertex->outEdges().begin();
-            while (edgeIt != curVertex->outEdges().end()) {
-                // save the edge iterator because you can't increment an edge after erasing it.
-                DfCfg::EdgeIterator savedEdgeIt = edgeIt;
-                edgeIt++;
-                vertexQueue.push_back(savedEdgeIt->target());
-
-                // remove back edges, to eliminate loops
-                if (exploredVertexIds.count(savedEdgeIt->target()->id()) != 0) {
-                    dfCfg.eraseEdge(savedEdgeIt);
-                }
-            }
-
-            if (curVertex->value().type() == P2::DataFlow::DfCfgVertex::FUNCRET) {
-                assert(returnVertex == dfCfg.vertices().end());
-                returnVertex = curVertex;
-            }
+        if (debugFunction) {
+            std::string dfCfgDotFileName = "dfcfg-cut-" + proc->name() + ".dot";
+            std::cerr << "Printing cut dot to " << dfCfgDotFileName << std::endl;
+            std::ofstream dfCfgDotFile(dfCfgDotFileName);
+            P2::DataFlow::dumpDfCfg(dfCfgDotFile, dfCfg);
         }
-
-        if (returnVertex == dfCfg.vertices().end()) {
-            std::cerr << "WARNING: BFS did not reach return vertex!" << std::endl;
-            return AnalyzeProcedureResult(); // conceptually could continue to at least output the static object traces, since we only need the return vertex to determine the calling convention, but this indicates that something funky's up with the procedure generally so let's abort.
-        }
-
+        
         ///// RUN DATAFLOW /////
 
         const RegisterDictionary::Ptr regDict = partitioner.instructionProvider().registerDictionary();
@@ -276,7 +308,6 @@ namespace Kreo {
         P2::DataFlow::MergeFunction mergeFn(cpu);
         P2::DataFlow::Engine dfEngine(dfCfg, transferFn, mergeFn);
         dfEngine.name("kreo-static-tracer");
-
 
         // dfEngine.reset(State::Ptr()); // TODO what does this do, and why is it CalingConvention.C?
         dfEngine.insertStartingVertex(startVertexId, stateFromRegisters(regDict));
@@ -299,22 +330,43 @@ namespace Kreo {
         std::unordered_map<size_t, size_t> vertexNumIncomingEdges;
         std::vector<DfCfg::ConstVertexIterator> readyVertices; // vertices with zero incoming edges
         std::vector<DfCfg::ConstVertexIterator> topoSortedVertices;
+        DfCfg::ConstVertexIterator returnVertex = dfCfg.vertices().end();
         for (DfCfg::ConstVertexIterator vertex = dfCfg.vertices().begin();
              vertex != dfCfg.vertices().end();
              vertex++) {
-            // inEdges underlying iterator is not random access, so we cannot use any .size()
-            auto inEdges = vertex->inEdges();
-            // std::distance doesn't seem to work here for some reason -- probably some disconnect between Boost iterators and std iterators
-            size_t numIncomingEdges = std::distance(inEdges.begin(), inEdges.end());
+            size_t numIncomingEdges = vertex->nInEdges();
             vertexNumIncomingEdges.emplace(vertex->id(), numIncomingEdges);
             if (numIncomingEdges == 0) {
                 readyVertices.push_back(vertex);
+            }
+
+            if (debugFunction) {
+                std::cerr << "==VERTEX " << vertex->id() << "==" << std::endl
+                          << "numIncomingEdges = " << numIncomingEdges << std::endl
+                          << "first argument register @ vertex " << vertex->id() << ": ";
+                auto registerState = dfEngine.getInitialState(vertex->id())->registerState();
+                if (true || PartialSymbolic::RegisterState::promote(registerState)->is_wholly_stored(cc.thisArgumentRegister)) {
+                    registerState->print(std::cerr);
+                    // registerState->peekRegister(
+                    //     cc.thisArgumentRegister,
+                    //     riscOperators->undefined_(cc.thisArgumentRegister.nBits()),
+                    //     riscOperators.get()
+                    //     )
+                    //     ->print(std::cerr, formatter);
+                    std::cerr << std::endl;
+                } else {
+                    std::cerr << "(register not stored)" << std::endl;
+                }
             }
         }
         while (!readyVertices.empty()) {
             DfCfg::ConstVertexIterator curVertex = readyVertices.back();
             readyVertices.pop_back();
             topoSortedVertices.push_back(curVertex);
+            if (curVertex->value().type() == P2::DataFlow::DfCfgVertex::FUNCRET) {
+                assert(returnVertex == dfCfg.vertices().end());
+                returnVertex = curVertex;
+            }
 
             for (const DfCfg::Edge &outEdge : curVertex->outEdges()) {
                 DfCfg::ConstVertexIterator outVertex = outEdge.target();
@@ -325,6 +377,12 @@ namespace Kreo {
                 }
             }
         }
+
+        if (returnVertex == dfCfg.vertices().end()) {
+            std::cerr << "WARNING: BFS did not reach return vertex!" << std::endl;
+            return AnalyzeProcedureResult(); // conceptually could continue to at least output the static object traces, since we only need the return vertex to determine the calling convention, but this indicates that something funky's up with the procedure generally so let's abort.
+        }
+
 
         // Build traces
         std::vector<StaticObjectTrace> traces;
@@ -396,6 +454,8 @@ int main(int argc, char *argv[]) {
                            .argument("path", anyParser(Kreo::settings.methodCandidatesPath)));
     kreoSwitchGroup.insert(Switch("static-traces-path")
                            .argument("path", anyParser(Kreo::settings.staticTracesPath)));
+    kreoSwitchGroup.insert(Switch("debug-function")
+                           .argument("address", positiveIntegerParser(Kreo::settings.debugFunctionAddr)));
 
     auto engine = P2::Engine::instance();
     Sawyer::CommandLine::Parser cmdParser = engine->commandLineParser(Kreo::purpose, Kreo::description);
@@ -439,6 +499,7 @@ int main(int argc, char *argv[]) {
     size_t baseOffset = memoryMap->nodes().begin()->key().least();
     std::cerr << "Detected minimum address as " << baseOffset << std::endl;
     std::ofstream(Kreo::settings.baseOffsetPath) << baseOffset << std::endl;
+    Kreo::settings.debugFunctionAddr += baseOffset;
 
     std::ofstream methodCandidatesStream(Kreo::settings.methodCandidatesPath);
 
