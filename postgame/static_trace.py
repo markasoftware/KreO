@@ -1,21 +1,21 @@
 from typing import List, Callable
 from method import Method
 
-StaticTraceEntry = int
-# class StaticTraceEntry:
-#     def __init__(self, line: str, baseAddr: int):
-#         splitLine = line.split()
-#         self.addr = int(splitLine[0])
-#         # Name is in there mainly for debugging looking at the trace manually -- don't really need it.
+class StaticTraceEntry:
+    def __init__(self, line: str, findOrInsertMethod: Callable[[int], Method]):
+        assert line[0] != '#', 'Tried to construct StaticTraceEntry from a comment.'
+        splitLine = line.split()
+        self.method = findOrInsertMethod(int(splitLine[0]))
+        # Name is in there mainly for debugging looking at the trace manually -- don't really need it.
 
-#     def __str__(self) -> str:
-#         return str(self.method)
+    def __str__(self) -> str:
+        return str(self.method)
 
-#     def __eq__(self, other) -> bool:
-#         return self.method is other.method
+    def __eq__(self, other) -> bool:
+        return self.method is other.method
 
-#     def __hash__(self):
-#         return hash(self.__str__())
+    def __hash__(self):
+        return hash(str(self))
 
 class StaticTrace:
     def __init__(self, traceEntries: List[StaticTraceEntry]):
@@ -37,12 +37,12 @@ class StaticTrace:
         result: List[List[TraceEntry]] = [StaticTrace([])] # start with single empty trace
 
         for entry in self.entries:
-            splitTraces[-1].entries.append(entry)
+            result[-1].entries.append(entry)
             if entry.method.isFinalizer:
                 result.append(StaticTrace([]))
 
         # If last entry is a finalizer, may end up with an extra empty trace at the end.
         if len(result[-1].entries) == 0:
-            pop(result)
+            result.pop()
 
         return result

@@ -1,7 +1,7 @@
-from typing import Callable
+from typing import Callable, Optional
 
 class Method:
-    def __init__(self, address: int):
+    def __init__(self, address: int, name: Optional[str] = None):
         self.address = address
         self.type = ''
         # How many times the method has been seen in different parts of a trace:
@@ -12,7 +12,7 @@ class Method:
 
         self.isInitializer = False
         self.isFinalizer = False
-        self.name = None
+        self.name = name
 
     def resetMethodStatistics(self):
         self.seenInHead = int(0)

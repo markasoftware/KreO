@@ -21,7 +21,7 @@ class TraceEntry:
         return self.method is other.method and self.isCall == other.isCall
 
     def __hash__(self):
-        return hash(self.__str__())
+        return hash(str(self))
 
 class ObjectTrace:
     def __init__(self, traceEntries: List[TraceEntry]):
