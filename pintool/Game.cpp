@@ -599,15 +599,10 @@ bool IgnoreReturn(ADDRINT actualRetAddr) {
 /// pointer is not normalized.
 void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
                              ADDRINT objPtr) {
-  // TODO: this is absolutely not the right way to find the bottom (highest address) in the stack:
-  if (stackBase == 0) {
-    stackBase = stackPtr;
-  }
-
   PIN_GetLock(&checkObjectTraceLock, 0);
 
   // Method blacklisted, don't add to trace
-  if (blacklistedProcedures.find(procAddr) != blacklistedProcedures.end()) {
+  if (blacklistedProcedures.count(procAddr) != 0) {
       goto cleanup;
   }
 
@@ -678,6 +673,11 @@ void RetCallback(ADDRINT returnAddr) {
   }
 
   PIN_ReleaseLock(&checkObjectTraceLock);
+}
+
+void EntryPointCallback(ADDRINT rsp) {
+    cerr << "Initial stack pointer: 0x" << hex << rsp << endl;
+    stackBase = rsp;
 }
 
 bool IsPossibleStackIncrease(INS ins) {
@@ -837,6 +837,19 @@ void InstrumentImage(IMG img, void*) {
       for (RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
         procedureSymbolNames[RTN_Address(rtn) - lowAddr] = RTN_Name(rtn);
       }
+    }
+
+    // HACK until we find the right way to determine the entry point
+    RTN mainRtn = RTN_FindByName(img, "main");
+    if (RTN_Valid(mainRtn)) {
+        RTN_Open(mainRtn);
+        RTN_InsertCall(mainRtn,
+                       IPOINT_BEFORE,
+                       reinterpret_cast<AFUNPTR>(EntryPointCallback),
+                       IARG_REG_VALUE,
+                       REG_STACK_PTR,
+                       IARG_END);
+        RTN_Close(mainRtn);
     }
 
     for (size_t i = 0; i < mallocProcedures.size(); i++) {
