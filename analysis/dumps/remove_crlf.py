@@ -8,7 +8,7 @@ print(sys.argv[1])
 
 file_contents = ''
 
-with open(sys.argv[1], 'r', encoding='utf-16') as f:
+with open(sys.argv[1], 'r', encoding='utf-8') as f:
     for line in f:
         if line[-2:] == '\r\n':
             line = line[:-2] + '\n'

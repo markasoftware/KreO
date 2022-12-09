@@ -1,7 +1,0 @@
-evaluation criteria	precision	recall	f-score
-Methods Assigned to Correct Class&0.54&0.87&0.67
-Individual Classes&0.67&1.00&0.80
-Constructors&0.62&0.88&0.72
-Destructors&0.44&1.00&0.62
-Methods&0.94&0.94&0.94
-Class Graphs&1.00&1.00&1.00

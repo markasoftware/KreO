@@ -129,8 +129,7 @@ int main(int argc, char *argv[]) {
 
     using PrecisionRecallFn = std::function<std::pair<float, float>(
         const std::vector<ClassInfo> &, const std::vector<ClassInfo> &)>;
-    auto run_test = [&](
-                        const std::string &name, PrecisionRecallFn test) {
+    auto run_test = [&](const std::string &name, PrecisionRecallFn test) {
       auto precision_recall = test(gt_class_info_list, gen_class_info_list);
 
       float f_score =
@@ -624,23 +623,35 @@ static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
 
     // Note: we don't expect parent names to be the same - instead we expect the
     // paired classes to be the same.
-    for (const std::string &parent_name : gen_cls->parent_mangled_names) {
-      auto gt = get_gen_class_by_name(parent_name);
-      if (gt.has_value()) {
-        if (std::find(gt_cls->parent_mangled_names.begin(),
-                      gt_cls->parent_mangled_names.end(),
-                      gt->second->mangled_name) !=
-            gt_cls->parent_mangled_names.end()) {
-          true_positives++;
-        }
-      } else {
-        std::cerr << "failed to find parent by the name of " << parent_name
-                  << " for child " << gen_cls->mangled_name << std::endl;
-      }
-    }
 
-    gen_size += gen_cls->parent_mangled_names.size();
-    gt_size += gt_cls->parent_mangled_names.size();
+    if (gen_cls->parent_mangled_names.size() == 0 &&
+        gt_cls->parent_mangled_names.size() == 0) {
+      // Both gen and ground truth share the "root" i.e. there are no
+      // inheritance relationships and that has been correctly identified.
+      true_positives++;
+
+      gen_size++;
+      gt_size++;
+    } else {
+      for (const std::string &parent_name : gen_cls->parent_mangled_names) {
+        auto gt = get_gen_class_by_name(parent_name);
+        if (gt.has_value()) {
+          if (std::find(gt_cls->parent_mangled_names.begin(),
+                        gt_cls->parent_mangled_names.end(),
+                        gt->second->mangled_name) !=
+              gt_cls->parent_mangled_names.end()) {
+            true_positives++;
+          }
+        } else {
+          std::cerr << "failed to find parent by the name of " << parent_name
+                    << " for child " << gen_cls->mangled_name
+                    << " because no gt class matches this parent" << std::endl;
+        }
+      }
+
+      gen_size += gen_cls->parent_mangled_names.size();
+      gt_size += gt_cls->parent_mangled_names.size();
+    }
   }
 
   int32_t false_negatives = gt_size - true_positives;

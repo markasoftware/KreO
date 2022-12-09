@@ -114,8 +114,7 @@ void PdbAnalyzer::FindTypeInfo(std::fstream &fstream) {
           field_list.push_back(
               std::make_shared<ParentClassFieldList>(parent_type_id));
         } else if (Contains(line, "= LF_ONEMETHOD, ")) {
-          if (!Contains(line, ", STATIC,") &&
-              !Contains(line, ", (compgenx),")) {
+          if (!Contains(line, ", STATIC,")) {
             type_id_t method_type_id{};
             GetHexValueAfterString(line, "index = ", method_type_id);
             std::string name;
@@ -147,13 +146,15 @@ void PdbAnalyzer::FindTypeInfo(std::fstream &fstream) {
 
         if (line == kBlank) {
           break;
-        } else if (!Contains(line, ", STATIC,") &&
-                   !Contains(line, ", (compgenx),")) {
+        } else if (!Contains(line, ", STATIC,")) {
           std::stringstream ss(line);
           std::string typeidstr;
           getline(ss, typeidstr, ',');
           getline(ss, typeidstr, ',');
           getline(ss, typeidstr, ',');
+          if (Contains(line, ", (compgenx),")) {
+            getline(ss, typeidstr, ',');
+          }
 
           type_id_t type_id;
           GetHexValueAfterString(typeidstr, "", type_id);
@@ -203,7 +204,7 @@ void PdbAnalyzer::FindSectionHeaders(std::fstream &fstream) {
     {
       std::stringstream ss(
           line.substr(line.find(kSectionHeaderNum) + kSectionHeaderNum.size()));
-      if (!(ss >> section_id)) {
+      if (!(ss >> std::hex >> section_id)) {
         throw std::runtime_error("failed to get section id");
       }
     }
@@ -350,8 +351,7 @@ void PdbAnalyzer::GetHexValueAfterString(const std::string &line,
   }
   ss << std::hex << line.substr(loc + str.size());
   if (!(ss >> out_value)) {
-    throw std::runtime_error(std::string("failed to get value trailing ") +
-                             str.data());
+    throw std::runtime_error(std::string("") + str.data());
   }
 }
 
