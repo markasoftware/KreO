@@ -247,7 +247,7 @@ void ParsePregame() {
 
   string objectTracesPathStr = objectTracesPath.Value().c_str();
 
-  ofstream os(objectTracesPathStr, ofstream::out | ofstream::trunc);
+  ofstream os(objectTracesPathStr.c_str(), ofstream::out | ofstream::trunc);
 }
 
 // ============================================================================

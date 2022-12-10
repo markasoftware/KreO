@@ -160,7 +160,7 @@ namespace Kreo {
                 }
                 os << std::endl;
             } else {
-                // TODO: figure out why this function might be null.
+                // TODO: figure out why this function might be null (indeterminate faked_call??)
                 // os << "(unknown)" << std::endl;
             }
         }
@@ -261,7 +261,7 @@ namespace Kreo {
     // print all traces, with a blank line between each, and a blank line at the end.
     std::ostream &operator<<(std::ostream &os, const AnalyzeProcedureResult &apr) {
             for (const StaticObjectTrace &trace : apr.traces) {
-                os << trace << std::endl;
+                os << trace;
             }
             return os;
     }
