@@ -215,10 +215,10 @@ namespace Kreo {
                 edgeIt++;
 
                 switch (getVertexState(savedEdgeIt->target()->id())) {
-                Unvisited:
+                case LoopRemoverVertexState::Unvisited:
                     removeLoops(savedEdgeIt->target());
                     break;
-                InProgress:
+                case LoopRemoverVertexState::InProgress:
                     graph->eraseEdge(savedEdgeIt);
                     break;
 
@@ -278,8 +278,6 @@ namespace Kreo {
             std::ofstream dfCfgDotFile(dfCfgDotFileName);
             P2::DataFlow::dumpDfCfg(dfCfgDotFile, dfCfg);
         }
-        std::ofstream dfCfgGraphvizFile("dfcfg-" + proc->name() + ".dot");
-        P2::DataFlow::dumpDfCfg(dfCfgGraphvizFile, dfCfg);
         // uncomment to see the DfCfg graphs:
         // std::cout << std::endl;
         // dumpDfCfg(std::cout, dfCfg);
@@ -311,11 +309,16 @@ namespace Kreo {
 
         // dfEngine.reset(State::Ptr()); // TODO what does this do, and why is it CalingConvention.C?
         dfEngine.insertStartingVertex(startVertexId, stateFromRegisters(regDict));
+        dfEngine.maxIterations(dfCfg.nVertices()*10); // since we broke loops, should only go once, so this is bascially an assertion.
         try {
             dfEngine.runToFixedPoint(); // should run one iteration per vertex, since no loops.
         } catch (const Base::NotImplemented &e) {
             // TODO: use mlog properly here and elsewhere
-            std::cerr << "Not implemented error!" << e.what() << std::endl;
+            std::cerr << "Not implemented error! " << e.what() << std::endl;
+            return AnalyzeProcedureResult();
+        } catch (const DataFlow::NotConverging &e) {
+            // TODO: If we re-implement dataflow manually we can avoid this error!
+            std::cerr << "Data flow analysis didn't converge! " << e.what() << std::endl;
             return AnalyzeProcedureResult();
         }
 
@@ -509,7 +512,10 @@ int main(int argc, char *argv[]) {
     }
 
     int numMethodsFound = 0;
+    int i = 0;
     for (const P2::Function::Ptr &proc : partitioner.functions()) {
+        std::cerr << "Analyze function 0x" << std::hex << proc->address() << ", which is "
+                  << std::dec << i++ << " out of " << partitioner.functions().size() << std::endl;
         // there's already a conditional for chunks in the static analysis part, but if static analysis is disabled that won't be reached.
         // We're essentially checking two conditions: 1., before static analysis, that it's not a thunk, and 2., after static analysis, that it uses the this pointer.
         if (proc->isThunk()) {
