@@ -38,7 +38,7 @@ class ObjectTrace:
         return hash(self.__str__())
 
     def __eq__(self, other) -> bool:
-        return self.entries == other.entries
+        return self.traceEntries == other.traceEntries
 
     def updateMethodStatistics(self):
         '''
