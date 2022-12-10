@@ -48,8 +48,8 @@ run: all
 
 all: pregame
 
-pregame.o: pregame.cpp
-	$(ROSE_CXX) $(ROSE_CPPFLAGS) $(ROSE_CXXFLAGS) -o $@ -c $^
+pregame.o: pregame.cpp custom-dataflow-engine.h
+	$(ROSE_CXX) $(ROSE_CPPFLAGS) $(ROSE_CXXFLAGS) -o $@ -c $<
 
 pregame: pregame.o
 	$(ROSE_CXX) $(ROSE_CXXFLAGS) -o $@ $^ $(ROSE_LDFLAGS) $(ROSE_LINK_RPATHS) -Wl,-rpath=$(ROSE_HOME)/lib

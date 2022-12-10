@@ -27,6 +27,8 @@ if not 'gtMethodsPath' in config:
     config['gtMethodsPath'] = join(scriptpath, 'out/gt-methods')
 if not 'gtMethodsInstrumentedPath' in config:
     config['gtMethodsInstrumentedPath'] = join(scriptpath, 'out/gt-methods-instrumented')
+if not 'baseOffsetPath' in config:
+    config['baseOffsetPath'] = join(scriptpath, 'out/base-address')
 if not 'staticTracesPath' in config:
     config['staticTracesPath'] = join(scriptpath, 'out/static-traces')
 if not 'objectTracesPath' in config:

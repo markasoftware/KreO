@@ -172,7 +172,6 @@ PIN_LOCK checkObjectTraceLock;
 /// traces. Also removes the trace if the trace is empty after blacklisted
 /// procedures are removed from it.
 void RemoveBlacklistedMethods() {
-  int i{0};
   for (auto traceIt = finishedObjectTraces.begin();
        traceIt != finishedObjectTraces.end();) {
     vector<ObjectTraceEntry>* trace = *traceIt;
@@ -317,12 +316,15 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
   // argument. And, as you'd expect, upper_bound points /after/ the position
   // you really want, to make it easy to use in the end condition of a loop..
 
-  for (auto it = activeObjectTraces.lower_bound(regionStart);
+  auto firstTrace = activeObjectTraces.lower_bound(regionStart);
+  auto it = firstTrace;
+  for (;
        it != activeObjectTraces.end() && it->first < regionEnd;
        it++) {
     EndObjectTraceIt(it);
     activeObjectTraces.erase(it);
   }
+  activeObjectTraces.erase(firstTrace, it);
 }
 
 ///////////////////////
@@ -380,29 +382,26 @@ void FreeCallback(ADDRINT freedRegionStart) {
 #endif
 
   if (freedRegionStart == 0) {
-#ifdef LOG_WARN
-    // for whatever reason, real programs seem to be doing this??
-    LOG("WARNING: Freed nullptr?");
-#endif
+    // this is in fact well-defined and legal behavior
     return;
   }
 
   PIN_GetLock(&checkObjectTraceLock, 0);
 
   auto freedRegionIt = heapAllocations.find(freedRegionStart);
+  ADDRINT freedRegionEnd = freedRegionIt->second;
 
   if (freedRegionIt == heapAllocations.end()) {
 #ifdef LOG_WARN
     LOG("WARNING: Invalid pointer freed! Check the program-under-test.\n");
 #endif
-    PIN_ReleaseLock(&checkObjectTraceLock);
-    return;
+    goto cleanup;
   }
 
-  ADDRINT freedRegionEnd = freedRegionIt->second;
   EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
   heapAllocations.erase(freedRegionIt);
 
+cleanup:
   PIN_ReleaseLock(&checkObjectTraceLock);
 }
 
@@ -425,13 +424,13 @@ void OnDeleteInstrumented(ADDRINT deletedObject) {
 #ifdef LOG_WARN
     LOG("Attempting to delete ptr that is not in heap allocated region\n");
 #endif
-    PIN_ReleaseLock(&checkObjectTraceLock);
-    return;
+    goto cleanup;
   }
 
   EndObjectTrace(deletedObject);
   heapAllocations.erase(freedRegionIt);
 
+cleanup:
   PIN_ReleaseLock(&checkObjectTraceLock);
 }
 
@@ -486,11 +485,32 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
     return true;
   }
 
+  // If lies within reg allocated region, address valid.
+  auto regIt = mappedRegions.upper_bound(ptr);
+  if (regIt != mappedRegions.begin()) {
+    regIt--;
+    if (ptr < regIt->second) {
+      return true;
+    }
+  }
+
   // If lies within heap allocated region, address valid.
+<<<<<<< HEAD
   auto it = heapAllocations.upper_bound(ptr);
   if (it != heapAllocations.begin()) {
     it--;
     if (ptr < it->second) {
+||||||| 26faf69
+  auto it = heapAllocations.upper_bound(ptr);
+  if (it != heapAllocations.begin()) {
+    it--;
+    if (stackPtr < it->second) {
+=======
+  auto heapIt = heapAllocations.upper_bound(ptr);
+  if (heapIt != heapAllocations.begin()) {
+    heapIt--;
+    if (ptr < heapIt->second) {
+>>>>>>> static-analysis-postgame
       return true;
     }
   }
@@ -537,7 +557,7 @@ ShadowStackEntry ShadowStackRemoveAndReturnTop() {
   shadowStack.pop_back();
 
   // Remove from stackEntryCount
-  auto& stackEntryIt = stackEntryCount.find(stackTop.returnAddr);
+  auto stackEntryIt = stackEntryCount.find(stackTop.returnAddr);
   stackEntryIt->second--;
   if (stackEntryIt->second == 0) {
     stackEntryCount.erase(stackEntryIt);
@@ -591,23 +611,17 @@ bool IgnoreReturn(ADDRINT actualRetAddr) {
 /// pointer is not normalized.
 void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
                              ADDRINT objPtr) {
-  if (stackBase == 0) {
-    stackBase = stackPtr;
-  }
-
   PIN_GetLock(&checkObjectTraceLock, 0);
 
   // Method blacklisted, don't add to trace
-  if (blacklistedProcedures.find(procAddr) != blacklistedProcedures.end()) {
-    PIN_ReleaseLock(&checkObjectTraceLock);
-    return;
+  if (blacklistedProcedures.count(procAddr) != 0) {
+      goto cleanup;
   }
 
   // Object pointer invalid, not possible method candidate
   if (!IsPossibleObjPtr(objPtr, stackPtr)) {
     blacklistedProcedures.insert(procAddr);
-    PIN_ReleaseLock(&checkObjectTraceLock);
-    return;
+    goto cleanup;
   }
 
   // The method candidate is valid. Add to the trace and shadow stack.
@@ -634,6 +648,7 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
 
   lastRetAddr = static_cast<ADDRINT>(-1);
 
+cleanup:
   PIN_ReleaseLock(&checkObjectTraceLock);
 }
 
@@ -670,6 +685,11 @@ void RetCallback(ADDRINT returnAddr) {
   }
 
   PIN_ReleaseLock(&checkObjectTraceLock);
+}
+
+void EntryPointCallback(ADDRINT rsp) {
+    cerr << "Initial stack pointer: 0x" << hex << rsp << endl;
+    stackBase = rsp;
 }
 
 bool IsPossibleStackIncrease(INS ins) {
@@ -803,16 +823,17 @@ void InstrumentInstruction(INS ins, void*) {
 /// and instruments them properly.
 void InstrumentImage(IMG img, void*) {
   // This is just for debugging, curious if/why there would be multiple regions
-  assert(IMG_NumRegions(img) == 1);
+  // assert(IMG_NumRegions(img) == 1);
 
   // track mapped memory regions
   for (UINT32 i = 0; i < IMG_NumRegions(img); i++) {
+      cout << "Region " << dec << i << " from 0x" << hex << IMG_RegionLowAddress(img, i)
+           << " through 0x" << IMG_RegionHighAddress(img, i) << endl;
     mappedRegions[IMG_RegionLowAddress(img, i)] =
         IMG_RegionHighAddress(img, i) + 1;
   }
 
-  cout << hex << IMG_Name(img) << ", " << IMG_RegionLowAddress(img, 0) << ", "
-       << IMG_RegionHighAddress(img, 0) << endl;
+  cout << hex << IMG_Name(img) << ", " << dec << IMG_NumRegions(img) << hex << " many regions" << endl;
 
   // TODO: what if the user specifies a routine that's already detected
   // automatically? Want to make sure we don't add it twice, but RTN isn't
@@ -820,7 +841,7 @@ void InstrumentImage(IMG img, void*) {
   // duplicates! (just compare addresses?)
   vector<RTN> mallocRtns;
   vector<RTN> freeRtns;
-  if (IMG_IsMainExecutable(img)) {
+  if (IMG_IsMainExecutable(img)) { // TODO: change to target DLLs on demand
     lowAddr = IMG_LowAddress(img);
 
     // store all procedures with symbols into the global map for debugging use.
@@ -828,6 +849,19 @@ void InstrumentImage(IMG img, void*) {
       for (RTN rtn = SEC_RtnHead(sec); RTN_Valid(rtn); rtn = RTN_Next(rtn)) {
         procedureSymbolNames[RTN_Address(rtn) - lowAddr] = RTN_Name(rtn);
       }
+    }
+
+    // HACK until we find the right way to determine the entry point
+    RTN mainRtn = RTN_FindByName(img, "main");
+    if (RTN_Valid(mainRtn)) {
+        RTN_Open(mainRtn);
+        RTN_InsertCall(mainRtn,
+                       IPOINT_BEFORE,
+                       reinterpret_cast<AFUNPTR>(EntryPointCallback),
+                       IARG_REG_VALUE,
+                       REG_STACK_PTR,
+                       IARG_END);
+        RTN_Close(mainRtn);
     }
 
     for (size_t i = 0; i < mallocProcedures.size(); i++) {
