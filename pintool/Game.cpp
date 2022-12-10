@@ -118,7 +118,7 @@ vector<ADDRINT> freeProcedures;
 unordered_set<ADDRINT> methodCandidateAddrs;
 unordered_set<ADDRINT> gtCalledMethods;
 void GtMethodCallback(ADDRINT methodAddr) {
-  assert(methodCandidateAddrs.count(methodAddr) == 1);
+  // assert(methodCandidateAddrs.count(methodAddr) == 1);
   gtCalledMethods.insert(methodAddr);
 }
 
@@ -322,7 +322,6 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
        it++) {
     EndObjectTraceIt(it);
     activeObjectTraces.erase(it);
-    assert(it->second == nullptr);
   }
 }
 
@@ -491,7 +490,7 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
   auto it = heapAllocations.upper_bound(ptr);
   if (it != heapAllocations.begin()) {
     it--;
-    if (stackPtr < it->second) {
+    if (ptr < it->second) {
       return true;
     }
   }
