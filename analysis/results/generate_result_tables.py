@@ -4,13 +4,14 @@ SCRIPT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
 def gen_table_instrumented(instrumented_results):
     TABLE_START = '''
+{\\footnotesize
 \\begin{table*}
   \caption{Evaluation of Lego on the Covered Ground Truth (P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.''}
   \label{tab:lego-cgt}
-  \\begin{tabular}{l|ccc|ccc|ccc|ccc|ccc|ccc}
+  \\begin{tabular}{l|ccc|ccc|ccc|ccc|ccc|ccc|ccc}
     \\toprule
-    Program & \multicolumn{3}{c|}{Class Graph Edges} & {Class Graph Ancestors} & \multicolumn{3}{c|}{Individual Classes} & \multicolumn{3}{c|}{Constructors} & \multicolumn{3}{c|}{Destructors} & \multicolumn{3}{c|}{Methods} & \multicolumn{3}{c}{\\begin{tabular}{@{}c@{}}Methods Assigned to\\\\Correct Class\end{tabular}}\\\\
-    & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F \\\\
+    Program & \multicolumn{3}{c|}{\\begin{tabular}{@{}c@{}}Class Graph\\\\Edges\end{tabular}} & \multicolumn{3}{c|}{\\begin{tabular}{@{}c@{}}Class Graph\\\\Ancestors\end{tabular}} & \multicolumn{3}{c|}{Individual Classes} & \multicolumn{3}{c|}{Constructors} & \multicolumn{3}{c|}{Destructors} & \multicolumn{3}{c|}{Methods} & \multicolumn{3}{c}{\\begin{tabular}{@{}c@{}}Methods Assigned\\\\to Correct Class\end{tabular}}\\\\
+    & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F \\\\
     \midrule
 '''
 
@@ -37,6 +38,7 @@ def gen_table_instrumented(instrumented_results):
     TABLE_END = '''    \\bottomrule
   \end{tabular}
 \end{table*}
+}
 '''
 
     return TABLE_START + out + TABLE_END
