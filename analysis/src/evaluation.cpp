@@ -81,7 +81,12 @@ static std::pair<float, float> PrecisionAndRecallMethodsAssignedCorrectClass(
     const std::vector<ClassInfo> &generated_data);
 
 // ============================================================================
-static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
+static std::pair<float, float> PrecisionAndRecallClassGraphEdges(
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data);
+
+// ============================================================================
+static std::pair<float, float> PrecisionAndRecallClassGraphAncestors(
     const std::vector<ClassInfo> &ground_truth,
     const std::vector<ClassInfo> &generated_data);
 
@@ -122,8 +127,7 @@ int main(int argc, char *argv[]) {
   std::string gt_out_path(argv[4]);
   std::string gt_out_instrumented_path(argv[5]);
 
-  auto run_all_tests = [gen_class_info_list](
-                           const std::vector<ClassInfo> &gt_class_info_list,
+  auto run_all_tests = [&](const std::vector<ClassInfo> &gt_class_info_list,
                            std::ofstream &ostream) {
     ostream << "evaluation criteria\tprecision\trecall\tf-score" << std::endl;
 
@@ -146,7 +150,8 @@ int main(int argc, char *argv[]) {
     run_test("Constructors", PrecisionAndRecallConstructors);
     run_test("Destructors", PrecisionAndRecallDestructors);
     run_test("Methods", PrecisionAndRecallMethods);
-    run_test("Class Graphs", PrecisionAndRecallParentChildRelationships);
+    run_test("Class Graph Edges", PrecisionAndRecallClassGraphEdges);
+    run_test("Class Graph Ancestors", PrecisionAndRecallClassGraphAncestors);
   };
 
   std::ofstream gt_out(gt_out_path);
@@ -592,7 +597,129 @@ static std::pair<float, float> PrecisionAndRecallMethodsAssignedCorrectClass(
 }
 
 // ============================================================================
-static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
+static std::pair<float, float> PrecisionAndRecallClassGraphAncestors(
+    const std::vector<ClassInfo> &ground_truth,
+    const std::vector<ClassInfo> &generated_data) {
+  std::set<std::pair<const ClassInfo *, const ClassInfo *>> matched_classes =
+      MatchGenToGtClasses(ground_truth, generated_data);
+
+  auto get_gen_gt_cls_pair =
+      [matched_classes](const std::string &cls_mangled_name) {
+        using ClassPair = const std::pair<const ClassInfo *, const ClassInfo *>;
+        for (const auto &it : matched_classes) {
+          if (it.first->mangled_name == cls_mangled_name) {
+            return std::optional<ClassPair>{it};
+          }
+        }
+        return std::optional<ClassPair>{std::nullopt};
+      };
+
+  auto get_gen_cls =
+      [&](const std::string &cls_mangled_name) -> const ClassInfo * {
+    for (const auto &cls : generated_data) {
+      if (cls.mangled_name == cls_mangled_name) {
+        return &cls;
+      }
+    }
+    std::cerr << "could not find cls in generated data " << cls_mangled_name
+              << std::endl;
+    return nullptr;
+  };
+
+  auto get_gt_cls =
+      [&](const std::string &cls_mangled_name) -> const ClassInfo * {
+    for (const auto &cls : ground_truth) {
+      if (cls.mangled_name == cls_mangled_name) {
+        return &cls;
+      }
+    }
+    std::cerr << "could not find cls in ground truth " << cls_mangled_name
+              << std::endl;
+    return nullptr;
+  };
+
+  int32_t true_positives{0};
+  int32_t gt_size{0};
+  int32_t gen_size{0};
+
+  for (const auto &[gen_cls, gt_cls] : matched_classes) {
+    if (gen_cls->parent_mangled_names.size() == 0 &&
+        gt_cls->parent_mangled_names.size() == 0) {
+      // Both gen and ground truth share the "root" i.e. there are no
+      // inheritance relationships and that has been correctly identified.
+      true_positives++;
+
+      gen_size++;
+      gt_size++;
+    } else {
+      auto find_ancestors =
+          [](const ClassInfo *cls,
+             std::function<const ClassInfo *(const std::string &)>
+                 get_cls) {
+            std::set<const ClassInfo *> ancestors;
+
+            // List of ancestors that will be systematically removed from this
+            // worklist and whose associated ClassInfo will be added to the set
+            // of ancestors.
+            std::vector<std::string> worklist = cls->parent_mangled_names;
+
+            // Find all ancestors of gen class
+            while (worklist.size() != 0) {
+              std::string cls_name = worklist.back();
+              worklist.pop_back();
+
+              const ClassInfo *ci = get_cls(cls_name);
+              if (ci != nullptr && ancestors.count(ci) == 0) {
+                ancestors.insert(ci);
+                for (const auto &parent : ci->parent_mangled_names) {
+                  worklist.push_back(parent);
+                }
+              }
+            }
+            return ancestors;
+          };
+
+      auto gen_ancestors = find_ancestors(gen_cls, get_gen_cls);
+      // std::set<const ClassInfo *> gen_ancestors;
+      // for (const auto &cls_name : gen_cls->parent_mangled_names) {
+      //   const ClassInfo *parent_gt_cls = get_gen_cls(cls_name);
+      //   gen_ancestors.insert(parent_gt_cls);
+      // }
+
+      // Find all parents given the list of parents
+      std::set<const ClassInfo *> gt_parents;
+      for (const auto &cls_name : gt_cls->parent_mangled_names) {
+        const ClassInfo *parent_gt_cls = get_gt_cls(cls_name);
+        if (parent_gt_cls != nullptr) {
+          gt_parents.insert(parent_gt_cls);
+        }
+      }
+
+      // Check if any of the ancestors match the gt
+      for (const ClassInfo *ancestor : gen_ancestors) {
+        // Find the ground truth class associated with the ancestor.
+        auto gen_gt_pair = get_gen_gt_cls_pair(ancestor->mangled_name);
+
+        if (gen_gt_pair.has_value() &&
+            gt_parents.find(gen_gt_pair->second) != gt_parents.end()) {
+          true_positives++;
+        }
+      }
+
+      gen_size += gen_ancestors.size();
+      gt_size += gt_parents.size();
+    }
+  }
+
+  int32_t false_negatives = gt_size - true_positives;
+  int32_t false_positives = gen_size - true_positives;
+
+  return std::pair(ComputePrecision(true_positives, false_positives),
+                   ComputeRecall(true_positives, false_negatives));
+}
+
+// ============================================================================
+static std::pair<float, float> PrecisionAndRecallClassGraphEdges(
     const std::vector<ClassInfo> &ground_truth,
     const std::vector<ClassInfo> &generated_data) {
   std::set<std::pair<const ClassInfo *, const ClassInfo *>> matched_classes =
@@ -600,7 +727,7 @@ static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
 
   // TODO this is inefficient and can be sped up but for now we aren't worried
   // about evaluation efficiency.
-  auto get_gen_class_by_name =
+  auto get_gen_gt_cls_pair =
       [matched_classes](const std::string &cls_mangled_name) {
         using ClassPair = const std::pair<const ClassInfo *, const ClassInfo *>;
         for (const auto &it : matched_classes) {
@@ -634,7 +761,7 @@ static std::pair<float, float> PrecisionAndRecallParentChildRelationships(
       gt_size++;
     } else {
       for (const std::string &parent_name : gen_cls->parent_mangled_names) {
-        auto gt = get_gen_class_by_name(parent_name);
+        auto gt = get_gen_gt_cls_pair(parent_name);
         if (gt.has_value()) {
           if (std::find(gt_cls->parent_mangled_names.begin(),
                         gt_cls->parent_mangled_names.end(),
@@ -704,12 +831,7 @@ MatchGenToGtClasses(const std::vector<ClassInfo> &ground_truth,
         break;
       }
     }
-    if (!found) {
-      std::cerr << cls->mangled_name << std::endl;
-    }
   }
-
-  std::cerr << std::endl;
 
   return matched_classes;
 }

@@ -9,14 +9,15 @@ def gen_table_instrumented(instrumented_results):
   \label{tab:lego-cgt}
   \\begin{tabular}{l|ccc|ccc|ccc|ccc|ccc|ccc}
     \\toprule
-    Program & \multicolumn{3}{c|}{Class Graphs} & \multicolumn{3}{c|}{Individual Classes} & \multicolumn{3}{c|}{Constructors} & \multicolumn{3}{c|}{Destructors} & \multicolumn{3}{c|}{Methods} & \multicolumn{3}{c}{\\begin{tabular}{@{}c@{}}Methods Assigned to\\\\Correct Class\end{tabular}}\\\\
+    Program & \multicolumn{3}{c|}{Class Graph Edges} & {Class Graph Ancestors} & \multicolumn{3}{c|}{Individual Classes} & \multicolumn{3}{c|}{Constructors} & \multicolumn{3}{c|}{Destructors} & \multicolumn{3}{c|}{Methods} & \multicolumn{3}{c}{\\begin{tabular}{@{}c@{}}Methods Assigned to\\\\Correct Class\end{tabular}}\\\\
     & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F \\\\
     \midrule
 '''
 
     out = ''
     for project, result in instrumented_results.items():
-        class_graphs = result['Class Graphs']
+        class_graph_edges = result['Class Graph Edges']
+        class_graph_ancestors = result['Class Graph Ancestors']
         individual_classes = result['Individual Classes']
         constructors = result['Constructors']
         destructors = result['Destructors']
@@ -24,7 +25,8 @@ def gen_table_instrumented(instrumented_results):
         methods_assigned_to_correct_class = result['Methods Assigned to Correct Class']
 
         out += f'    {project} & '
-        out += f'{class_graphs[0]} & {class_graphs[1]} & {class_graphs[2]} &'
+        out += f'{class_graph_edges[0]} & {class_graph_edges[1]} & {class_graph_edges[2]} &'
+        out += f'{class_graph_ancestors[0]} & {class_graph_ancestors[1]} & {class_graph_ancestors[2]} &'
         out += f'{individual_classes[0]} & {individual_classes[1]} & {individual_classes[2]} &'
         out += f'{constructors[0]} & {constructors[1]} & {constructors[2]} &'
         out += f'{destructors[0]} & {destructors[1]} & {destructors[2]} &'
@@ -63,7 +65,7 @@ def gen_table(caption, results):
         kreo_score = result['kreo'] if 'kreo' in result else ['X', 'X', 'X']
         ooa_score = result['ooa'] if 'ooa' in result else ['X', 'X', 'X']
 
-        out += f'{project} & {lego_score[0]} & {lego_score[1]} & {lego_score[2]} & {kreo_score[0]} & {kreo_score[1]} & {kreo_score[2]} & {ooa_score[0]} & {ooa_score[1]} & {ooa_score[2]} \\\\'
+        out += f'{project} & {lego_score[0]} & {lego_score[1]} & {lego_score[2]} & {kreo_score[0]} & {kreo_score[1]} & {kreo_score[2]} & {ooa_score[0]} & {ooa_score[1]} & {ooa_score[2]} \\\\\n'
 
     return TABLE_START + out + TABLE_END
 
@@ -90,21 +92,24 @@ def main():
                         results[name][oss_project] = {}
                     results[name][oss_project][tool] = data[name]
 
-                map_to_results('Class Graphs')
+                map_to_results('Class Graph Edges')
+                map_to_results('Class Graph Ancestors')
                 map_to_results('Individual Classes')
                 map_to_results('Constructors')
                 map_to_results('Destructors')
                 map_to_results('Methods')
                 map_to_results('Methods Assigned to Correct Class')
 
-    class_graphs = gen_table('Class Graphs', results['Class Graphs'])
+    class_graph_edges = gen_table('Class Graph Edges', results['Class Graph Edges'])
+    class_graph_ancestors = gen_table('Class Graph Ancestors', results['Class Graph Ancestors'])
     individual_classes = gen_table('Individual Classes', results['Individual Classes'])
     constructors = gen_table('Constructors', results['Constructors'])
     destructors = gen_table('Destructors', results['Destructors'])
     methods = gen_table('Methods', results['Methods'])
     methods_assigned_to_correct_class = gen_table('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class'])
 
-    print(class_graphs)
+    print(class_graph_edges)
+    print(class_graph_ancestors)
     print(individual_classes)
     print(constructors)
     print(destructors)
