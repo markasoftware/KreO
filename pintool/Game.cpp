@@ -1005,12 +1005,12 @@ void Fini(INT32 code, void*) {
 }
 
 int main(int argc, char** argv) {
-  ParsePregame();
-
   PIN_InitSymbols();  // this /is/ necessary for debug symbols, but somehow it
   // doesn't have an entry in the PIN documentation? (though
   // its name is referenced in a few places).
   PIN_Init(argc, argv);
+  ParsePregame();
+
   PIN_InitLock(&checkObjectTraceLock);
   IMG_AddInstrumentFunction(InstrumentImage, NULL);
   IMG_AddUnloadFunction(InstrumentUnloadImage, NULL);
