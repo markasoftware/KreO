@@ -133,7 +133,7 @@ namespace Kreo {
                 ->updateWriteProperties(reg, InstructionSemantics::BaseSemantics::IO_WRITE);
         }
 
-        virtual Base::SValuePtr fpFromInteger(const Base::SValuePtr &intValue, SgAsmFloatType *fpType) {
+        virtual Base::SValuePtr fpFromInteger(const Base::SValuePtr &intValue, SgAsmFloatType *fpType) override {
             // TODO there are probably some situations where we could say that the value is preserved, but a floating point isn't going to be an object pointer anyway.
             return undefined_(fpType->get_nBits());
         }
@@ -363,6 +363,12 @@ namespace Kreo {
         } catch (const Base::NotImplemented &e) {
             // TODO: use mlog properly here and elsewhere
             std::cerr << "Not implemented error! " << e.what() << std::endl;
+            return AnalyzeProcedureResult();
+        } catch (const DataFlow::NotConverging &e) {
+            std::cerr << "Dataflow didn't converge! That should never happen, because we reduce to DAG!" << std::endl;
+            throw e;
+        } catch (const Base::Exception &e) {
+            std::cerr << "Generic BaseSemantics::Exception. what(): " << e.what() << std::endl;
             return AnalyzeProcedureResult();
         }
         // catch (const DataFlow::NotConverging &e) {
