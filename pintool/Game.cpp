@@ -495,22 +495,10 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
   }
 
   // If lies within heap allocated region, address valid.
-<<<<<<< HEAD
-  auto it = heapAllocations.upper_bound(ptr);
-  if (it != heapAllocations.begin()) {
-    it--;
-    if (ptr < it->second) {
-||||||| 26faf69
-  auto it = heapAllocations.upper_bound(ptr);
-  if (it != heapAllocations.begin()) {
-    it--;
-    if (stackPtr < it->second) {
-=======
   auto heapIt = heapAllocations.upper_bound(ptr);
   if (heapIt != heapAllocations.begin()) {
     heapIt--;
     if (ptr < heapIt->second) {
->>>>>>> static-analysis-postgame
       return true;
     }
   }
