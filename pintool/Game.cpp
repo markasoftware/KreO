@@ -322,7 +322,6 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
        it != activeObjectTraces.end() && it->first < regionEnd;
        it++) {
     EndObjectTraceIt(it);
-    activeObjectTraces.erase(it);
   }
   activeObjectTraces.erase(firstTrace, it);
 }
