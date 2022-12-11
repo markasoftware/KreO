@@ -19,21 +19,18 @@ if not 'enableCallingConventionAnalysis' in config:
     config['enableCallingConventionAnalysis'] = True
 if not 'enableSymbolProcedureDetection' in config:
     config['enableSymbolProcedureDetection'] = False
-if not 'methodCandidatesPath' in config:
-    config['methodCandidatesPath'] = join(scriptpath, 'out/method-candidates')
-if not 'blacklistedMethodsPath' in config:
-    config['blacklistedMethodsPath'] = join(scriptpath, 'out/blacklisted-methods')
-if not 'gtMethodsPath' in config:
-    config['gtMethodsPath'] = join(scriptpath, 'out/gt-methods')
-if not 'gtMethodsInstrumentedPath' in config:
-    config['gtMethodsInstrumentedPath'] = join(scriptpath, 'out/gt-methods-instrumented')
-if not 'baseOffsetPath' in config:
-    config['baseOffsetPath'] = join(scriptpath, 'out/base-address')
-if not 'staticTracesPath' in config:
-    config['staticTracesPath'] = join(scriptpath, 'out/static-traces')
-if not 'objectTracesPath' in config:
-    config['objectTracesPath'] = join(scriptpath, 'out/object-traces')
-if not 'resultsPath' in config:
-    config['resultsPath'] = join(scriptpath, 'out/results.json')
 if not 'resultsIndent' in config:
     config['resultsIndent'] = 4
+
+if not 'baseDirectory' in config:
+    config['baseDirectory'] = 'out'
+baseDirectory = config['baseDirectory']
+
+config['methodCandidatesPath'] = join(scriptpath, baseDirectory, 'method-candidates')
+config['blacklistedMethodsPath'] = join(scriptpath, baseDirectory, 'blacklisted-methods')
+config['gtMethodsPath'] = join(scriptpath, baseDirectory, 'gt-methods')
+config['gtMethodsInstrumentedPath'] = join(scriptpath, baseDirectory, 'gt-methods-instrumented')
+config['baseOffsetPath'] = join(scriptpath, baseDirectory, 'base-address')
+config['staticTracesPath'] = join(scriptpath, baseDirectory, 'static-traces')
+config['objectTracesPath'] = join(scriptpath, baseDirectory, 'object-traces')
+config['resultsPath'] = join(scriptpath, baseDirectory, 'results.json')
