@@ -10,7 +10,7 @@ else:
     raise Exception('PIN_ROOT environment variable or config option must be set to where you downloaded the pin kit.')
 
 # TODO: make it better at figuring out where the pintool is cross-platform!
-pin_executable_path = os.environ['PIN_ROOT'] + '/pin'
+pin_executable_path = pin_root + '/pin'
 
 pintool_shared_object = os.path.dirname(os.path.realpath(__file__)) + '/pintool'
 if config['isa'] == 'x86':
