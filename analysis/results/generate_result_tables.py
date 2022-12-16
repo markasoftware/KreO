@@ -2,6 +2,45 @@ import os
 
 SCRIPT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
+def convert_nested_str_list_to_float(l):
+    def tuple_to_float(t):
+        new_t = []
+        for x in t:
+            new_t.append(float(x))
+        return new_t
+    return list(map(lambda x: tuple_to_float(x), l))
+
+def get_prf_average(l):
+    def avg(l):
+        return sum(l) / len(l)
+
+    l = convert_nested_str_list_to_float(l)
+    p = avg(list(map(lambda x: x[0], l)))
+    r = avg(list(map(lambda x: x[1], l)))
+    f = avg(list(map(lambda x: x[2], l)))
+    return [p, r, f]
+
+def get_max_prf(result):
+    values = convert_nested_str_list_to_float(list(result.values()))
+    maxes = [max(list(map(lambda x: x[i], values))) for i in range(3)]
+    return maxes
+
+def get_prf_str(prf, max_prf=None):
+    def get_highlighted_str_value_if_max(value, max_value):
+        if abs(value - max_value) < 0.005:
+            return '\\textbf{{{0:0.2f}}}'.format(value)
+        return '{0:0.2f}'.format(value)
+
+    out = ''
+
+    if max_prf is None:
+        for value in prf:
+            out += get_highlighted_str_value_if_max(float(value), -1) + ' & '
+    else:
+        for value, max in zip(prf, max_prf):
+            out += get_highlighted_str_value_if_max(float(value), max) + ' & '
+    return out[0:-3]
+
 def gen_table_instrumented(instrumented_results):
     TABLE_START = '''
 {\\footnotesize
@@ -16,7 +55,16 @@ def gen_table_instrumented(instrumented_results):
 '''
 
     out = ''
-    for project, result in instrumented_results.items():
+    sums = {}
+    sums['Class Graph Edges'] = []
+    sums['Class Graph Ancestors'] = []
+    sums['Individual Classes'] = []
+    sums['Constructors'] = []
+    sums['Destructors'] = []
+    sums['Methods'] = []
+    sums['Methods Assigned to Correct Class'] = []
+
+    for project, result in sorted(instrumented_results.items(), key=lambda x: x[0].lower()):
         class_graph_edges = result['Class Graph Edges']
         class_graph_ancestors = result['Class Graph Ancestors']
         individual_classes = result['Individual Classes']
@@ -26,14 +74,33 @@ def gen_table_instrumented(instrumented_results):
         methods_assigned_to_correct_class = result['Methods Assigned to Correct Class']
 
         out += f'    {project} & '
-        out += f'{class_graph_edges[0]} & {class_graph_edges[1]} & {class_graph_edges[2]} &'
-        out += f'{class_graph_ancestors[0]} & {class_graph_ancestors[1]} & {class_graph_ancestors[2]} &'
-        out += f'{individual_classes[0]} & {individual_classes[1]} & {individual_classes[2]} &'
-        out += f'{constructors[0]} & {constructors[1]} & {constructors[2]} &'
-        out += f'{destructors[0]} & {destructors[1]} & {destructors[2]} &'
-        out += f'{methods[0]} & {methods[1]} & {methods[2]} &'
-        out += f'{methods_assigned_to_correct_class[0]} & {methods_assigned_to_correct_class[1]} & {methods_assigned_to_correct_class[2]}'
+        out += get_prf_str(class_graph_edges) + ' & '
+        out += get_prf_str(class_graph_ancestors) + ' & '
+        out += get_prf_str(individual_classes) + ' & '
+        out += get_prf_str(constructors) + ' & '
+        out += get_prf_str(destructors) + ' & '
+        out += get_prf_str(methods) + ' & '
+        out += get_prf_str(methods_assigned_to_correct_class)
         out += '\\\\\n'
+
+        sums['Class Graph Edges'].append(result['Class Graph Edges'])
+        sums['Class Graph Ancestors'].append(result['Class Graph Ancestors'])
+        sums['Individual Classes'].append(result['Individual Classes'])
+        sums['Constructors'].append(result['Constructors'])
+        sums['Destructors'].append(result['Destructors'])
+        sums['Methods'].append(result['Methods'])
+        sums['Methods Assigned to Correct Class'].append(result['Methods Assigned to Correct Class'])
+
+    out += '    \\midrule\n'
+    out += 'Average & '
+    out += get_prf_str(get_prf_average(sums['Class Graph Edges'])) + ' & '
+    out += get_prf_str(get_prf_average(sums['Class Graph Ancestors'])) + ' & '
+    out += get_prf_str(get_prf_average(sums['Individual Classes'])) + ' & '
+    out += get_prf_str(get_prf_average(sums['Constructors'])) + ' & '
+    out += get_prf_str(get_prf_average(sums['Destructors'])) + ' & '
+    out += get_prf_str(get_prf_average(sums['Methods'])) + ' & '
+    out += get_prf_str(get_prf_average(sums['Methods Assigned to Correct Class']))
+    out += '\\\\\n'
 
     TABLE_END = '''    \\bottomrule
   \end{tabular}
@@ -61,13 +128,35 @@ def gen_table(caption, results):
 \end{tabular}
 \end{table*}'''
 
-    out = ''
-    for project, result in results.items():
-        lego_score = result['lego'] if 'lego' in result else ['X', 'X', 'X']
-        kreo_score = result['kreo'] if 'kreo' in result else ['X', 'X', 'X']
-        ooa_score = result['ooa'] if 'ooa' in result else ['X', 'X', 'X']
+    out_graph = {}
+    out_graph['lego'] = list()
+    out_graph['kreo'] = list()
+    out_graph['ooa'] = list()
 
-        out += f'{project} & {lego_score[0]} & {lego_score[1]} & {lego_score[2]} & {kreo_score[0]} & {kreo_score[1]} & {kreo_score[2]} & {ooa_score[0]} & {ooa_score[1]} & {ooa_score[2]} \\\\\n'
+    out = ''
+    for project, result in sorted(results.items(), key=lambda x: x[0].lower()):
+        assert 'lego' in result
+        assert 'kreo' in result
+        assert 'ooa' in result
+
+        max_prf = get_max_prf(result)
+
+        out += f'{project} & {get_prf_str(result["lego"], max_prf)} & {get_prf_str(result["kreo"], max_prf)} & {get_prf_str(result["ooa"], max_prf)} \\\\\n'
+
+        out_graph['lego'].append(result['lego'])
+        out_graph['kreo'].append(result['kreo'])
+        out_graph['ooa'].append(result['ooa'])
+
+    out += '\\midrule\n'
+
+    result_avg = {
+        'lego': get_prf_average(out_graph['lego']),
+        'kreo': get_prf_average(out_graph['kreo']),
+        'ooa': get_prf_average(out_graph['ooa'])
+    }
+    max_prf_avg = get_max_prf(result_avg)
+
+    out += f'Average & {get_prf_str(result_avg["lego"], max_prf_avg)} & {get_prf_str(result_avg["kreo"], max_prf_avg)} & {get_prf_str(result_avg["ooa"], max_prf_avg)} \\\\\n'
 
     return TABLE_START + out + TABLE_END
 
