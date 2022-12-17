@@ -112,8 +112,10 @@ def gen_table_instrumented(instrumented_results):
 
 def gen_table(caption, results):
     label = '-'.join(caption.split(' '))
-    TABLE_START = f'''
-\\begin{{table*}}
+    def get_table_start(label, table_type, floating=False):
+        floating_str = '[H]' if floating else ''
+        return f'''
+\\begin{{{table_type}}}{floating_str}
     \caption{{Evaluation of Various Projects, {caption}}}
   \label{{tab:{label}}}
   \\begin{{tabular}}{{l|ccc|ccc|ccc}}
@@ -123,10 +125,10 @@ def gen_table(caption, results):
     \midrule
 '''
 
-    TABLE_END = '''
-  \\bottomrule
-\end{tabular}
-\end{table*}'''
+    def get_table_end(table_type):
+        return f'''\\bottomrule
+\end{{tabular}}
+\end{{{table_type}}}'''
 
     out_graph = {}
     out_graph['lego'] = list()
@@ -156,9 +158,11 @@ def gen_table(caption, results):
     }
     max_prf_avg = get_max_prf(result_avg)
 
-    out += f'Average & {get_prf_str(result_avg["lego"], max_prf_avg)} & {get_prf_str(result_avg["kreo"], max_prf_avg)} & {get_prf_str(result_avg["ooa"], max_prf_avg)} \\\\\n'
+    out_avg = f'Average & {get_prf_str(result_avg["lego"], max_prf_avg)} & {get_prf_str(result_avg["kreo"], max_prf_avg)} & {get_prf_str(result_avg["ooa"], max_prf_avg)} \\\\\n'
 
-    return TABLE_START + out + TABLE_END
+    out += out_avg
+
+    return ((get_table_start(label, 'table*') + out_avg + get_table_end('table*')), (get_table_start(label + '-2', 'table', True) + out + get_table_end('table')))
 
 def main():
     results = {}
@@ -191,21 +195,21 @@ def main():
                 map_to_results('Methods')
                 map_to_results('Methods Assigned to Correct Class')
 
-    class_graph_edges = gen_table('Class Graph Edges', results['Class Graph Edges'])
-    class_graph_ancestors = gen_table('Class Graph Ancestors', results['Class Graph Ancestors'])
-    individual_classes = gen_table('Individual Classes', results['Individual Classes'])
-    constructors = gen_table('Constructors', results['Constructors'])
-    destructors = gen_table('Destructors', results['Destructors'])
-    methods = gen_table('Methods', results['Methods'])
-    methods_assigned_to_correct_class = gen_table('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class'])
+    class_graph_edges_avg, class_graph_edges = gen_table('Class Graph Edges', results['Class Graph Edges'])
+    class_graph_ancestors_avg, class_graph_ancestors = gen_table('Class Graph Ancestors', results['Class Graph Ancestors'])
+    individual_classes_avg, individual_classes = gen_table('Individual Classes', results['Individual Classes'])
+    constructors_avg, constructors = gen_table('Constructors', results['Constructors'])
+    destructors_avg, destructors = gen_table('Destructors', results['Destructors'])
+    methods_avg, methods = gen_table('Methods', results['Methods'])
+    methods_assigned_to_correct_class_avg, methods_assigned_to_correct_class = gen_table('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class'])
 
-    print(class_graph_edges)
-    print(class_graph_ancestors)
-    print(individual_classes)
-    print(constructors)
-    print(destructors)
-    print(methods)
-    print(methods_assigned_to_correct_class)
+    print(class_graph_edges_avg)
+    print(class_graph_ancestors_avg)
+    print(individual_classes_avg)
+    print(constructors_avg)
+    print(destructors_avg)
+    print(methods_avg)
+    print(methods_assigned_to_correct_class_avg)
 
     instrumented_results = {}    
     for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in-instrumented')):
@@ -222,6 +226,16 @@ def main():
     instrumented = gen_table_instrumented(instrumented_results)
 
     print(instrumented)
+
+    print('##################################')
+
+    print(class_graph_edges)
+    print(class_graph_ancestors)
+    print(individual_classes)
+    print(constructors)
+    print(destructors)
+    print(methods)
+    print(methods_assigned_to_correct_class)
 
 if __name__ == '__main__':
     main()
