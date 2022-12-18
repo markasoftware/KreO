@@ -2,9 +2,7 @@
 Converts utf-16 encoded file removing carriage returns from the file.
 '''
 
-import os
 import sys
-print(sys.argv[1])
 
 file_contents = ''
 
