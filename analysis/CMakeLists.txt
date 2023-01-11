@@ -15,7 +15,10 @@ add_executable(evaluation src/evaluation.cpp)
 add_executable(extract_gt_methods src/extract_gt_methods.cpp)
 
 target_sources(analyze_pdb_dump PRIVATE
-    src/pdb_analyzer.cpp
+    src/utils.cpp
+    src/pdb_organizer.cpp
+    src/pdb_parser.cpp
+    src/type_data_instances.cpp
     src/pdb_results.cpp)
 
 target_link_libraries(analyze_pdb_dump ${Boost_LIBRARIES})

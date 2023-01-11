@@ -1,7 +1,8 @@
 #include <iostream>
 
-#include "pdb_analyzer.h"
 #include "pdb_results.h"
+#include "pdb_parser.h"
+#include "pdb_organizer.h"
 
 // ============================================================================
 int main(int argv, char *argc[]) {
@@ -16,14 +17,18 @@ int main(int argv, char *argc[]) {
 
   std::string pdb_file(argc[1]);
 
-  // Analyze PDB dump
-  PdbAnalyzer analyzer;
-  analyzer.AnalyzePdbDump(pdb_file);
+  PdbParser parser(pdb_file);
 
-  auto ci = analyzer.ConstructClassInfo();
-  PdbResults results(ci);
+  parser.ParseTypeData();
 
-  std::cout << boost::json::serialize(results.ToJson()) << std::endl;
+  PdbOrganizer organizer;
+
+  organizer.Organize(parser);
+
+  // auto ci = analyzer.ConstructClassInfo();
+  // PdbResults results(ci);
+
+  // std::cout << boost::json::serialize(results.ToJson()) << std::endl;
 
   return EXIT_SUCCESS;
 }

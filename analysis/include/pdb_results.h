@@ -1,28 +1,26 @@
-#pragma once
+// #pragma once
 
-#include <boost/json.hpp>
-#include <map>
-#include <memory>
-#include <optional>
-#include <set>
+// #include <boost/json.hpp>
+// #include <map>
+// #include <memory>
+// #include <optional>
+// #include <set>
 
-#include "pdb_analyzer.h"
+// class PdbResults {
+//  public:
+//   PdbResults(const std::vector<ClassData> &class_data);
 
-class PdbResults {
- public:
-  PdbResults(const std::vector<ClassData> &class_data);
+//   /// @brief Combines elements in the class info and field list maps that have
+//   /// the same class name (dbc file sometimes produces identical class
+//   /// structures that share field list elements for some reason). This should
+//   /// really be investigated. For example, std::exception is listed twice as a
+//   /// type.
+//   void CombineClasses();
 
-  /// @brief Combines elements in the class info and field list maps that have
-  /// the same class name (dbc file sometimes produces identical class
-  /// structures that share field list elements for some reason). This should
-  /// really be investigated. For example, std::exception is listed twice as a
-  /// type.
-  void CombineClasses();
+//   boost::json::value ToJson() const;
 
-  boost::json::value ToJson() const;
+//  private:
+//   static constexpr std::string_view kVersion{"1.0.0"};
 
- private:
-  static constexpr std::string_view kVersion{"1.0.0"};
-
-  std::vector<ClassData> class_data_;
-};
+//   std::vector<ClassData> class_data_;
+// };

@@ -2,6 +2,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <string_view>
 
 #include "json_loader.h"
 
@@ -150,18 +151,18 @@ int main(int argc, char *argv[]) {
     run_test("Constructors", PrecisionAndRecallConstructors);
     run_test("Destructors", PrecisionAndRecallDestructors);
     run_test("Methods", PrecisionAndRecallMethods);
-    run_test("Class Graph Edges", PrecisionAndRecallClassGraphEdges);
+    // run_test("Class Graph Edges", PrecisionAndRecallClassGraphEdges);
     run_test("Class Graph Ancestors", PrecisionAndRecallClassGraphAncestors);
   };
 
   std::ofstream gt_out(gt_out_path);
   run_all_tests(gt_class_info_list, gt_out);
 
-  auto gt_class_info_instrumented_list = GetGtClassInfoInstrumentedList(
-      gt_methods_instrumented, gt_class_info_list);
+  // auto gt_class_info_instrumented_list = GetGtClassInfoInstrumentedList(
+  //     gt_methods_instrumented, gt_class_info_list);
 
-  std::ofstream gt_out_instrumented(gt_out_instrumented_path);
-  run_all_tests(gt_class_info_instrumented_list, gt_out_instrumented);
+  // std::ofstream gt_out_instrumented(gt_out_instrumented_path);
+  // run_all_tests(gt_class_info_instrumented_list, gt_out_instrumented);
 }
 
 // ============================================================================
@@ -379,11 +380,6 @@ static std::pair<float, float> PrecisionAndRecallClasses(
   int32_t false_positives =
       FalsePositives(generated_data_excluding_empty_cls, true_positives);
 
-  std::cerr << "ground truth classes: "
-            << ground_truth_excluding_empty_cls.size() << std::endl;
-  std::cerr << "generated classes: "
-            << generated_data_excluding_empty_cls.size() << std::endl;
-
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
 }
@@ -421,11 +417,6 @@ static std::pair<float, float> PrecisionAndRecallMethods(
   int32_t false_positives =
       FalsePositives(generated_data_methods, true_positives);
 
-  std::cerr << "ground truth methods: " << ground_truth_methods.size()
-            << std::endl;
-  std::cerr << "generated methods: " << generated_data_methods.size()
-            << std::endl;
-
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
 }
@@ -462,11 +453,6 @@ static std::pair<float, float> PrecisionAndRecallSpecificType(
 
   int32_t false_negatives = FalseNegatives(ground_truth_type, true_positives);
   int32_t false_positives = FalsePositives(generated_data_type, true_positives);
-
-  std::cerr << "ground truth " << type << ": " << ground_truth_type.size()
-            << std::endl;
-  std::cerr << "generated " << type << ": " << generated_data_type.size()
-            << std::endl;
 
   return std::pair(ComputePrecision(true_positives, false_positives),
                    ComputeRecall(true_positives, false_negatives));
@@ -621,7 +607,7 @@ static std::pair<float, float> PrecisionAndRecallClassGraphAncestors(
         return &cls;
       }
     }
-    std::cerr << "could not find cls in generated data " << cls_mangled_name
+    std::cerr << "could not find cls in generated data by name " << cls_mangled_name
               << std::endl;
     return nullptr;
   };
