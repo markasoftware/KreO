@@ -121,39 +121,40 @@ namespace Kreo {
 
         // transfer functions
     public:
-        virtual Base::SValuePtr readRegister(RegisterDescriptor reg, const Base::SValuePtr &dflt) override {
-            Base::SValuePtr retval = PartialSymbolic::RiscOperators::readRegister(reg, dflt);
-            PartialSymbolic::RegisterState::promote(currentState()->registerState())->updateReadProperties(reg);
-            return retval;
-        }
+        // virtual Base::SValuePtr readRegister(RegisterDescriptor reg, const Base::SValuePtr &dflt) override {
+        //     Base::SValuePtr retval = PartialSymbolic::RiscOperators::readRegister(reg, dflt);
+        //     PartialSymbolic::RegisterState::promote(currentState()->registerState())->updateReadProperties(reg);
+        //     return retval;
+        // }
 
-        virtual void writeRegister(RegisterDescriptor reg, const Base::SValuePtr &a) override {
-            PartialSymbolic::RiscOperators::writeRegister(reg, a);
-            PartialSymbolic::RegisterState::promote(currentState()->registerState())
-                ->updateWriteProperties(reg, InstructionSemantics::BaseSemantics::IO_WRITE);
-        }
+        // virtual void writeRegister(RegisterDescriptor reg, const Base::SValuePtr &a) override {
+        //     PartialSymbolic::RiscOperators::writeRegister(reg, a);
+        //     std::cerr << "Write to register: " << reg.toString() << " value " << a->toString() << std::endl;
+        // PartialSymbolic::RegisterState::promote(currentState()->registerState())
+        //     ->updateWriteProperties(reg, InstructionSemantics::BaseSemantics::IO_WRITE);
+        // }
 
-        virtual void writeMemory(RegisterDescriptor segreg,
-                                 const Base::SValuePtr &addr,
-                                 const Base::SValuePtr &value,
-                                 const Base::SValuePtr &condition) override {
-            std::cerr << "Write memory: segreg is ";
-            if (segreg.isEmpty()) {
-                std::cerr << "empty";
-            } else {
-                Base::SValuePtr segregValue = readRegister(segreg, undefined_(segreg.nBits()));
-                segregValue->print(std::cerr, formatter);
-                Base::SValuePtr adjustedVa = add(addr, signExtend(segregValue, addr->nBits()));
-                std::cerr << ", adjusted addr is ";
-                adjustedVa->print(std::cerr, formatter);
-            }
-            std::cerr << ", addr is ";
-            addr->print(std::cerr, formatter);
-            std::cerr << " with value ";
-            value->print(std::cerr, formatter);
-            std::cerr << std::endl;
-            PartialSymbolic::RiscOperators::writeMemory(segreg, addr, value, condition);
-        }
+        // virtual void writeMemory(RegisterDescriptor segreg,
+        //                          const Base::SValuePtr &addr,
+        //                          const Base::SValuePtr &value,
+        //                          const Base::SValuePtr &condition) override {
+        //     std::cerr << "Write memory: segreg is ";
+        //     if (segreg.isEmpty()) {
+        //         std::cerr << "empty";
+        //     } else {
+        //         Base::SValuePtr segregValue = readRegister(segreg, undefined_(segreg.nBits()));
+        //         segregValue->print(std::cerr, formatter);
+        //         Base::SValuePtr adjustedVa = add(addr, signExtend(segregValue, addr->nBits()));
+        //         std::cerr << ", adjusted addr is ";
+        //         adjustedVa->print(std::cerr, formatter);
+        //     }
+        //     std::cerr << ", addr is ";
+        //     addr->print(std::cerr, formatter);
+        //     std::cerr << " with value ";
+        //     value->print(std::cerr, formatter);
+        //     std::cerr << std::endl;
+        //     PartialSymbolic::RiscOperators::writeMemory(segreg, addr, value, condition);
+        // }
 
         virtual Base::SValuePtr fpFromInteger(const Base::SValuePtr &intValue, SgAsmFloatType *fpType) override {
             // TODO there are probably some situations where we could say that the value is preserved, but a floating point isn't going to be an object pointer anyway.
@@ -288,7 +289,16 @@ namespace Kreo {
             return os;
     }
 
-    AnalyzeProcedureResult analyzeProcedure(const P2::Partitioner &partitioner,
+    void initializeCalleeSavedLocations(Base::State::Ptr state, Base::RiscOperatorsPtr ops, const CallingConventionGuess &cc) {
+        // just read ecx/rdi to put it into registerstate
+        state->registerState()->readRegister(
+            cc.thisArgumentRegister,
+            ops->undefined_(cc.thisArgumentRegister.nBits()),
+            ops.get()
+            );
+    }
+
+    AnalyzeProcedureResult analyzeProcedure(const P2::PartitionerPtr &partitioner,
                                             const Disassembler::BasePtr &disassembler,
                                             const P2::Function::Ptr &proc) {
         bool debugFunction = proc->address() == Kreo::settings.debugFunctionAddr;
@@ -298,17 +308,13 @@ namespace Kreo {
         // some of this is modeled off of the dataflow analysis in Rose/BinaryAnalysis/CallingConvention.C
 
         const CallingConventionGuess cc = guessCallingConvention(disassembler);
-        DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner.cfg(), partitioner.findPlaceholder(proc->address()));
+        DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner->cfg(), partitioner->findPlaceholder(proc->address()));
         if (debugFunction) {
             std::string dfCfgDotFileName = "dfcfg-" + proc->name() + ".dot";
             std::cerr << "Printing dot to " << dfCfgDotFileName << std::endl;
             std::ofstream dfCfgDotFile(dfCfgDotFileName);
             P2::DataFlow::dumpDfCfg(dfCfgDotFile, dfCfg);
         }
-        // uncomment to see the DfCfg graphs:
-        // std::cout << std::endl;
-        // dumpDfCfg(std::cout, dfCfg);
-        // std::cout << std::endl;
 
         ///// PREPROCESS GRAPH /////
 
@@ -366,11 +372,12 @@ namespace Kreo {
         
         ///// RUN DATAFLOW /////
 
-        const RegisterDictionary::Ptr regDict = partitioner.instructionProvider().registerDictionary();
+        const RegisterDictionary::Ptr regDict = partitioner->instructionProvider().registerDictionary();
         Base::State::Ptr state = stateFromRegisters(regDict);
         Base::RiscOperatorsPtr riscOperators = RiscOperators::instanceFromState(state);
-        Base::DispatcherPtr cpu = partitioner.newDispatcher(riscOperators);
+        Base::DispatcherPtr cpu = partitioner->newDispatcher(riscOperators);
         // It appears that creating the dispatcher automatically initializes the state associated with regDict, setting the all-important DS register to zero. It's important to pass this same state into insertStartingVertex below; if you create a new one with stateFromRegisters as I did before, the new state won't be initialized and DS won't be set to zero, causing lots of tractable expressions to be reset to terminals in the static analysis.
+        initializeCalleeSavedLocations(state, riscOperators, cc); // ensures that ecx/rdi is initialized before analysis begins, because they do have a value before function call (at least in the conventions we're interested in). Lots of room for improvement here, ask mark, I have a document with a more detailed todo about this and doing it for other callee-saved locations more robustly.
         // cpu->initializeState(state);
         P2::DataFlow::TransferFunction transferFn(cpu);
         transferFn.defaultCallingConvention(cc.defaultCallingConvention);
@@ -396,11 +403,6 @@ namespace Kreo {
             std::cerr << "Generic BaseSemantics::Exception. what(): " << e.what() << std::endl;
             return AnalyzeProcedureResult();
         }
-        // catch (const DataFlow::NotConverging &e) {
-        //     // TODO: If we re-implement dataflow manually we can avoid this error!
-        //     std::cerr << "Data flow analysis didn't converge! " << e.what() << std::endl;
-        //     return AnalyzeProcedureResult();
-        // }
 
         ///// ANALYZE DATAFLOW RESULTS FOR STATIC TRACES /////
 
@@ -408,7 +410,6 @@ namespace Kreo {
         // argument into the same trace. While it's possible to find the topo order and
         // build the traces simultaneously, I'll do the topo sort first and then separately
         // loop through just to make the code a bit clearer.
-
 
         // Build traces
         std::vector<StaticObjectTrace> traces;
@@ -418,7 +419,7 @@ namespace Kreo {
             if (debugFunction) {
                 std::cerr << "==VERTEX " << vertex->id() << "==" << std::endl
                           << "numIncomingEdges = " << vertex->nInEdges() << std::endl
-                          << "first argument register @ vertex " << vertex->id() << ": ";
+                          << "memory state @ vertex " << vertex->id() << ": " << std::endl;
                 auto registerState = dfEngine.getInitialState(vertex->id())->registerState();
                 registerState->print(std::cerr);
                     // registerState->peekRegister(
@@ -532,7 +533,7 @@ int main(int argc, char *argv[]) {
     engine->settings().partitioner.findingImportFunctions = false; // this is just stuff from other files, right?
     engine->settings().partitioner.findingExportFunctions = Kreo::settings.enableSymbolProcedureDetection;
     engine->settings().partitioner.findingSymbolFunctions = Kreo::settings.enableSymbolProcedureDetection;
-    P2::Partitioner partitioner = engine->partition(specimen); // Create and run partitioner
+    P2::PartitionerPtr partitioner = engine->partition(specimen); // Create and run partitioner
 
     engine->runPartitionerFinal(partitioner);
 
@@ -557,9 +558,9 @@ int main(int argc, char *argv[]) {
 
     int numMethodsFound = 0;
     int i = 0;
-    for (const P2::Function::Ptr &proc : partitioner.functions()) {
-        std::cerr << "Analyze function 0x" << std::hex << proc->address() << ", which is "
-                  << std::dec << i++ << " out of " << partitioner.functions().size() << std::endl;
+    for (const P2::Function::Ptr &proc : partitioner->functions()) {
+        std::cerr << "Analyze function " << std::dec << proc->address() << ", which is "
+                  << i++ << " out of " << partitioner->functions().size() << std::endl;
         // there's already a conditional for chunks in the static analysis part, but if static analysis is disabled that won't be reached.
         // We're essentially checking two conditions: 1., before static analysis, that it's not a thunk, and 2., after static analysis, that it uses the this pointer.
         if (proc->isThunk()) {
@@ -590,6 +591,6 @@ int main(int argc, char *argv[]) {
     }
 
     std::cerr << "Final statistics:\n"
-              << "    Detected " << numMethodsFound << " methods from " << partitioner.functions().size() << " total procedures."
+              << "    Detected " << numMethodsFound << " methods from " << partitioner->functions().size() << " total procedures."
               << std::endl;
 }

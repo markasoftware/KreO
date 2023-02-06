@@ -2,6 +2,7 @@ import sys
 import json5
 import pathlib
 from os.path import join
+import os.path
 
 if len(sys.argv) != 2:
     print('Usage: python ' + sys.argv[0] + ' /path/to/config.json')
@@ -25,6 +26,9 @@ if not 'resultsIndent' in config:
 if not 'baseDirectory' in config:
     config['baseDirectory'] = 'out'
 baseDirectory = config['baseDirectory']
+# ensure it exists
+if not os.path.exists(baseDirectory):
+    os.mkdir(baseDirectory)
 
 config['methodCandidatesPath'] = join(scriptpath, baseDirectory, 'method-candidates')
 config['blacklistedMethodsPath'] = join(scriptpath, baseDirectory, 'blacklisted-methods')
