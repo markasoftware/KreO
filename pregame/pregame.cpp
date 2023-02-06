@@ -133,6 +133,28 @@ namespace Kreo {
                 ->updateWriteProperties(reg, InstructionSemantics::BaseSemantics::IO_WRITE);
         }
 
+        virtual void writeMemory(RegisterDescriptor segreg,
+                                 const Base::SValuePtr &addr,
+                                 const Base::SValuePtr &value,
+                                 const Base::SValuePtr &condition) override {
+            std::cerr << "Write memory: segreg is ";
+            if (segreg.isEmpty()) {
+                std::cerr << "empty";
+            } else {
+                Base::SValuePtr segregValue = readRegister(segreg, undefined_(segreg.nBits()));
+                segregValue->print(std::cerr, formatter);
+                Base::SValuePtr adjustedVa = add(addr, signExtend(segregValue, addr->nBits()));
+                std::cerr << ", adjusted addr is ";
+                adjustedVa->print(std::cerr, formatter);
+            }
+            std::cerr << ", addr is ";
+            addr->print(std::cerr, formatter);
+            std::cerr << " with value ";
+            value->print(std::cerr, formatter);
+            std::cerr << std::endl;
+            PartialSymbolic::RiscOperators::writeMemory(segreg, addr, value, condition);
+        }
+
         virtual Base::SValuePtr fpFromInteger(const Base::SValuePtr &intValue, SgAsmFloatType *fpType) override {
             // TODO there are probably some situations where we could say that the value is preserved, but a floating point isn't going to be an object pointer anyway.
             return undefined_(fpType->get_nBits());
@@ -345,8 +367,11 @@ namespace Kreo {
         ///// RUN DATAFLOW /////
 
         const RegisterDictionary::Ptr regDict = partitioner.instructionProvider().registerDictionary();
-        Base::RiscOperatorsPtr riscOperators = RiscOperators::instanceFromState(stateFromRegisters(regDict));
+        Base::State::Ptr state = stateFromRegisters(regDict);
+        Base::RiscOperatorsPtr riscOperators = RiscOperators::instanceFromState(state);
         Base::DispatcherPtr cpu = partitioner.newDispatcher(riscOperators);
+        // It appears that creating the dispatcher automatically initializes the state associated with regDict, setting the all-important DS register to zero. It's important to pass this same state into insertStartingVertex below; if you create a new one with stateFromRegisters as I did before, the new state won't be initialized and DS won't be set to zero, causing lots of tractable expressions to be reset to terminals in the static analysis.
+        // cpu->initializeState(state);
         P2::DataFlow::TransferFunction transferFn(cpu);
         transferFn.defaultCallingConvention(cc.defaultCallingConvention);
         P2::DataFlow::MergeFunction mergeFn(cpu);
@@ -355,7 +380,7 @@ namespace Kreo {
         dfEngine.name("kreo-static-tracer");
 
         // dfEngine.reset(State::Ptr()); // TODO what does this do, and why is it CalingConvention.C?
-        dfEngine.insertStartingVertex(startVertexId, stateFromRegisters(regDict));
+        dfEngine.insertStartingVertex(startVertexId, state);
         dfEngine.worklist(topoSortedVertexIds);
         dfEngine.maxIterations(dfCfg.nVertices()+5); // since we broke loops, should only go once, so this is bascially an assertion.
         try {
@@ -395,18 +420,17 @@ namespace Kreo {
                           << "numIncomingEdges = " << vertex->nInEdges() << std::endl
                           << "first argument register @ vertex " << vertex->id() << ": ";
                 auto registerState = dfEngine.getInitialState(vertex->id())->registerState();
-                if (true || PartialSymbolic::RegisterState::promote(registerState)->is_wholly_stored(cc.thisArgumentRegister)) {
-                    registerState->print(std::cerr);
+                registerState->print(std::cerr);
                     // registerState->peekRegister(
                     //     cc.thisArgumentRegister,
                     //     riscOperators->undefined_(cc.thisArgumentRegister.nBits()),
                     //     riscOperators.get()
                     //     )
                     //     ->print(std::cerr, formatter);
-                    std::cerr << std::endl;
-                } else {
-                    std::cerr << "(register not stored)" << std::endl;
-                }
+                std::cerr << std::endl
+                          << "Memory state: " << std::endl;
+                dfEngine.getInitialState(vertex->id())->memoryState()->print(std::cerr);
+                std::cerr << std::endl << std::endl;
             }
 
             // Determine whether the current vertex is a call to a function we're interested in, or the start of the graph, which is basically the call of `proc`.
