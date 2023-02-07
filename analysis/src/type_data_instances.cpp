@@ -50,12 +50,64 @@ void FieldListTypeData::Parse(const std::vector<std::string> &lines) {
     identifier = identifier.substr(0, identifier.size() - 1);
     if (identifier == "LF_BCLASS") {
       base_classes_.insert(GetHexAfter(line, "type = "));
+    } else if (identifier == "LF_METHOD") {
+      MethodListInfo mi;
+      mi.index = GetHexBetween(line, "list = ", ",");
+      mi.name = GetStrBetween(line, "name = '", "'");
+
+      method_lists_.insert(mi);
+    } else if (identifier == "LF_ONEMETHOD") {
+      MethodInfo mi;
+      mi.type = GetNthStr(line, 2, ',');
+      // Remove space in front of type
+      mi.type = mi.type.substr(1);
+      mi.index = GetHexBetween(line, "index = ", ",");
+      mi.name = GetStrBetween(line, "name = '", "'");
+      methods_.insert(mi);
     }
   }
 }
 
 // ============================================================================
+template <typename T>
+void SetToString(
+    std::ostream &os,
+    std::function<void(const T &, std::ostream &)> element_to_string,
+    const std::set<T> &s) {
+  bool first = true;
+  os << "{";
+  for (const auto &element : s) {
+    if (first) {
+      first = false;
+    } else {
+      os << ", ";
+    }
+
+    element_to_string(element, os);
+  }
+  os << "}";
+}
+
+// ============================================================================
 void FieldListTypeData::to_string(std::ostream &os) const {
+  os << "fieldlist: {base classes: ";
+  SetToString<size_t>(
+      os,
+      [](const size_t &type_id, std::ostream &os) { os << "0x" << type_id; },
+      base_classes_);
+
+  os << ", methods: ";
+
+  SetToString<MethodInfo>(
+      os, [](const MethodInfo &mi, std::ostream &os) { os << mi; }, methods_);
+
+  os << ", method lists: ";
+
+  SetToString<MethodListInfo>(
+      os,
+      [](const MethodListInfo &mi, std::ostream &os) { os << mi; },
+      method_lists_);
+
   bool first = true;
   os << "fieldlist: {";
   for (size_t class_type : base_classes_) {
@@ -65,7 +117,7 @@ void FieldListTypeData::to_string(std::ostream &os) const {
       os << ", ";
     }
 
-    os << class_type;
+    os << "0x" << class_type;
   }
   os << "}";
 }
@@ -109,7 +161,7 @@ void MethodListTypeData::to_string(std::ostream &os) const {
     auto it = method_list_.begin();
     os << std::hex << *it;
     for (; it != method_list_.end(); it++) {
-      os << ", " << *it;
+      os << ", 0x" << *it;
     }
     os << std::dec;
   }
@@ -137,8 +189,7 @@ static ProcedureTypeData::FuncAttr StrToFuncAttr(const std::string &str) {
 void ProcedureTypeData::Parse(const std::vector<std::string> &lines) {
   ParseFirstLine(lines[0]);
 
-  return_type_ = GetStrAfter(lines[1], "Return type = ");
-  return_type_ = return_type_.substr(0, return_type_.size() - 1);
+  return_type_ = GetStrBetween(lines[1], "Return type = ", ", ");
 
   class_type_ref_ = GetHexAfter(lines[1], "Class type = ");
 
@@ -171,7 +222,8 @@ static const char *FuncAttrToStr(ProcedureTypeData::FuncAttr attr) {
   switch (attr) {
     CASE(kNone)
     CASE(kInstanceConstructor)
-    CASE(kReturnUdt);
+    CASE(kReturnUdt)
+    CASE(kUnusedNonzero)
   }
   assert(false);
 }
@@ -179,9 +231,9 @@ static const char *FuncAttrToStr(ProcedureTypeData::FuncAttr attr) {
 // ============================================================================
 void ProcedureTypeData::to_string(std::ostream &os) const {
   os << "procedure: {return type: " << return_type_ << std::hex
-     << ", class type: " << class_type_ref_ << ", this type: " << this_type_
+     << ", class type: 0x" << class_type_ref_ << ", this type: 0x" << this_type_
      << ", call type: " << call_type_
      << ", func attr: " << FuncAttrToStr(func_attr_) << ", params: " << std::dec
-     << params_ << std::hex << ", arg list type: " << arg_list_type_ << std::dec
-     << ", this adjust: " << this_adjust_ << "}";
+     << params_ << std::hex << ", arg list type: 0x" << arg_list_type_
+     << std::dec << ", this adjust: " << this_adjust_ << "}";
 }

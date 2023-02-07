@@ -48,8 +48,29 @@ void PdbParser::ParseTypeData() {
   std::optional<std::shared_ptr<TypeData>> type_data;
   while ((type_data = GetNextTypeData()) != std::nullopt) {
     if (*type_data != nullptr) {
-      types_list_.push_back(*type_data);
+      auto td = *type_data;
+      type_to_typedata_map_[td->get_type()] = td;
     }
+  }
+}
+
+// ============================================================================
+void PdbParser::ParseSectionHeaders() {
+  SeekToSectionHeaders();
+
+  std::optional<SectionHeaderInfo> info;
+  while ((info = GetNextSectionHeader()) != std::nullopt) {
+    header_info_[info->header_num] = *info;
+  }
+}
+
+// ============================================================================
+void PdbParser::ParseSymbols() {
+  if (type_to_typedata_map_.empty()) {
+    throw std::runtime_error("must call ParseTypeData() before ParseSymbols()");
+  }
+  while (PeekNextLine() != "*** GLOBALS") {
+    HandleNextSymbol();
   }
 }
 
@@ -108,11 +129,72 @@ std::optional<std::shared_ptr<TypeData>> PdbParser::GetNextTypeData() {
 }
 
 // ============================================================================
+std::optional<PdbParser::SectionHeaderInfo> PdbParser::GetNextSectionHeader() {
+  std::vector<std::string> header_strs;
+  header_strs.push_back(GetNextLine());
+  while (header_strs.rbegin()->empty()) {
+    header_strs.push_back(GetNextLine());
+  }
+  header_strs.pop_back();
+
+  if (header_strs.empty()) {
+    return std::nullopt;
+  }
+
+  size_t header_num = GetHexAfter(header_strs[0], "SECTION HEADER #");
+  size_t virtual_size = GetFirstHex(header_strs[2]);
+  size_t virtual_addr = GetFirstHex(header_strs[3]);
+
+  return SectionHeaderInfo{
+      .header_num = header_num,
+      .virtual_size = virtual_size,
+      .virtual_addr = virtual_addr,
+  };
+}
+
+// ============================================================================
+void PdbParser::HandleNextSymbol() {
+  std::vector<std::string> cur_symbol;
+  cur_symbol.push_back(GetNextLine());
+  while (PeekNextLine().at(0) != '(') {
+    cur_symbol.push_back(GetNextLine());
+  }
+
+  if (StrContains(cur_symbol[0], "S_GPROC32") ||
+      StrContains(cur_symbol[0], "S_LPROC32")) {
+    // Extract section header and relative address
+    std::string addr_str = GetStrBetween(cur_symbol[0], "[", "]");
+
+    size_t section_header = GetFirstHex(addr_str);
+    size_t relative_addr = GetHexAfter(addr_str, ":");
+
+    size_t addr = header_info_[section_header].virtual_addr +
+                  relative_addr + kBaseAddr;
+
+    size_t type = GetHexAfter(cur_symbol[0], "Type:");
+
+    if (type_to_typedata_map_.count(type) == 0) {
+      throw std::runtime_error("found symbol whose associated type does not exist");
+    }
+
+    type_to_typedata_map_[type]->set_addr(addr);
+  }
+}
+
+// ============================================================================
 std::string PdbParser::GetNextLine() {
   std::string line;
   if (!std::getline(pdb_, line)) {
     throw std::runtime_error("failed to get next line");
   }
+  return line;
+}
+
+// ============================================================================
+std::string PdbParser::PeekNextLine() {
+  std::streampos len = pdb_.tellg();
+  std::string line = GetNextLine();
+  pdb_.seekg(len, std::ios_base::beg);
   return line;
 }
 

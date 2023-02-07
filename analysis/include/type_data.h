@@ -17,9 +17,12 @@ class TypeData {
     return os;
   }
 
+  void set_addr(size_t addr) { addr_ = addr; }
+
   size_t get_type() const { return type_; }
   size_t get_length() const { return length_; }
   size_t get_leaf() const { return leaf_; }
+  size_t get_addr() const { return addr_; }
 
  protected:
   void ParseFirstLine(const std::string &str) {
@@ -31,4 +34,5 @@ class TypeData {
   size_t type_{};
   size_t length_{};
   size_t leaf_{};
+  size_t addr_{};
 };

@@ -19,7 +19,7 @@ target_sources(analyze_pdb_dump PRIVATE
     src/pdb_organizer.cpp
     src/pdb_parser.cpp
     src/type_data_instances.cpp
-    src/pdb_results.cpp)
+    src/pdb_results_generator.cpp)
 
 target_link_libraries(analyze_pdb_dump ${Boost_LIBRARIES})
 target_link_libraries(evaluation ${Boost_LIBRARIES})

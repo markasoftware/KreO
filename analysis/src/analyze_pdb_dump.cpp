@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "pdb_results.h"
+#include "pdb_results_generator.h"
 #include "pdb_parser.h"
 #include "pdb_organizer.h"
 
@@ -22,13 +22,15 @@ int main(int argv, char *argc[]) {
   parser.ParseTypeData();
 
   PdbOrganizer organizer;
-
   organizer.Organize(parser);
 
-  // auto ci = analyzer.ConstructClassInfo();
-  // PdbResults results(ci);
+  PdbResultsGenerator results(organizer);
 
-  // std::cout << boost::json::serialize(results.ToJson()) << std::endl;
+// for (const auto &it : parser.get_types_list()) {
+//   std::cout << *it << std::endl;
+// }
+
+  std::cout << boost::json::serialize(results.ToJson()) << std::endl;
 
   return EXIT_SUCCESS;
 }
