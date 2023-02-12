@@ -20,6 +20,8 @@ if not 'enableSymbolProcedureDetection' in config:
     config['enableSymbolProcedureDetection'] = False
 if not 'resultsIndent' in config:
     config['resultsIndent'] = 4
+if not 'gtResultsJson' in config:
+    config['gtResultsJson'] = 'gt-results.json'
 
 if not 'baseDirectory' in config:
     config['baseDirectory'] = 'out'
@@ -38,3 +40,4 @@ config['baseOffsetPath'] = join(config_path, baseDirectory, 'base-address')
 config['staticTracesPath'] = join(config_path, baseDirectory, 'static-traces')
 config['objectTracesPath'] = join(config_path, baseDirectory, 'object-traces')
 config['resultsPath'] = join(config_path, baseDirectory, 'results.json')
+config['gtResultsJson'] = join(config_path, baseDirectory, config['gtResultsJson'])

@@ -1,14 +1,18 @@
 import json5
 import sys
+import os
+import pathlib
+
+fpath = pathlib.Path(__file__).parent.absolute()
+
+sys.path.append(os.path.join(fpath, '..'))
+
+from parseconfig import config
 
 kBaseAddr = 0x400000
 
 def main():
-    if len(sys.argv) != 2:
-        print('usage: python extract_gt_methods.py <path/to/json>')
-        sys.exit(1)
-
-    json_file = sys.argv[1]
+    json_file = config['gtResultsJson']
 
     structures = json5.load(open(json_file, 'r'))['structures']
 
@@ -19,8 +23,9 @@ def main():
             ea = method['ea']
             method_addrs.add(int(ea, 16))
 
-    for method in method_addrs:
-        print(method)
+    with open(os.path.join(config['baseDirectory'], 'gt-methods'), 'w') as f:
+        for method in method_addrs:
+            f.write(method + '\n')
 
 if __name__ == '__main__':
     main()
