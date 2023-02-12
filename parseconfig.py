@@ -8,10 +8,8 @@ if len(sys.argv) != 2:
     print('Usage: python ' + sys.argv[0] + ' /path/to/config.json')
     exit(1)
 
-
-scriptpath = pathlib.Path(__file__).parent.absolute()
-
-config = json5.load(open(sys.argv[1]))
+config_fname = sys.argv[1]
+config = json5.load(open(config_fname))
 if not 'cfgMode' in config:
     config['cfgMode'] = 'fast'
 if not 'enableAliasAnalysis' in config:
@@ -30,11 +28,13 @@ baseDirectory = config['baseDirectory']
 if not os.path.exists(baseDirectory):
     os.mkdir(baseDirectory)
 
-config['methodCandidatesPath'] = join(scriptpath, baseDirectory, 'method-candidates')
-config['blacklistedMethodsPath'] = join(scriptpath, baseDirectory, 'blacklisted-methods')
-config['gtMethodsPath'] = join(scriptpath, baseDirectory, 'gt-methods')
-config['gtMethodsInstrumentedPath'] = join(scriptpath, baseDirectory, 'gt-methods-instrumented')
-config['baseOffsetPath'] = join(scriptpath, baseDirectory, 'base-address')
-config['staticTracesPath'] = join(scriptpath, baseDirectory, 'static-traces')
-config['objectTracesPath'] = join(scriptpath, baseDirectory, 'object-traces')
-config['resultsPath'] = join(scriptpath, baseDirectory, 'results.json')
+config_path = pathlib.Path(config_fname).parent.absolute()
+
+config['methodCandidatesPath'] = join(config_path, baseDirectory, 'method-candidates')
+config['blacklistedMethodsPath'] = join(config_path, baseDirectory, 'blacklisted-methods')
+config['gtMethodsPath'] = join(config_path, baseDirectory, 'gt-methods')
+config['gtMethodsInstrumentedPath'] = join(config_path, baseDirectory, 'gt-methods-instrumented')
+config['baseOffsetPath'] = join(config_path, baseDirectory, 'base-address')
+config['staticTracesPath'] = join(config_path, baseDirectory, 'static-traces')
+config['objectTracesPath'] = join(config_path, baseDirectory, 'object-traces')
+config['resultsPath'] = join(config_path, baseDirectory, 'results.json')
