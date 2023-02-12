@@ -13,8 +13,11 @@ from object_trace import ObjectTrace, TraceEntry
 from method_store import MethodStore
 from static_trace import StaticTrace, StaticTraceEntry
 import sys
+import pathlib
 
-sys.path.append('../')
+fpath = pathlib.Path(__file__).parent.absolute()
+
+sys.path.append(os.path.join(fpath, '..'))
 
 from parseconfig import config
 
@@ -274,10 +277,14 @@ class Postgame:
         # copied from https://stackoverflow.com/a/3431838/1233320
         def md5File(fname):
             hashMd5 = hashlib.md5()
-            with open(fname, "rb") as f:
-                for chunk in iter(lambda: f.read(4096), b""):
-                    hashMd5.update(chunk)
-            return hashMd5.hexdigest()
+            try:
+                with open(fname, "rb") as f:
+                    for chunk in iter(lambda: f.read(4096), b""):
+                        hashMd5.update(chunk)
+                return hashMd5.hexdigest()
+            except FileNotFoundError:
+                print('could not find exe to generate md5')
+                return 'na'
 
         structures: Dict[str, Dict[str, Any]] = dict()
         for trieNode in self.trie:
