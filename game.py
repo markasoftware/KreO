@@ -35,6 +35,6 @@ process = subprocess.Popen([pin_executable_path,
      '-gt-methods-instrumented', config['gtMethodsInstrumentedPath'],
      '-object-traces', config['objectTracesPath'],
      '-blacklisted-methods', config['blacklistedMethodsPath'],
-     '--', config['binaryPath']], shell=True)
+     '--', config['binaryPath']])
 
 process.wait()

@@ -21,6 +21,6 @@ if 'debugFunction' in config:
 
 args += ['--', config['binaryPath']]
 
-process = subprocess.Popen(args, shell=True)
+process = subprocess.Popen(args)
 
 process.wait()

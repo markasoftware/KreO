@@ -30,18 +30,20 @@ if not 'resultsPath' in config:
     config['resultsPath'] = 'results.txt'
 if not 'resultsInstrumentedPath' in config:
     config['resultsInstrumentedPath'] = 'results-instrumented.txt'
-
 if not 'baseDirectory' in config:
     config['baseDirectory'] = 'out'
-baseDirectory = config['baseDirectory']
-# ensure it exists
-if not os.path.exists(baseDirectory):
-    os.mkdir(baseDirectory)
 
 config_path = pathlib.Path(config_fname).parent.absolute()
 
+# Set baseDirectory relative to config_path
+config['baseDirectory'] = join(config_path, config['baseDirectory'])
+
+# ensure it exists
+if not os.path.exists(config['baseDirectory']):
+    os.mkdir(config['baseDirectory'])
+
 def PathRelBase(path):
-    return join(config_path, baseDirectory, path)
+    return join(config['baseDirectory'], path)
 
 config['methodCandidatesPath'] = PathRelBase('method-candidates')
 config['blacklistedMethodsPath'] = PathRelBase('blacklisted-methods')
