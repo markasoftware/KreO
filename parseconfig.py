@@ -1,3 +1,7 @@
+# NOTE: all paths specified in the config are relative
+# to the base directory (specified by baseDirectory)
+# except for baseDirectory, which is relative to the json file
+
 import sys
 import json5
 import pathlib
@@ -20,8 +24,12 @@ if not 'enableSymbolProcedureDetection' in config:
     config['enableSymbolProcedureDetection'] = False
 if not 'resultsIndent' in config:
     config['resultsIndent'] = 4
-if not 'gtResultsJson' in config:
-    config['gtResultsJson'] = 'gt-results.json'
+if not 'pdbFile' in config:
+    config['pdbFile'] = 'project.pdb'
+if not 'resultsPath' in config:
+    config['resultsPath'] = 'results.txt'
+if not 'resultsInstrumentedPath' in config:
+    config['resultsInstrumentedPath'] = 'results-instrumented.txt'
 
 if not 'baseDirectory' in config:
     config['baseDirectory'] = 'out'
@@ -32,12 +40,20 @@ if not os.path.exists(baseDirectory):
 
 config_path = pathlib.Path(config_fname).parent.absolute()
 
-config['methodCandidatesPath'] = join(config_path, baseDirectory, 'method-candidates')
-config['blacklistedMethodsPath'] = join(config_path, baseDirectory, 'blacklisted-methods')
-config['gtMethodsPath'] = join(config_path, baseDirectory, 'gt-methods')
-config['gtMethodsInstrumentedPath'] = join(config_path, baseDirectory, 'gt-methods-instrumented')
-config['baseOffsetPath'] = join(config_path, baseDirectory, 'base-address')
-config['staticTracesPath'] = join(config_path, baseDirectory, 'static-traces')
-config['objectTracesPath'] = join(config_path, baseDirectory, 'object-traces')
-config['resultsPath'] = join(config_path, baseDirectory, 'results.json')
-config['gtResultsJson'] = join(config_path, baseDirectory, config['gtResultsJson'])
+def PathRelBase(path):
+    return join(config_path, baseDirectory, path)
+
+config['methodCandidatesPath'] = PathRelBase('method-candidates')
+config['blacklistedMethodsPath'] = PathRelBase('blacklisted-methods')
+config['gtMethodsPath'] = PathRelBase('gt-methods')
+config['gtMethodsInstrumentedPath'] = PathRelBase('gt-methods-instrumented')
+config['baseOffsetPath'] = PathRelBase('base-address')
+config['staticTracesPath'] = PathRelBase('static-traces')
+config['objectTracesPath'] = PathRelBase('object-traces')
+config['resultsJson'] = PathRelBase('results.json')
+config['gtResultsJson'] = PathRelBase('gt-results.json')
+config['pdbFile'] = PathRelBase(config['pdbFile'])
+config['dumpFile'] = PathRelBase('project.dump')
+config['binaryPath'] = PathRelBase(config['binaryPath'])
+config['resultsPath'] = PathRelBase(config['resultsPath'])
+config['resultsInstrumentedPath'] = PathRelBase(config['resultsInstrumentedPath'])

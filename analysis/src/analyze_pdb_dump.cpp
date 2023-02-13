@@ -19,24 +19,28 @@ int main(int argv, char *argc[]) {
   boost::json::value arguments = JsonLoader::LoadData(arguments_json_file);
 
   auto file_it = arguments.as_object().find("pdbFile");
+
   if (file_it == arguments.as_object().end()) {
     std::cerr << "pdbFile must be in the arguments json file" << std::endl;
     return EXIT_FAILURE;
   }
-  auto out_it = arguments.as_object().find("gtResultsJson");
-  if (out_it == arguments.as_object().end()) {
-    std::cerr << "gtResultsJson must be in the arguments json file" << std::endl;
+
+  auto basedir_it = arguments.as_object().find("baseDirectory");
+  if (basedir_it == arguments.as_object().end()) {
+    std::cerr << "baseDirectory must be in the arguments json file" << std::endl;
     return EXIT_FAILURE;
   }
 
-  std::string pdb_file = file_it->value().as_string().c_str();
-  std::string out_file = out_it->value().as_string().c_str();
-
   size_t pos = arguments_json_file.find_last_of("\\/");
+  std::string arguments_json_dir = "";
   if (pos != std::string::npos) {
-    pdb_file = arguments_json_file.substr(0, pos) + "/" + pdb_file;
-    out_file = arguments_json_file.substr(0, pos) + "/" + out_file;
+    arguments_json_dir = arguments_json_file.substr(0, pos) + "/";
   }
+
+  std::string base_dir = arguments_json_dir + basedir_it->value().as_string().c_str();
+
+  std::string pdb_file = base_dir + "/project.dump";
+  std::string out_file = base_dir + "/gt-results.json";
 
   // Analyze PDB dump
   PdbAnalyzer analyzer;
@@ -44,8 +48,6 @@ int main(int argv, char *argc[]) {
 
   auto ci = analyzer.ConstructClassInfo();
   PdbResults results(ci);
-
-  std::cout << out_file << std::endl;
 
   std::ofstream out(out_file);
   out << boost::json::serialize(results.ToJson());

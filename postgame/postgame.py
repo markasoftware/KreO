@@ -342,7 +342,7 @@ class Postgame:
             'version': 'kreo-0.1.0',
         }
 
-        jsonFile = open(config['resultsPath'], 'w')
+        jsonFile = open(config['resultsJson'], 'w')
         jsonFile.write(json.JSONEncoder(indent = None if config['resultsIndent'] == 0 else config['resultsIndent']).encode(finalJson))
 
     def main(self):

@@ -20,27 +20,11 @@ class JsonLoader {
     std::vector<char> buf(f_size);
     file.read(buf.data(), buf.size());
 
-    if (file.fail()) {
-      std::cerr << "failed to read from file" << std::endl;
-      return nullptr;
-    }
-
     file.close();
 
     boost::json::error_code ec;
     boost::json::stream_parser parser;
-    parser.write(buf.data(), buf.size(), ec);
 
-    if (ec) {
-      return nullptr;
-    }
-
-    parser.finish(ec);
-
-    if (ec) {
-      return nullptr;
-    }
-
-    return parser.release();
+    return boost::json::parse(buf.data());
   }
 };

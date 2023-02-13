@@ -2,7 +2,14 @@ import json5
 import sys
 import os
 import copy
+import pathlib
 from typing import List, Set, Dict, Tuple
+
+fpath = pathlib.Path(__file__).parent.absolute()
+
+sys.path.append(os.path.join(fpath, '..'))
+
+from parseconfig import config
 
 kConstructorType = 'ctor'
 kDestructorType = 'dtor'
@@ -486,28 +493,24 @@ def MatchGenToGtClasses(ground_truth: List[ClassInfo], generated_data: List[Clas
     return matched_classes
 
 def main():
-    if len(sys.argv) != 6:
-        print("Usage: ./evaluation <path-to-ground-truth-json> "
-              "<path-to-generated-json> "
-              "<path-to-gt-methods-instrumented> <analysis-gt-out-path> "
-              "<analysis-gt-out-instrumented-path>")
-        sys.exit(1)
+    gt_class_info_list = LoadAndConvertJson(config['gtResultsJson'])
 
-    gt_class_info_list = LoadAndConvertJson(sys.argv[1])
+    gen_class_info_list = LoadAndConvertJson(config['resultsJson'])
+    gt_methods_instrumented = LoadAndRecordGtMethodStats(config['gtMethodsInstrumentedPath'], gt_class_info_list)
 
-    gen_class_info_list = LoadAndConvertJson(sys.argv[2])
-    gt_methods_instrumented = LoadAndRecordGtMethodStats(sys.argv[3], gt_class_info_list)
-
-    gt_out_path = sys.argv[4]
-    gt_out_instrumented_path = sys.argv[5]
+    results_path = config['resultsPath']
+    results_instrumented_path = config['resultsInstrumentedPath']
 
     def RunAllTests(gt_class_info_list: List[ClassInfo], file):
         file.write("evaluation criteria\tprecision\trecall\tf-score\n")
 
         def RunTest(name: str, test):
-            precision, recall = test(gt_class_info_list, gen_class_info_list)
-            f_score = ComputeF1(precision, recall)
-            file.write('{}&{:.2f}&{:.2f}&{:.2f}\n'.format(name, precision, recall, f_score))
+            try:
+                precision, recall = test(gt_class_info_list, gen_class_info_list)
+                f_score = ComputeF1(precision, recall)
+                file.write('{}&{:.2f}&{:.2f}&{:.2f}\n'.format(name, precision, recall, f_score))
+            except ZeroDivisionError as e:
+                print(e)
 
         RunTest("Methods Assigned to Correct Class", PrecisionAndRecallMethodsAssignedCorrectClass)
         RunTest("Individual Classes", PrecisionAndRecallClasses)
@@ -517,12 +520,12 @@ def main():
         RunTest("Class Graph Edges", PrecisionAndRecallClassGraphEdges)
         RunTest("Class Graph Ancestors", PrecisionAndRecallClassGraphAncestors)
 
-    with open(gt_out_path, 'w') as gt_out:
+    with open(results_path, 'w') as gt_out:
         RunAllTests(gt_class_info_list, gt_out)
 
     gt_class_info_instrumented_list = GetGtClassInfoInstrumentedList(gt_methods_instrumented, gt_class_info_list)
 
-    with open(gt_out_instrumented_path, 'w') as gt_out_instrumented:
+    with open(results_instrumented_path, 'w') as gt_out_instrumented:
         RunAllTests(gt_class_info_instrumented_list, gt_out_instrumented)
 
 if __name__ == '__main__':

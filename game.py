@@ -1,5 +1,7 @@
 import sys
 import os
+import subprocess
+import pathlib
 from parseconfig import config
 
 if 'PIN_ROOT' in config:
@@ -12,7 +14,7 @@ else:
 # TODO: make it better at figuring out where the pintool is cross-platform!
 pin_executable_path = pin_root + '/pin'
 
-pintool_shared_object = os.path.dirname(os.path.realpath(__file__)) + '/pintool'
+pintool_shared_object = str(pathlib.Path(__file__).parent.absolute()) + '/pintool'
 if config['isa'] == 'x86':
     pintool_shared_object += '/obj-ia32'
 elif config['isa'] == 'x86-64':
@@ -26,12 +28,13 @@ elif sys.platform == 'win32':
 else:
     raise Exception('Unsupported operating system: "' + sys.platform + '".')
 
-os.execvp(pin_executable_path,
-    [pin_executable_path,
+process = subprocess.Popen([pin_executable_path,
      '-t', pintool_shared_object,
      '-method-candidates', config['methodCandidatesPath'],
      '-gt-methods', config['gtMethodsPath'],
      '-gt-methods-instrumented', config['gtMethodsInstrumentedPath'],
      '-object-traces', config['objectTracesPath'],
      '-blacklisted-methods', config['blacklistedMethodsPath'],
-     '--', config['binaryPath']])
+     '--', config['binaryPath']], shell=True)
+
+process.wait()

@@ -23,9 +23,9 @@ def main():
             ea = method['ea']
             method_addrs.add(int(ea, 16))
 
-    with open(os.path.join(config['baseDirectory'], 'gt-methods'), 'w') as f:
+    with open(config['gtMethodsPath'], 'w') as f:
         for method in method_addrs:
-            f.write(method + '\n')
+            f.write(str(method) + '\n')
 
 if __name__ == '__main__':
     main()

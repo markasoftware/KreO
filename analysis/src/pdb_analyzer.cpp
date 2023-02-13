@@ -97,7 +97,7 @@ void PdbAnalyzer::FindTypeInfo(std::fstream &fstream) {
         MustGetLine(fstream, line, "failed to get line from field list");
 
         // Peek ahead until we reach a new list item
-        int len = fstream.tellg();
+        std::streampos len = fstream.tellg();
         while (line != "") {
           std::string lookahead;
           MustGetLine(fstream, lookahead, "failed to get next line");
@@ -471,7 +471,7 @@ std::vector<ClassData> PdbAnalyzer::ConstructClassInfo() {
         auto mi_it =
             method_name_to_method_info_map_.equal_range(full_method_name);
         if (mi_it.first != mi_it.second) {
-          for (auto mi_it2 = mi_it.first; mi_it2 != mi_it.second; mi_it2++) {
+          for (auto &mi_it2 = mi_it.first; mi_it2 != mi_it.second; mi_it2++) {
             if (field->type_id == mi_it2->second.type_id) {
               MethodInfo mi;
               mi.name = method_name;
@@ -483,7 +483,7 @@ std::vector<ClassData> PdbAnalyzer::ConstructClassInfo() {
         } else if (type_id_to_method_info_map_.count(field->type_id)) {
           // Finding by method name did not work...try to find by type id
           auto it = type_id_to_method_info_map_.equal_range(field->type_id);
-          auto method_found_it = it.first;
+          auto &method_found_it = it.first;
 
           auto suffix_matches = [&]() {
             int method_name_start =
