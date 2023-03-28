@@ -1,3 +1,9 @@
+'''
+Generate .dump file from the pdb file specified in the json config file. Uses
+cvdump.exe to generate the dump. The resulting dump file will be written to the
+dumpFile specified in the config file.
+'''
+
 import os
 import pathlib
 import sys

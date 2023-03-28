@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0.0)
 project(analysis VERSION 0.1.0)
 
-# 1.78 if windows
+# 1.78 if windows, switch to 1.75 if on Linux
 find_package( 
     Boost 1.78 REQUIRED 
     # uncomment if on Linux

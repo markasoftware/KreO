@@ -5,14 +5,16 @@
 import sys
 import json5
 import pathlib
-from os.path import join
 import os.path
+import argparse
 
-if len(sys.argv) != 2:
-    print('Usage: python ' + sys.argv[0] + ' /path/to/config.json')
-    exit(1)
+from os.path import join
 
-config_fname = sys.argv[1]
+parser = argparse.ArgumentParser()
+parser.add_argument('config', help='path to json configuration file.', type=str)
+args = parser.parse_args()
+
+config_fname = args.config
 config = json5.load(open(config_fname))
 if not 'cfgMode' in config:
     config['cfgMode'] = 'fast'
