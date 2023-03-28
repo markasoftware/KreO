@@ -21,7 +21,7 @@ def main():
     for cls in structures.values():
         for method in cls['methods'].values():
             ea = method['ea']
-            method_addrs.add(int(ea, 16))
+            method_addrs.add(int(ea, 16) - kBaseAddr)
 
     with open(config['gtMethodsPath'], 'w') as f:
         for method in method_addrs:

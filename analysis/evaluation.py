@@ -72,7 +72,7 @@ def GetGtClassInfoInstrumentedList(gt_methods_instrumented: Set[int],
         for mi in ci.method_set:
             if mi.address in gt_methods_instrumented:
                 new_method_set.add(mi)
-        if new_method_set != []:
+        if len(new_method_set) > 0:
             instrumented_ci = copy.deepcopy(ci)
             instrumented_ci.method_set = new_method_set
             gt_class_info_instrumented.append(instrumented_ci)
@@ -95,7 +95,7 @@ def LoadAndRecordGtMethodStats(gt_methods_instrumented_path: str, ground_truth: 
     Records statistics about dynamic analysis method, constructor, and destructor coverage.
     '''
     gt_methods_instrumented_set: Set[int] = set()
-
+    print(gt_methods_instrumented_path)
     with open(gt_methods_instrumented_path) as f:
         try:
             while True:
@@ -158,9 +158,6 @@ def LoadAndConvertJson(json_str: str) -> List[ClassInfo]:
                 parent_mangled_names.append(member['struc'])
 
         mangled_name = cls_k
-
-        # print(parent_mangled_names)
-        # print(ClassInfo(mangled_name, parent_mangled_names, method_set))
 
         class_info_list.append(ClassInfo(mangled_name, parent_mangled_names, method_set))
 
@@ -266,6 +263,9 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
             self.recall = recall
             self.ground_truth_class_size = ground_truth_class_size
 
+        def __str__(self):
+            return 'p: {:.2f} r: {:.2f} size: {}'.format(self.precision, self.recall, self.ground_truth_class_size)
+
     class PrecisionRecallF1:
         def __init__(self, p: float, r: float, f: float, gt_class: ClassInfo):
             self.precision = p
@@ -273,17 +273,20 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
             self.f1 = f
             self.gt_class = gt_class
 
+        def __str__(self):
+            return 'p: {:.2f} r: {:.2f} f1: {:.2f} gt cls: {}'.format(self.precision, self.recall, self.f1, self.gt_class.mangled_name if self.gt_class is not None else None)
+
     results: List[EvaluationResults] = list()
 
     for generated_class in generated_data:
+        # For each generated class in the generated data set,
+        # find ground truth class that results in the largest
+        # F1 score when comparing method sets.
         precision_recall_f1_scores: Set[PrecisionRecallF1] = set()
 
-        # Insert 0 precision, recall, and F-score struct into
-        # precision_recall_f1_scores in case none of the ground truth sets
-        # have methods shared with the generated class
-        precision_recall_f1_scores.add(PrecisionRecallF1(0, 0, 0, None))
-
         for gt_class in ground_truth:
+            # Compute method set precision, recall, f1 score, comparing
+            # generated class to the current ground truth class.
             true_positives = 0
 
             for method in generated_class.method_set:
@@ -313,7 +316,7 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
             results.append(EvaluationResults(
                 highest_f1_it.precision,
                 highest_f1_it.recall,
-                0 if highest_f1_it.gt_class is None else len(highest_f1_it.gt_class.method_set)))
+                len(highest_f1_it.gt_class.method_set)))
 
     # Consume results
     precision = 0
@@ -323,7 +326,6 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
         precision += result.precision * result.ground_truth_class_size
         recall += result.recall * result.ground_truth_class_size
         total_methods += result.ground_truth_class_size
-
     return (precision / (float(total_methods)), recall / float(total_methods))
 
 def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]) -> tuple:
@@ -505,12 +507,9 @@ def main():
         file.write("evaluation criteria\tprecision\trecall\tf-score\n")
 
         def RunTest(name: str, test):
-            try:
-                precision, recall = test(gt_class_info_list, gen_class_info_list)
-                f_score = ComputeF1(precision, recall)
-                file.write('{}&{:.2f}&{:.2f}&{:.2f}\n'.format(name, precision, recall, f_score))
-            except ZeroDivisionError as e:
-                print(e)
+            precision, recall = test(gt_class_info_list, gen_class_info_list)
+            f_score = ComputeF1(precision, recall)
+            file.write('{}&{:.2f}&{:.2f}&{:.2f}\n'.format(name, precision, recall, f_score))
 
         RunTest("Methods Assigned to Correct Class", PrecisionAndRecallMethodsAssignedCorrectClass)
         RunTest("Individual Classes", PrecisionAndRecallClasses)
