@@ -203,14 +203,6 @@ def main():
     methods_avg, methods = gen_table('Methods', results['Methods'])
     methods_assigned_to_correct_class_avg, methods_assigned_to_correct_class = gen_table('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class'])
 
-    print(class_graph_edges_avg)
-    print(class_graph_ancestors_avg)
-    print(individual_classes_avg)
-    print(constructors_avg)
-    print(destructors_avg)
-    print(methods_avg)
-    print(methods_assigned_to_correct_class_avg)
-
     instrumented_results = {}    
     for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in-instrumented')):
         for file in files:
@@ -225,17 +217,26 @@ def main():
 
     instrumented = gen_table_instrumented(instrumented_results)
 
-    print(instrumented)
+    with open('summarized-results.tex', 'w') as f:
+        f.write(class_graph_edges_avg + '\n')
+        f.write(class_graph_ancestors_avg + '\n')
+        f.write(individual_classes_avg + '\n')
+        f.write(constructors_avg + '\n')
+        f.write(destructors_avg + '\n')
+        f.write(methods_avg + '\n')
+        f.write(methods_assigned_to_correct_class_avg + '\n')
 
-    print('##################################')
+    with open('full-results.tex', 'w') as f:
+        f.write(class_graph_edges + '\n')
+        f.write(class_graph_ancestors + '\n')
+        f.write(individual_classes + '\n')
+        f.write(constructors + '\n')
+        f.write(destructors + '\n')
+        f.write(methods + '\n')
+        f.write(methods_assigned_to_correct_class + '\n')
 
-    print(class_graph_edges)
-    print(class_graph_ancestors)
-    print(individual_classes)
-    print(constructors)
-    print(destructors)
-    print(methods)
-    print(methods_assigned_to_correct_class)
+    with open('instrumented-results.tex', 'w') as f:
+        f.write(instrumented)
 
 if __name__ == '__main__':
     main()
