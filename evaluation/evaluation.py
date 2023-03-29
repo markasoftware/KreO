@@ -3,7 +3,9 @@ import sys
 import os
 import copy
 import pathlib
-from typing import List, Set, Dict, Tuple
+
+from typing import List, Set, Dict, Tuple, Callable
+from io import TextIOWrapper
 
 fpath = pathlib.Path(__file__).parent.absolute()
 
@@ -39,7 +41,10 @@ class ClassInfo:
     Object that contains information specific to an object. This includes the object's name,
     the names of object's parents, and a set of methods that the object owns.
     '''
-    def __init__(self, mangled_name: str, parent_mangled_names: List[str], method_set: Set[MethodInfo]):
+    def __init__(self,
+                 mangled_name: str,
+                 parent_mangled_names: List[str],
+                 method_set: Set[MethodInfo]):
         self.mangled_name = mangled_name
         self.parent_mangled_names = parent_mangled_names
         self.method_set = method_set
@@ -64,6 +69,11 @@ def GetGtClassInfoInstrumentedList(gt_methods_instrumented: Set[int],
     were instrumented during dynamic analysis. The classes instrumented
     must have at least one method that was instrumented. Only methods that
     are instrumented are included in the new classes.
+
+    @param gt_methods_instrumented Set of instrumented methods addresses.
+    @param gt_class_info_list List of all class.
+    @return New list of classes. Each class only contains methods in the
+    gt_methods_instrumented set. The gt_class_info_list is left unmodified.
     '''
     gt_class_info_instrumented: List[ClassInfo] = list()
 
@@ -79,23 +89,26 @@ def GetGtClassInfoInstrumentedList(gt_methods_instrumented: Set[int],
 
     return gt_class_info_instrumented
 
-def GetTypeSet(classes: List[ClassInfo], type_to_match: str) -> Set[MethodInfo]:
+def GetMethodSetOfGivenType(classes: List[ClassInfo], type_to_match: str) -> Set[MethodInfo]:
     '''
-    Return set of all methods in the classes list that have the given type.
+    @return A set of all methods in the classes list that have the given
+    type. If type_to_match is None, all methods will be returned.
     '''
-    type_set: Set[MethodInfo] = set()
+    methods_with_type: Set[MethodInfo] = set()
     for class_info in classes:
         for method in class_info.method_set:
-            if method.type == type_to_match:
-                type_set.add(method)
-    return type_set
+            if type_to_match is None or method.type == type_to_match:
+                methods_with_type.add(method)
+    return methods_with_type
 
-def LoadAndRecordGtMethodStats(gt_methods_instrumented_path: str, ground_truth: List[ClassInfo]) -> Set[int]:
+def get_gt_methods_instrumented_set(gt_methods_instrumented_path: str) -> Set[int]:
     '''
-    Records statistics about dynamic analysis method, constructor, and destructor coverage.
+    @param gt_methods_instrumented_path Path to file containing a list
+    of instrumented methods.
+    @return Set of method addresses in the ground truth that were instrumented.
     '''
     gt_methods_instrumented_set: Set[int] = set()
-    print(gt_methods_instrumented_path)
+
     with open(gt_methods_instrumented_path) as f:
         try:
             while True:
@@ -104,8 +117,22 @@ def LoadAndRecordGtMethodStats(gt_methods_instrumented_path: str, ground_truth: 
         except ValueError:
             pass
 
-    ctor_set = GetTypeSet(ground_truth, "ctor")
-    dtor_set = GetTypeSet(ground_truth, "dtor")
+    return gt_methods_instrumented_set
+
+def LoadAndRecordGtMethodStats(gt_methods_instrumented_set: Set[int],
+                               ground_truth: List[ClassInfo],
+                               gt_method_stats_fname: str) -> None:
+    '''
+    Records statistics about the number of methods, constructors, and
+    destructors.
+
+    @param gt_methods_instrumented_set Set of method addresses that were
+    instrumented by dynamic analysis.
+    @param ground_truth List of class info objects in the ground truth.
+    @param gt_method_stats_fname Name of file to write method stats to. 
+    '''
+    ctor_set = GetMethodSetOfGivenType(ground_truth, 'ctor')
+    dtor_set = GetMethodSetOfGivenType(ground_truth, 'dtor')
 
     ctor_instrumented = 0
     dtor_instrumented = 0
@@ -123,7 +150,7 @@ def LoadAndRecordGtMethodStats(gt_methods_instrumented_path: str, ground_truth: 
         for mi in ci.method_set:
             gt_methods += 1
 
-    with open(gt_methods_instrumented_path + '.stats', 'w') as gt_method_info:
+    with open(gt_method_stats_fname, 'w') as gt_method_info:
         gt_coverage_all_methods = float(len(gt_methods_instrumented_set)) / float(gt_methods)
         gt_coverage_ctor = float(ctor_instrumented) / float(len(ctor_set))
         gt_coverage_dtor = float(dtor_instrumented) / float(len(dtor_set))
@@ -133,47 +160,62 @@ def LoadAndRecordGtMethodStats(gt_methods_instrumented_path: str, ground_truth: 
 
         return gt_methods_instrumented_set
 
-def LoadAndConvertJson(json_str: str) -> List[ClassInfo]:
+def LoadClassInfoListFromJson(json_str: str) -> List[ClassInfo]:
+    '''
+    Load list of classes from the given JSON string.
+
+    @param json_str JSON file to load in class data from.
+    @return list of classes.
+    '''
     json = json5.load(open(json_str))
 
     class_info_list: List[ClassInfo] = list()
 
-    for cls_k, cls_v in json['structures'].items():
-        methods = cls_v['methods']
-        members = cls_v['members']
+    for mangled_name, cls_info in json['structures'].items():
+        methods = cls_info['methods']
+        members = cls_info['members']
 
         method_set: Set[MethodInfo] = set()
         parent_mangled_names: List[str] = list()
 
-        # Search through class methods
+        # Extract class methods
         for method in methods.values():
             method_ea = int(method['ea'], 16)
             type = method['type']
             method_set.add(MethodInfo(method_ea, type))
 
-        # Search through class members
+        # Extract class members (parent classes)
         for member in members.values():
             is_member_parent = member['parent']
             if is_member_parent:
                 parent_mangled_names.append(member['struc'])
 
-        mangled_name = cls_k
-
         class_info_list.append(ClassInfo(mangled_name, parent_mangled_names, method_set))
 
     return class_info_list
 
+# Helper methods provided for ease of readability.
+
 def ComputePrecision(true_positives: int, false_positives: int) -> float:
+    '''
+    Calculate and return precision.
+    '''
     if true_positives + false_positives == 0:
         return 0.0
     return float(true_positives) / float(true_positives + false_positives)
 
 def ComputeRecall(true_positives: int, false_negatives: int) -> float:
+    '''
+    Calculate and return recall.
+    '''
     if true_positives + false_negatives == 0:
         return 0.0
     return float(true_positives) / float(true_positives + false_negatives)
 
 def ComputeF1(precision: float, recall: float) -> float:
+    '''
+    Calculate and return the F-1 score (combination of precision and recall).
+    '''
     if precision + recall == 0.0:
         return 0.0
     return (2.0 * precision * recall) / (precision + recall)
@@ -184,12 +226,11 @@ def FalseNegatives(gt: List[any], true_positives: int) -> int:
 def FalsePositives(gen_data: List[any], true_positives: int) -> int:
     return len(gen_data) - true_positives
 
-def IntersectionSize(l1: List[any], l2: List[any]) -> int:
-    size = 0
-    for x in l1:
-        if x in l2:
-            size += 1
-    return size
+def IntersectionSize(l1: Set[any], l2: Set[any]) -> int:
+    '''
+    @return the length of set that contains the intersection of the two sets.
+    '''
+    return len(l1.intersection(l2))
 
 def NonemptyClasses(classes: List[ClassInfo]) -> List[ClassInfo]:
     '''
@@ -197,37 +238,37 @@ def NonemptyClasses(classes: List[ClassInfo]) -> List[ClassInfo]:
     '''
     return [x for x in classes if len(x.method_set) != 0]
 
-def PrecisionAndRecallClasses(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]) -> tuple:
+def PrecisionAndRecallClasses(ground_truth: List[ClassInfo],
+                              generated_data: List[ClassInfo]) -> Tuple[float, float]:
     '''
+    Computes and returns the precision and recall, comparing the ground
+    truth and generated classes.
+
     Two classes are equal if the intersection of their method sets is not
     empty. Exclude classes without methods. Ground truth classes can't be
     double counted as a match for multiple generated classes.
     '''
-    ground_truth_excluding_empty_cls: List[ClassInfo] = NonemptyClasses(ground_truth)
-    generated_data_excluding_empty_cls: List[ClassInfo] = NonemptyClasses(generated_data)
+    ground_truth_excluding_empty: List[ClassInfo] = NonemptyClasses(ground_truth)
+    generated_data_excluding_empty: List[ClassInfo] = NonemptyClasses(generated_data)
 
     matched_classes = MatchGenToGtClasses(ground_truth, generated_data)
     true_positives = len(matched_classes)
 
-    false_negatives = FalseNegatives(ground_truth_excluding_empty_cls, true_positives)
-    false_positives = FalsePositives(generated_data_excluding_empty_cls, true_positives)
+    false_negatives = FalseNegatives(ground_truth_excluding_empty, true_positives)
+    false_positives = FalsePositives(generated_data_excluding_empty, true_positives)
 
     return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
 
-def PrecisionAndRecallMethods(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]):
+def PrecisionAndRecallMethods(ground_truth: List[ClassInfo],
+                              generated_data: List[ClassInfo]) -> Tuple[float, float]:
     '''
+    Computes and returns precision and recall of the methods in the
+    ground truth and generated data.
+
     Methods are equal if their address is equal.
     '''
-    def to_method_set(data: List[ClassInfo]):
-        '''Collect all methods in a single set (their address only)'''
-        method_set: Set[int] = set()
-        for class_info in data:
-            for method in class_info.method_set:
-                method_set.add(method.address)
-        return method_set
-
-    ground_truth_methods: Set[int] = to_method_set(ground_truth)
-    generated_data_methods: Set[int] = to_method_set(generated_data)
+    ground_truth_methods: Set[int] = GetMethodSetOfGivenType(ground_truth, None)
+    generated_data_methods: Set[int] = GetMethodSetOfGivenType(generated_data, None)
 
     true_positives = IntersectionSize(generated_data_methods, ground_truth_methods)
 
@@ -236,12 +277,14 @@ def PrecisionAndRecallMethods(ground_truth: List[ClassInfo], generated_data: Lis
 
     return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
 
-def PrecisionAndRecallSpecificType(ground_truth: List[ClassInfo], generated_data: List[ClassInfo], t: str) -> tuple:
+def PrecisionAndRecallSpecificType(ground_truth: List[ClassInfo],
+                                   generated_data: List[ClassInfo], t: str) -> Tuple[float, float]:
     '''
-    Compares the set of methods that specifically have the same type.
+    Compares the set of methods that have the same type (t),
+    returning the precision and recall.
     '''
-    ground_truth_type = GetTypeSet(ground_truth, t)
-    generated_data_type = GetTypeSet(generated_data, t)
+    ground_truth_type = GetMethodSetOfGivenType(ground_truth, t)
+    generated_data_type = GetMethodSetOfGivenType(generated_data, t)
 
     true_positives = IntersectionSize(generated_data_type, ground_truth_type)
 
@@ -250,14 +293,31 @@ def PrecisionAndRecallSpecificType(ground_truth: List[ClassInfo], generated_data
 
     return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
 
-def PrecisionAndRecallConstructors(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]) -> tuple:
+def PrecisionAndRecallConstructors(ground_truth: List[ClassInfo],
+                                   generated_data: List[ClassInfo]) -> Tuple[float, float]:
     return PrecisionAndRecallSpecificType(ground_truth, generated_data, kConstructorType)
 
-def PrecisionAndRecallDestructors(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]) -> tuple:
+def PrecisionAndRecallDestructors(ground_truth: List[ClassInfo],
+                                  generated_data: List[ClassInfo]) -> Tuple[float, float]:
     return PrecisionAndRecallSpecificType(ground_truth, generated_data, kDestructorType)
 
-def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]) -> tuple:
+def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
+                                                  generated_data: List[ClassInfo]) -> Tuple[float, float]:
+    '''
+    Computes the precision and recall, where for each generated class, compare
+    the method set to all ground truth method sets. Compute the F-1 score for
+    each ground truth method set (where a true positive is when ground truth and
+    generated method sets have the same method) and take the precision and
+    recall scores associated with the highest F-1 score as the precision and
+    recall for the particular generated class. The final precision/recall is the
+    weighted sum of the scores for each generated class (weighted by generated
+    class method set size). 
+    '''
+    
     class EvaluationResults:
+        '''
+        Structure containing results associated with a particular generated class.
+        '''
         def __init__(self, precision: float, recall: float, ground_truth_class_size: int):
             self.precision = precision
             self.recall = recall
@@ -267,6 +327,9 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
             return 'p: {:.2f} r: {:.2f} size: {}'.format(self.precision, self.recall, self.ground_truth_class_size)
 
     class PrecisionRecallF1:
+        '''
+        A fancy tuple containing precision, recall, f1 score, and ground truth ClassInfo.
+        '''
         def __init__(self, p: float, r: float, f: float, gt_class: ClassInfo):
             self.precision = p
             self.recall = r
@@ -274,15 +337,19 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
             self.gt_class = gt_class
 
         def __str__(self):
-            return 'p: {:.2f} r: {:.2f} f1: {:.2f} gt cls: {}'.format(self.precision, self.recall, self.f1, self.gt_class.mangled_name if self.gt_class is not None else None)
+            gt_cls_name = self.gt_class.mangled_name if self.gt_class is not None else None
+            return 'p: {:.2f} r: {:.2f} f1: {:.2f} gt cls: {}'.format(
+                self.precision, self.recall, self.f1, gt_cls_name)
 
     results: List[EvaluationResults] = list()
 
+    # Find scores for each generated class.
     for generated_class in generated_data:
         # For each generated class in the generated data set,
         # find ground truth class that results in the largest
         # F1 score when comparing method sets.
         precision_recall_f1_scores: Set[PrecisionRecallF1] = set()
+        precision_recall_f1_scores.add(PrecisionRecallF1(0, 0, 0, None))
 
         for gt_class in ground_truth:
             # Compute method set precision, recall, f1 score, comparing
@@ -305,20 +372,14 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
 
             precision_recall_f1_scores.add(PrecisionRecallF1(precision, recall, f1, gt_class))
 
-        highest_f1_it: PrecisionRecallF1 = None
-        for scores in precision_recall_f1_scores:
-            if highest_f1_it is None or scores.f1 > highest_f1_it.f1:
-                highest_f1_it = scores
+        highest_f1_it = max(precision_recall_f1_scores, key=lambda x: x.f1)
 
-        if highest_f1_it == None:
-            results.append(EvaluationResults(0, 0, 0))
-        else:
-            results.append(EvaluationResults(
-                highest_f1_it.precision,
-                highest_f1_it.recall,
-                len(highest_f1_it.gt_class.method_set)))
+        results.append(EvaluationResults(
+            highest_f1_it.precision,
+            highest_f1_it.recall,
+            len(highest_f1_it.gt_class.method_set) if highest_f1_it.gt_class is not None else 0))
 
-    # Consume results
+    # Compute overall precision and recall.
     precision = 0
     recall = 0
     total_methods = 0
@@ -328,30 +389,42 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
         total_methods += result.ground_truth_class_size
     return (precision / (float(total_methods)), recall / float(total_methods))
 
-def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]) -> tuple:
+def get_gen_gt_cls_pair(gen_cls_mangled_name: str,
+                        matched_classes: Set[Tuple[ClassInfo, ClassInfo]]) -> Tuple[ClassInfo, ClassInfo]:
+    for gen_gt_cls_pair in matched_classes:
+        if gen_gt_cls_pair[0].mangled_name == gen_cls_mangled_name:
+            return gen_gt_cls_pair
+    return None
+
+def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo],
+                                          generated_data: List[ClassInfo]) -> Tuple[float, float]:
+    '''
+    Computes the precision and recall, comparing class ancestors in the class
+    hierarchy tree. If an ancestor exists in the generated class hierarchy and
+    a matching class exists as a parent class for the ground truth class, this
+    is a true positive.
+    '''
     matched_classes = MatchGenToGtClasses(ground_truth, generated_data)
 
-    def get_gen_gt_cls_pair(gen_cls_mangled_name: str) -> Tuple[ClassInfo, ClassInfo]:
-        for gen_gt_cls_pair in matched_classes:
-            if gen_gt_cls_pair[0].mangled_name == gen_cls_mangled_name:
-                return gen_gt_cls_pair
+    def get_cls_from_data(data: List[ClassInfo], mangled_name: str) -> ClassInfo:
+        '''Get ClassInfo object with associated mangled name from data.
+        Returns None if no classes in the data have the given mangled name.'''
+        for cls in data:
+            if cls.mangled_name == mangled_name:
+                return cls
         return None
 
     def get_gen_cls(gen_cls_mangled_name: str) -> ClassInfo:
-        for cls in generated_data:
-            if cls.mangled_name == gen_cls_mangled_name:
-                return cls
-        return None
+        '''Get ClassInfo object with associated mangled name from generated data.'''
+        return get_cls_from_data(generated_data, gen_cls_mangled_name)
 
     def get_gt_cls(gt_cls_mangled_name: str) -> ClassInfo:
-        for cls in ground_truth:
-            if cls.mangled_name == gt_cls_mangled_name:
-                return cls
-        return None
+        '''Get ClassInfo object with associated mangled name from ground truth.'''
+        return get_cls_from_data(ground_truth, gt_cls_mangled_name)
 
     true_positives = 0
-    gt_size = 0
     gen_size = 0
+    gt_size = 0
 
     for gen_cls, gt_cls in matched_classes:
         if len(gen_cls.parent_mangled_names) == 0 and len(gt_cls.parent_mangled_names) == 0:
@@ -361,7 +434,11 @@ def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo], generat
             gen_size += 1
             gt_size += 1
         else:
-            def find_ancestors(cls):
+            def find_ancestors_gen_cls(cls: ClassInfo) -> Set[ClassInfo]:
+                '''
+                Find the given class's ancestors. The cls should be a generated class.
+                Return a set of ancestor ClassInfo objects.
+                '''
                 ancestors: Set[ClassInfo] = set()
 
                 # List of ancestors that will be systematically removed from this
@@ -377,9 +454,10 @@ def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo], generat
                     if ci != None and ci not in ancestors:
                         ancestors.add(ci)
                         worklist.extend(ci.parent_mangled_names)
+
                 return ancestors
 
-            gen_ancestors = find_ancestors(gen_cls)
+            gen_ancestors = find_ancestors_gen_cls(gen_cls)
 
             # Find all gt parent classes for the given gt class
             gt_parents: Set[ClassInfo] = set()
@@ -391,7 +469,7 @@ def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo], generat
             # Check if any of the ancestors match the gt
             for gen_ancestor in gen_ancestors:
                 # Find the ground truth class associated with the ancestor.
-                gen_gt_pair = get_gen_gt_cls_pair(gen_ancestor.mangled_name)
+                gen_gt_pair = get_gen_gt_cls_pair(gen_ancestor.mangled_name, matched_classes)
 
                 if gen_gt_pair is not None and gen_gt_pair[1] in gt_parents:
                     true_positives += 1
@@ -404,18 +482,15 @@ def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo], generat
 
     return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
 
-    return 0, 0
-
-def PrecisionAndRecallClassGraphEdges(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]) -> tuple:
+def PrecisionAndRecallClassGraphEdges(ground_truth: List[ClassInfo],
+                                      generated_data: List[ClassInfo]) -> Tuple[float, float]:
+    '''
+    Similar to PrecisionAndRecallClassGraphAncestors, except instead of
+    comparing ancestors in the class graph, directly compare edges in the graph.
+    A true positive is if the generated and ground truth class graphs have a
+    matching edge between two of the same classes.
+    '''
     matched_classes = MatchGenToGtClasses(ground_truth, generated_data)
-
-    # TODO this is inefficient and can be sped up but for now we aren't worried
-    # about evaluation efficiency.
-    def get_gen_gt_cls_pair(cls_mangled_name: str) -> tuple:
-        for gen_cls, gt_cls in matched_classes:
-            if gen_cls.mangled_name == cls_mangled_name:
-                return (gen_cls, gt_cls)
-        return None
 
     true_positives = 0
     gt_size = 0
@@ -438,7 +513,7 @@ def PrecisionAndRecallClassGraphEdges(ground_truth: List[ClassInfo], generated_d
             gt_size += 1
         else:
             for parent_name in gen_cls.parent_mangled_names:
-                gen_gt_pair = get_gen_gt_cls_pair(parent_name)
+                gen_gt_pair = get_gen_gt_cls_pair(parent_name, matched_classes)
                 if gen_gt_pair != None:
                     # Find gt cls mangled name from gen_gt_pair in gt_cls.parent_mangled_names
                     for name in gt_cls.parent_mangled_names:
@@ -446,9 +521,10 @@ def PrecisionAndRecallClassGraphEdges(ground_truth: List[ClassInfo], generated_d
                             true_positives += 1
                             break
                 else:
-                    print("failed to find parent by the name of " +
-                          parent_name + " for child " + gen_cls.mangled_name +
-                          " because no gt class matches this parent")
+                    # If gen_gt_pair is None, this indicates a failure to find
+                    # the class associated with the parent in the ground truth
+                    # data.
+                    print(f'Failed to find parent in generated data called {parent_name} because no ground truth class associated with the parent class.')
 
         gen_size += len(gen_cls.parent_mangled_names)
         gt_size += len(gt_cls.parent_mangled_names)
@@ -458,66 +534,82 @@ def PrecisionAndRecallClassGraphEdges(ground_truth: List[ClassInfo], generated_d
 
     return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
 
-def MatchGenToGtClasses(ground_truth: List[ClassInfo], generated_data: List[ClassInfo]) -> Set[Tuple[ClassInfo, ClassInfo]]:
-    ground_truth_excluding_empty_cls = NonemptyClasses(ground_truth)
-    generated_data_excluding_empty_cls = NonemptyClasses(generated_data)
+def MatchGenToGtClasses(ground_truth: List[ClassInfo],
+                        generated_data: List[ClassInfo]) -> Set[Tuple[ClassInfo, ClassInfo]]:
+    '''
+    Helper method that attempts to match ground truth and generated classes.
+    Method sets are used to determine which classes match. Two classes match if
+    they share methods from their method sets.
+
+    If multiple ground truth classes exist with methods in a single ground truth
+    method set, the ground truth class with more matching methods in its method
+    set is chosen as the matched class.
+    '''
+    ground_truth_excluding_empty = NonemptyClasses(ground_truth)
+    generated_data_excluding_empty = NonemptyClasses(generated_data)
 
     matched_classes: Set[Tuple[ClassInfo, ClassInfo]] = set()
 
     gt_classes_referenced: Set[ClassInfo] = set()
 
-    for gen_cls in generated_data_excluding_empty_cls:
+    for gen_cls in generated_data_excluding_empty:
         # Find ground truth classes that have method sets
         # intersecting with the current generated class.
         # For each ground truth class that does have a nonzero
         # method set intersection size, record the size.
         gen_gt_intersection_sizes: Dict[int, List[ClassInfo]] = dict()
-        for gt_cls in ground_truth_excluding_empty_cls:
+        for gt_cls in ground_truth_excluding_empty:
+            if gt_cls in gt_classes_referenced:
+                continue
+
             s = IntersectionSize(gen_cls.method_set, gt_cls.method_set)
             if s != 0:
                 if s not in gen_gt_intersection_sizes:
                     gen_gt_intersection_sizes[s] = list()
                 gen_gt_intersection_sizes[s].append(gt_cls)
 
-        # Get largest method set intersection that isn't already in the referenced
-        # class set
-        done = False
-        for intersection_size in sorted(gen_gt_intersection_sizes.keys()):
-            for gt_cls in gen_gt_intersection_sizes[intersection_size]:
-                if gt_cls not in gt_classes_referenced:
-                    gt_classes_referenced.add(gt_cls)
-                    matched_classes.add((gen_cls, gt_cls))
-                    done = True
-                    break
-            if done:
-                break
+        # Get largest method set intersection.
+        intersection_sizes = list(sorted(gen_gt_intersection_sizes.keys()))
+        if intersection_sizes != []:
+            gt_cls = gen_gt_intersection_sizes[intersection_sizes[0]][0]
+            gt_classes_referenced.add(gt_cls)
+            matched_classes.add((gen_cls, gt_cls))
 
     return matched_classes
 
 def main():
-    gt_class_info_list = LoadAndConvertJson(config['gtResultsJson'])
+    gt_class_info_list = LoadClassInfoListFromJson(config['gtResultsJson'])
 
-    gen_class_info_list = LoadAndConvertJson(config['resultsJson'])
-    gt_methods_instrumented = LoadAndRecordGtMethodStats(config['gtMethodsInstrumentedPath'], gt_class_info_list)
+    gen_class_info_list = LoadClassInfoListFromJson(config['resultsJson'])
+
+    gt_methods_instrumented = get_gt_methods_instrumented_set(config['gtMethodsInstrumentedPath'])
+
+    LoadAndRecordGtMethodStats(gt_methods_instrumented,
+                               gt_class_info_list,
+                               config['gtMethodsInstrumentedPath'] + '.stats')
 
     results_path = config['resultsPath']
     results_instrumented_path = config['resultsInstrumentedPath']
 
-    def RunAllTests(gt_class_info_list: List[ClassInfo], file):
-        file.write("evaluation criteria\tprecision\trecall\tf-score\n")
+    def RunAllTests(gt_class_info_list: List[ClassInfo], file: TextIOWrapper):
+        '''
+        Runs all tests and writes results to the given file.
+        '''
+        file.write('evaluation criteria\tprecision\trecall\tf-score\n')
 
-        def RunTest(name: str, test):
+        def RunTest(name: str,
+                    test: Callable[[List[ClassInfo], List[ClassInfo]], Tuple[float, float]]):
             precision, recall = test(gt_class_info_list, gen_class_info_list)
             f_score = ComputeF1(precision, recall)
             file.write('{}&{:.2f}&{:.2f}&{:.2f}\n'.format(name, precision, recall, f_score))
 
-        RunTest("Methods Assigned to Correct Class", PrecisionAndRecallMethodsAssignedCorrectClass)
-        RunTest("Individual Classes", PrecisionAndRecallClasses)
-        RunTest("Constructors", PrecisionAndRecallConstructors)
-        RunTest("Destructors", PrecisionAndRecallDestructors)
-        RunTest("Methods", PrecisionAndRecallMethods)
-        RunTest("Class Graph Edges", PrecisionAndRecallClassGraphEdges)
-        RunTest("Class Graph Ancestors", PrecisionAndRecallClassGraphAncestors)
+        RunTest('Methods Assigned to Correct Class', PrecisionAndRecallMethodsAssignedCorrectClass)
+        RunTest('Individual Classes', PrecisionAndRecallClasses)
+        RunTest('Constructors', PrecisionAndRecallConstructors)
+        RunTest('Destructors', PrecisionAndRecallDestructors)
+        RunTest('Methods', PrecisionAndRecallMethods)
+        RunTest('Class Graph Edges', PrecisionAndRecallClassGraphEdges)
+        RunTest('Class Graph Ancestors', PrecisionAndRecallClassGraphAncestors)
 
     with open(results_path, 'w') as gt_out:
         RunAllTests(gt_class_info_list, gt_out)
