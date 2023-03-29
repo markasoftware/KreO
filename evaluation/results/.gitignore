@@ -1,2 +1,5 @@
 in/*
 in-instrumented/*
+full-results.tex
+instrumented-results.tex
+summarized-results.tex
