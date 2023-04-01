@@ -1,19 +1,30 @@
-set arguments=%1
+@rem NOTE pregame.py **must** be run on Linux before this pipeline is run.
 
-@REM NOTE pregame.py **must** be run on Linux before this pipeline is run.
-
-@REM Run dynamic analysis
-python game.py %arguments%
-
-IF %ERRORLEVEL% NEQ 0 (
-  echo "Previous command execution failed."
-  exit %ERRORLEVEL%
+set argCount=0
+for %%x in (%*) do (
+   set /A argCount+=1
+   set "argVec[!argCount!]=%%~x"
 )
 
-@REM Run postgame, processing object traces and generating results.json
+if %argCount% NEQ 1 (
+  echo "Expected exactly one argument -- the argument JSON file."
+  exit /b 1
+)
+
+set arguments=%1
+
+@rem Run dynamic analysis
+python game.py %arguments%
+
+if %errorlevel% NEQ 0 (
+  echo "Previous command execution failed."
+  exit /b %errorlevel%
+)
+
+@rem Run postgame, processing object traces and generating results.json
 python postgame\postgame.py %arguments%
 
-IF %ERRORLEVEL% NEQ 0 (
+if %errorlevel% NEQ 0 (
   echo "Previous command execution failed."
-  exit %ERRORLEVEL%
+  exit /b %errorlevel%
 )
