@@ -34,6 +34,8 @@ if not 'resultsInstrumentedPath' in config:
     config['resultsInstrumentedPath'] = 'results-instrumented.txt'
 if not 'baseDirectory' in config:
     config['baseDirectory'] = 'out'
+if not 'heuristicFingerprintImprovement' in config:
+    config['heuristicFingerprintImprovement'] = True
 
 config_path = pathlib.Path(config_fname).parent.absolute()
 

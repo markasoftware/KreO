@@ -14,7 +14,6 @@
 // Uncomment these to log messages of various levels
 // #define LOG_INFO
 // #define LOG_WARN
-// #define LOG_ERROR
 
 using namespace std;
 
@@ -43,6 +42,32 @@ using namespace std::tr1;
 #define DELETE_OPERATOR "??3@YAXPAX@Z"
 vector<string> deleteOperators;
 
+using Tid = OS_THREAD_ID;
+
+inline Tid GetTid() { return ::PIN_GetTid(); }
+
+// ============================================================================
+/// @brief Simple optional container (since std::optional doesn't exist in
+/// c++-03)
+template <typename T>
+class Optional {
+ public:
+  void Set(T val) {
+    this->val = val;
+    this->valid = true;
+  }
+
+  void Invalidate() { this->valid = false; }
+
+  inline T get_val() const { return this->val; }
+
+  inline bool is_valid() const { return this->valid; }
+
+ private:
+  T val{};
+  bool valid{false};
+};
+
 // ============================================================================
 /// @brief An entry in an object trace.
 class ObjectTraceEntry {
@@ -57,8 +82,11 @@ class ObjectTraceEntry {
   // true indicates call, false indicates return
   bool isCall;
 
-  // set of directly called procedures TODO currently creating unordered_sets
+  // set of directly called procedures (this currently doesn't exist)
+  // TODO currently creating unordered_sets
   // for each ObjectTraceEntry causes the application to run out of memory
+  // (maybe because we are copying ObjectTraceEntries all over the place + sets
+  // just take up a lot more memory than two literals).
 
   friend bool operator==(const ObjectTraceEntry& e1,
                          const ObjectTraceEntry& e2) {
@@ -70,6 +98,9 @@ class ObjectTraceEntry {
     return os;
   }
 };
+
+// Object traces are lists of ObjectTraceEntries.
+using ObjectTrace = vector<ObjectTraceEntry>*;
 
 // ============================================================================
 /// @brief An entry in the shadow stack. A tuple of the form (object pointer,
@@ -109,52 +140,55 @@ KNOB<string> objectTracesPath(KNOB_MODE_WRITEONCE, "pintool", "object-traces",
                               "out/object-traces",
                               "Path to object traces output file.");
 
-// TODO: make these knobs:
-vector<ADDRINT> mallocProcedures;
-vector<ADDRINT> freeProcedures;
-
 // Potential method candidates, populated from the method candidates found
 // during pregame
 unordered_set<ADDRINT> methodCandidateAddrs;
-unordered_set<ADDRINT> gtCalledMethods;
-void GtMethodCallback(ADDRINT methodAddr) {
-  // assert(methodCandidateAddrs.count(methodAddr) == 1);
-  gtCalledMethods.insert(methodAddr);
-}
+
+// Ground truth methods that were instrumented. Only populated during
+// evaluation and not used by KreO itself, just to measure method coverage.
+unordered_set<ADDRINT> gtMethodsInstrumented;
 
 // Ground truth method candidates, populated from ground truth method
 // candidates. Only used during evaluation and not used by KreO itself, just
 // used to measure method coverage.
 unordered_set<ADDRINT> gtMethodAddrs;
 
-// TODO: potential optimization: Don't store finishedObjectTraces separately
-// from activeObjectTraces; instead just have a single map<ADDRINT,
-// vector<TraceEntry>>, and then insert special trace objects indicating when
-// memory has been deallocated, allowing to easily split them at the end.
-// Problem then is that multiple "splits" may be inserted, so theoretically an
-// old trace whose memory keeps getting allocated and deallocated could be
-// problematic...but does that even happen?
-vector<vector<ObjectTraceEntry>*> finishedObjectTraces;
-map<ADDRINT, vector<ObjectTraceEntry>*> activeObjectTraces;
+// Current active object traces (those that are associated with objects that
+// are not deallocated). Map potential this-pointer to the object trace
+// associated with the pointer.
+map<ADDRINT, ObjectTrace> activeObjectTraces;
+
+// List of object traces that are done.
+vector<ObjectTrace> finishedObjectTraces;
+
+// Lock to manage active object traces. When registering callbacks using
+// RTN_InsertCall, the pin client lock is not acquired, so we must manage
+// our own lock.
+::PIN_LOCK objectTracesLock;
 
 vector<ShadowStackEntry> shadowStack;
 
 // number of times each return address appears in the method stack.
 unordered_map<ADDRINT, int> stackEntryCount;
 
-// map starts of regions to (one past the) ends of regions.
-map<ADDRINT, ADDRINT> heapAllocations;
+// Lock that manages access to heap allocated regions.
+::PIN_LOCK heapAllocatedRegionsLock;
+
+// Map starts of regions to ends of regions.
+map<ADDRINT, ADDRINT> heapAllocatedRegions;
 
 // ^^^, but for mapped areas of memory (images). Used to determine valid object
 // ptrs
 map<ADDRINT, ADDRINT> mappedRegions;
 
-// base offset of the executable image
+// Base offset of the executable image.
 ADDRINT lowAddr;
 
-// Stack base
-// TODO this might not work for multithreaded applications
-ADDRINT stackBase{};
+::PIN_LOCK stackBaseLock;
+
+// Maps thread ID to the base of the stack for the thread associated with
+// said ID.
+map<Tid, ADDRINT> threadToStackBaseMap;
 
 // Set of blacklisted addresses. Any address in the blacklist will have any
 // methods that call the address as this receiver removed from the list of
@@ -165,8 +199,6 @@ set<ADDRINT> blacklistedProcedures;
 // names here (for debugging)
 unordered_map<ADDRINT, string> procedureSymbolNames;
 
-PIN_LOCK checkObjectTraceLock;
-
 // ============================================================================
 /// @brief Removes any methods that are blacklisted from the finished object
 /// traces. Also removes the trace if the trace is empty after blacklisted
@@ -174,7 +206,7 @@ PIN_LOCK checkObjectTraceLock;
 void RemoveBlacklistedMethods() {
   for (auto traceIt = finishedObjectTraces.begin();
        traceIt != finishedObjectTraces.end();) {
-    vector<ObjectTraceEntry>* trace = *traceIt;
+    ObjectTrace trace = *traceIt;
     assert(trace != nullptr);
 
     for (auto entryIt = trace->begin(); entryIt != trace->end();) {
@@ -205,7 +237,7 @@ void WriteObjectTraces() {
   ofstream os(objectTracesPathStr.c_str(), ios_base::app);
   assert(os.is_open());
 
-  for (const vector<ObjectTraceEntry>* trace : finishedObjectTraces) {
+  for (const ObjectTrace trace : finishedObjectTraces) {
     assert(trace != nullptr);
     for (const ObjectTraceEntry& entry : *trace) {
       os << entry.procedure << " " << entry.isCall << endl;
@@ -259,7 +291,7 @@ void ParsePregame() {
 /// @note The iterator is not removed from the activeObjectTraces. The user is
 /// responsible for erasing the iterator.
 void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
-  std::vector<ObjectTraceEntry>* objectTrace = it->second;
+  ObjectTrace objectTrace = it->second;
   assert(objectTrace != nullptr);
   it->second = nullptr;
 
@@ -267,17 +299,17 @@ void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
     // Don't insert empty object trace
     delete objectTrace;
   } else {
-    const auto& finishedObjectTracesIt = find_if(
-        finishedObjectTraces.begin(),
-        finishedObjectTraces.end(),
-        [objectTrace](const vector<ObjectTraceEntry>* finishedObjectTrace) {
-          return *finishedObjectTrace == *objectTrace;
-        });
+    const auto& finishedObjectTracesIt =
+        find_if(finishedObjectTraces.begin(),
+                finishedObjectTraces.end(),
+                [objectTrace](const ObjectTrace finishedObjectTrace) {
+                  return *finishedObjectTrace == *objectTrace;
+                });
     if (finishedObjectTracesIt == finishedObjectTraces.end()) {
       if (objectTrace->size() == 1) {
         // This is invalid since each call must have a matching return in the
         // object-trace.
-        cerr << "attempting to add object-trace with size 1: "
+        cout << "attempting to add object-trace with size 1: "
              << objectTrace->at(0) << endl;
         blacklistedProcedures.insert(objectTrace->at(0).procedure);
         delete objectTrace;
@@ -310,46 +342,41 @@ void EndObjectTrace(ADDRINT objPtr) {
 // ============================================================================
 /// @brief Ends any object traces whose object pointers reside within the
 /// given region, that is, within the set of values [regionStart, regionEnd).
+/// The global activeObjectTraces object will be modified by this function.
 void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
   // lower_bound means that the argument is the lower bound and that the
   // returned iterator points to an element greater than or equal to the
   // argument. And, as you'd expect, upper_bound points /after/ the position
-  // you really want, to make it easy to use in the end condition of a loop..
+  // you really want, to make it easy to use in the end condition of a loop.
+
+  assert(regionStart <= regionEnd);
 
   auto firstTrace = activeObjectTraces.lower_bound(regionStart);
   auto it = firstTrace;
-  for (;
-       it != activeObjectTraces.end() && it->first < regionEnd;
-       it++) {
+  for (; it != activeObjectTraces.end() && it->first < regionEnd; it++) {
     EndObjectTraceIt(it);
   }
   activeObjectTraces.erase(firstTrace, it);
 }
 
-///////////////////////
-// ANALYSIS ROUTINES //
-///////////////////////
-
 // ============================================================================
 //                          Malloc/Free Observers
 // ============================================================================
 
-ADDRINT mallocSize{};  // saves arg passed to most recent malloc invocation
+Optional<ADDRINT> mallocSize;
 
 // ============================================================================
 // TODO this won't work when an executable being instrumented has threads
 /// @brief Call when malloc is called. Stores the size malloced.
 /// @param size Size to be malloc'ed.
-void MallocBeforeCallback(ADDRINT size) { mallocSize = size; }
+void MallocBeforeCallback(ADDRINT size) { mallocSize.Set(size); }
 
 // ============================================================================
 /// @brief Call when malloc returned from. Adds new heap allocated region.
 /// @param regionStart Start of region that has been allocated.
 void MallocAfterCallback(ADDRINT regionStart) {
-  PIN_GetLock(&checkObjectTraceLock, 0);
-
 #ifdef LOG_WARN
-  if (heapAllocations.find(regionStart) != heapAllocations.end()) {
+  if (heapAllocatedRegions.find(regionStart) != heapAllocatedRegions.end()) {
     LOG("WARNING: Malloc'ing a pointer that was already malloc'ed!"
         "Maybe too many malloc procedures specified?\n");
     // TODO: could debug even further by searching for if the pointer lies
@@ -359,21 +386,28 @@ void MallocAfterCallback(ADDRINT regionStart) {
 
 #ifdef LOG_INFO
   stringstream ss;
-  ss << "Malloc @ " << regionStart << " (" << dec << mallocSize << " bytes)"
-     << endl;
+  ss << "Malloc @ " << regionStart << " (" << dec << mallocSize.get_val()
+     << " bytes)" << endl;
   LOG(ss.str());
 #endif
 
-  heapAllocations[regionStart] = regionStart + mallocSize;
+  // If mallocSize is -1, MallocBeforeCallback wasn't called or there is some
+  // issue with interleaved calls to MallocBeforeCallback and
+  // MallocAfterCallback.
+  assert(mallocSize.is_valid());
 
-  PIN_ReleaseLock(&checkObjectTraceLock);
+  ::PIN_GetLock(&heapAllocatedRegionsLock, GetTid());
+  heapAllocatedRegions[regionStart] = regionStart + mallocSize.get_val();
+  ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
+
+  mallocSize.Invalidate();
 }
 
 // ============================================================================
 /// @brief Call when free called. Removes the heap allocated region specified by
 /// freedRegionStart.
 /// @param freedRegionStart Start of region to be freed.
-void FreeCallback(ADDRINT freedRegionStart) {
+void FreeBeforeCallback(ADDRINT freedRegionStart) {
 #ifdef LOG_INFO
   stringstream ss;
   ss << "Free @ " << freedRegionStart << endl;
@@ -381,27 +415,30 @@ void FreeCallback(ADDRINT freedRegionStart) {
 #endif
 
   if (freedRegionStart == 0) {
-    // this is in fact well-defined and legal behavior
+    // This is in fact well-defined and legal behavior.
     return;
   }
 
-  PIN_GetLock(&checkObjectTraceLock, 0);
+  Tid tid = GetTid();
 
-  auto freedRegionIt = heapAllocations.find(freedRegionStart);
+  ::PIN_GetLock(&heapAllocatedRegionsLock, tid);
+
+  auto freedRegionIt = heapAllocatedRegions.find(freedRegionStart);
   ADDRINT freedRegionEnd = freedRegionIt->second;
 
-  if (freedRegionIt == heapAllocations.end()) {
+  if (freedRegionIt == heapAllocatedRegions.end()) {
 #ifdef LOG_WARN
     LOG("WARNING: Invalid pointer freed! Check the program-under-test.\n");
 #endif
-    goto cleanup;
+    ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
+  } else {
+    heapAllocatedRegions.erase(freedRegionIt);
+    ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
+
+    ::PIN_GetLock(&objectTracesLock, tid);
+    EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
+    ::PIN_ReleaseLock(&objectTracesLock);
   }
-
-  EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
-  heapAllocations.erase(freedRegionIt);
-
-cleanup:
-  PIN_ReleaseLock(&checkObjectTraceLock);
 }
 
 // ============================================================================
@@ -415,22 +452,23 @@ void OnDeleteInstrumented(ADDRINT deletedObject) {
   LOG(ss.str());
 #endif
 
-  PIN_GetLock(&checkObjectTraceLock, 0);
+  ::PIN_GetLock(&heapAllocatedRegionsLock, GetTid());
 
-  // Delete called, to verify delete is valid search for it in heapAllocations
-  auto freedRegionIt = heapAllocations.find(deletedObject);
-  if (freedRegionIt == heapAllocations.end()) {
+  // Delete called, to verify delete is valid search for it in
+  // heapAllocatedRegions
+  auto freedRegionIt = heapAllocatedRegions.find(deletedObject);
+  if (freedRegionIt == heapAllocatedRegions.end()) {
 #ifdef LOG_WARN
     LOG("Attempting to delete ptr that is not in heap allocated region\n");
 #endif
-    goto cleanup;
+    ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
+  } else {
+    heapAllocatedRegions.erase(freedRegionIt);
+
+    ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
+
+    EndObjectTrace(deletedObject);
   }
-
-  EndObjectTrace(deletedObject);
-  heapAllocations.erase(freedRegionIt);
-
-cleanup:
-  PIN_ReleaseLock(&checkObjectTraceLock);
 }
 
 // ============================================================================
@@ -446,63 +484,158 @@ cleanup:
 // TODO: somehow track the lowest active objPtr in the stack. Could be done by
 // checking if an objptr is above the stack during method calls. That way we
 // don't have to call EndObjectTracesInRegion so frequently.
-ADDRINT lastStackPtr{};
+
+PIN_LOCK lastStackPtrLock;
+map<Tid, ADDRINT> threadIdToLastStackPtrMap;
+
 /// @brief Call before stack incrase happens.
 /// @param stackPtr Stack pointer at point before stack increase happens.
-void StackIncreaseBeforeCallback(ADDRINT stackPtr) { lastStackPtr = stackPtr; }
+void StackIncreaseBeforeCallback(ADDRINT stackPtr) {
+  Tid tid = GetTid();
 
-// ============================================================================
-/// @return True if stack increase detected, false otherwise.
-bool StackIncreasePredicate(ADDRINT stackPtr) {
-  return stackPtr > lastStackPtr;
+  ::PIN_GetLock(&stackBaseLock, tid);
+  if (threadToStackBaseMap.count(tid) == 0) {
+    threadToStackBaseMap[tid] = stackPtr;
+  }
+  ::PIN_ReleaseLock(&stackBaseLock);
+
+  ::PIN_GetLock(&lastStackPtrLock, tid);
+  threadIdToLastStackPtrMap[tid] = stackPtr;
+  ::PIN_ReleaseLock(&lastStackPtrLock);
 }
 
 // ============================================================================
-/// @brief Call if stack increase detected. Ends object traces within location
-/// of stack decrease.
+/// @return 1 if stack increase detected, 0 otherwise.
+ADDRINT StackIncreasePredicate(ADDRINT stackPtr) {
+  Tid tid = GetTid();
+  ::PIN_GetLock(&lastStackPtrLock, tid);
+  assert(threadIdToLastStackPtrMap.count(tid) != 0);
+  ADDRINT ret = static_cast<ADDRINT>(stackPtr > threadIdToLastStackPtrMap[tid]);
+  ::PIN_ReleaseLock(&lastStackPtrLock);
+  return ret;
+}
+
+// ============================================================================
+/// @brief Call if stack increase detected (implying some memory is being
+/// deallocated). Ends object traces within location of stack decrease.
 /// @param stackPtr New stack pointer.
 void StackIncreaseCallback(ADDRINT stackPtr) {
-  PIN_GetLock(&checkObjectTraceLock, 0);
+  Tid tid = GetTid();
+
+  // Update stack base if the stack pointer is < the currently recorded base.
+  ::PIN_GetLock(&stackBaseLock, tid);
+  if (threadToStackBaseMap.count(tid) == 0 ||
+      threadToStackBaseMap[tid] < stackPtr) {
+    threadToStackBaseMap[tid] = stackPtr;
+  }
+  ::PIN_ReleaseLock(&stackBaseLock);
+
+  ::PIN_GetLock(&lastStackPtrLock, tid);
+  ADDRINT lastStackPtr = threadIdToLastStackPtrMap[tid];
+  ::PIN_ReleaseLock(&lastStackPtrLock);
+
+  ::PIN_GetLock(&objectTracesLock, tid);
   EndObjectTracesInRegion(lastStackPtr, stackPtr);
-  PIN_ReleaseLock(&checkObjectTraceLock);
+  ::PIN_ReleaseLock(&objectTracesLock);
 }
 
 // ============================================================================
-/// @brief Called when a call instruction is called. Saves return address.
-/// @param retAddr Expected return address for the given call.
-ADDRINT lastRetAddr = -1;
-void CallCallback(ADDRINT retAddr) { lastRetAddr = retAddr; }
+/// @brief Checks to see if the given instruction is a stack increase. Will
+/// return true if the instruction is possibly a stack increase (this
+/// function is conservative, if it is not sure it will return `true` so
+/// additional stack pointer observers can verify that the stack is in fact
+/// increasing).
+bool IsPossibleStackIncrease(INS ins) {
+  // There /is/ one instruction which modifies the stack pointer which we
+  // intentionally exclude here -- `ret`. While it moves the stack pointer up by
+  // one, it shouldn't matter unless you are jumping to an object pointer -- and
+  // in that case, we have larger problems!
 
-// ============================================================================
-/// @brief determine if an ADDRINT is a plausible object pointer.
-bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
-  // TODO Checking if it's in an allocated region is not good enough because the
-  // regions can change without triggering an image load, eg with brk syscall.
+// Identifying operation codes for various instructions that we exclude.
+#define RET_NEAR 740
+#define CALL_NEAR 75
+#define POP 616
+#define PUSH 671
 
-  // If within stack, address valid
-  if (ptr >= stackPtr && ptr <= stackBase) {
-    return true;
-  }
-
-  // If lies within reg allocated region, address valid.
-  auto regIt = mappedRegions.upper_bound(ptr);
-  if (regIt != mappedRegions.begin()) {
-    regIt--;
-    if (ptr < regIt->second) {
+  UINT32 operandCount = LEVEL_CORE::INS_OperandCount(ins);
+  for (UINT32 opIdx = 0; opIdx < operandCount; opIdx++) {
+    // If the instruction operand at the given index is written to and if the
+    // operand register is the stack pointer
+    if (LEVEL_CORE::INS_OperandWritten(ins, opIdx) &&
+        LEVEL_CORE::INS_OperandReg(ins, opIdx) == REG_STACK_PTR) {
       return true;
     }
   }
 
-  // If lies within heap allocated region, address valid.
-  auto heapIt = heapAllocations.upper_bound(ptr);
-  if (heapIt != heapAllocations.begin()) {
-    heapIt--;
-    if (ptr < heapIt->second) {
+  OPCODE insOpcode = LEVEL_CORE::INS_Opcode(ins);
+
+  // Note: checking insOpcode == PUSH and insOpcode == CALL_NEAR are not
+  // required but are don't to avoid as many calls to stack checking.
+  if (insOpcode == RET_NEAR || insOpcode == CALL_NEAR || insOpcode == POP ||
+      insOpcode == PUSH || LEVEL_CORE::INS_IsSub(ins)) {
+    return false;
+  }
+
+  return INS_RegWContain(ins, REG_STACK_PTR);
+}
+
+// ============================================================================
+
+/// Updated when call instruction instrumented.
+::PIN_LOCK lastRetAddrLock;
+
+map<Tid, ADDRINT> threadToLastRetAddrMap;
+
+/// @brief Called when a call instruction is called. Saves return address.
+/// @param retAddr Expected return address for the given call.
+void CallCallback(ADDRINT retAddr) {
+  Tid tid = GetTid();
+  ::PIN_GetLock(&lastRetAddrLock, tid);
+  threadToLastRetAddrMap[tid] = retAddr;
+  ::PIN_ReleaseLock(&lastRetAddrLock);
+}
+
+// ============================================================================
+/// @brief Returns true if the ptr is within a region in the regionMap.
+/// The region map maps starts of regions to (one past) the end of a
+/// region.
+bool WithinRegion(ADDRINT ptr, map<ADDRINT, ADDRINT> regionMap) {
+  auto regIt = regionMap.upper_bound(ptr);
+  if (regIt != regionMap.begin()) {
+    regIt--;
+    if (ptr <= regIt->second) {
       return true;
     }
   }
 
   return false;
+}
+
+// ============================================================================
+/// @brief determine if an ADDRINT is a plausible object pointer.
+bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&stackBaseLock, tid);
+  assert(threadToStackBaseMap.count(tid) != 0);
+  ADDRINT stackBase = threadToStackBaseMap[tid];
+  ::PIN_ReleaseLock(&stackBaseLock);
+
+  // If within stack, address valid.
+  if (ptr >= stackPtr && ptr <= stackBase) {
+    return true;
+  }
+
+  // If lies within reg allocated region, address valid.
+  if (WithinRegion(ptr, mappedRegions)) {
+    return true;
+  }
+
+  ::PIN_GetLock(&heapAllocatedRegionsLock, tid);
+  bool inHeapRegion = WithinRegion(ptr, heapAllocatedRegions);
+  ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
+
+  return inHeapRegion;
 }
 
 // ============================================================================
@@ -545,6 +678,9 @@ ShadowStackEntry ShadowStackRemoveAndReturnTop() {
 
   // Remove from stackEntryCount
   auto stackEntryIt = stackEntryCount.find(stackTop.returnAddr);
+  // This implies an inconsistency between the shadowStack and the
+  // stackEntryCount.
+  assert(stackEntryIt != stackEntryCount.end());
   stackEntryIt->second--;
   if (stackEntryIt->second == 0) {
     stackEntryCount.erase(stackEntryIt);
@@ -598,17 +734,15 @@ bool IgnoreReturn(ADDRINT actualRetAddr) {
 /// pointer is not normalized.
 void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
                              ADDRINT objPtr) {
-  PIN_GetLock(&checkObjectTraceLock, 0);
-
   // Method blacklisted, don't add to trace
   if (blacklistedProcedures.count(procAddr) != 0) {
-      goto cleanup;
+    return;
   }
 
   // Object pointer invalid, not possible method candidate
   if (!IsPossibleObjPtr(objPtr, stackPtr)) {
     blacklistedProcedures.insert(procAddr);
-    goto cleanup;
+    return;
   }
 
   // The method candidate is valid. Add to the trace and shadow stack.
@@ -617,11 +751,20 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
   //   // TODO insert procedure to calledProcedures
   // }
 
-  InsertObjectTraceEntry(objPtr, ObjectTraceEntry(procAddr, true));
+  Tid tid = GetTid();
 
+  ::PIN_GetLock(&objectTracesLock, tid);
+  InsertObjectTraceEntry(objPtr, ObjectTraceEntry(procAddr, true));
+  ::PIN_ReleaseLock(&objectTracesLock);
+
+  ::PIN_GetLock(&lastRetAddrLock, tid);
   // should always appear just after a `call` (or should it?)
-  if (lastRetAddr == static_cast<ADDRINT>(-1)) {
+  if (threadToLastRetAddrMap.count(tid) == 0) {
     // return address invalid, don't add procedure to shadow stack
+    // Potentially assert in the future (unclear is this should not
+    // happen or if some weird application could cause this
+    // conditional to be entered).
+
 #ifdef LOG_WARN
     stringstream ss;
     ss << "Method executed without call! Likely not a method. procAddr "
@@ -629,14 +772,19 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
     LOG(ss.str());
 #endif
   } else {
-    shadowStack.push_back(ShadowStackEntry(objPtr, lastRetAddr, procAddr));
-    stackEntryCount[lastRetAddr]++;
+    shadowStack.push_back(
+        ShadowStackEntry(objPtr, threadToLastRetAddrMap[tid], procAddr));
+
+    // TODO this is for debugging purposes since I don't think
+    // stackEntryCount can ever have a nonzero entry at this point
+    assert(stackEntryCount[threadToLastRetAddrMap[tid]] == 0);
+
+    stackEntryCount[threadToLastRetAddrMap[tid]]++;
+
+    threadToLastRetAddrMap.erase(tid);
   }
 
-  lastRetAddr = static_cast<ADDRINT>(-1);
-
-cleanup:
-  PIN_ReleaseLock(&checkObjectTraceLock);
+  ::PIN_ReleaseLock(&lastRetAddrLock);
 }
 
 // ============================================================================
@@ -644,8 +792,6 @@ cleanup:
 /// from the shadow stack and inserting an entry in the correct object trace.
 /// @param returnAddr Address being returned to (not normalized).
 void RetCallback(ADDRINT returnAddr) {
-  PIN_GetLock(&checkObjectTraceLock, 0);
-
   // TODO: maybe do this as an InsertIfCall? Probably won't help though because
   // map lookup probably can't be inlined.
   // TODO: perhaps include a compile time flag to use a simpler implementation
@@ -660,6 +806,9 @@ void RetCallback(ADDRINT returnAddr) {
   if (!IgnoreReturn(returnAddr)) {
     ShadowStackEntry stackTop = ShadowStackRemoveAndReturnTop();
 
+    ::PIN_GetLock(&objectTracesLock, 0);
+
+    // TODO I don't think this comment matches the logic????
     // If the first element in the object trace is a returned value, the
     // function is likely a scalar/vector deleting destructor that is not
     // actually a method of the class. Blacklist the method.
@@ -669,37 +818,9 @@ void RetCallback(ADDRINT returnAddr) {
       InsertObjectTraceEntry(stackTop.objPtr,
                              ObjectTraceEntry(stackTop.procedure, false));
     }
+
+    ::PIN_ReleaseLock(&objectTracesLock);
   }
-
-  PIN_ReleaseLock(&checkObjectTraceLock);
-}
-
-void EntryPointCallback(ADDRINT rsp) {
-    cerr << "Initial stack pointer: 0x" << hex << rsp << endl;
-    stackBase = rsp;
-}
-
-bool IsPossibleStackIncrease(INS ins) {
-  // TODO: check for other instructions we might want to exclude, or handle
-  // specially (branches can't modify sp, right?)
-
-  // There /is/ one instruction which modifies the stack pointer which we
-  // intentionally exclude here -- `ret`. While it moves the stack pointer up by
-  // one, it shouldn't matter unless you are jumping to an object pointer -- and
-  // in that case, we have larger problems!
-
-  if (INS_IsSub(ins)) {
-    return false;
-  }
-
-  UINT32 operandCount = INS_OperandCount(ins);
-  for (UINT32 opIdx = 0; opIdx < operandCount; opIdx++) {
-    if (INS_OperandWritten(ins, opIdx) &&
-        INS_OperandReg(ins, opIdx) == REG_STACK_PTR) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // ============================================================================
@@ -743,20 +864,15 @@ void InstrumentInstruction(INS ins, void*) {
                    IARG_END);
   }
 
+  // If a procedure is being called that belongs to the ground truth, add it
+  // to the gtMethodsInstrumented set.
   if (gtMethodAddrs.count(insRelAddr) == 1) {
-    INS_InsertCall(ins,
-                   IPOINT_BEFORE,
-                   reinterpret_cast<AFUNPTR>(GtMethodCallback),
-                   IARG_ADDRINT,
-                   insRelAddr,
-                   IARG_END);
+    gtMethodsInstrumented.insert(insRelAddr);
   }
 
   // The following types of instructions should be mutually exclusive.
-  bool alreadyInstrumented = false;
   if (IsPossibleStackIncrease(ins)) {
-    assert(!alreadyInstrumented);
-    alreadyInstrumented = true;
+    IPOINT where = INS_HasFallThrough(ins) ? IPOINT_AFTER : IPOINT_TAKEN_BRANCH;
 
     INS_InsertCall(ins,
                    IPOINT_BEFORE,
@@ -765,38 +881,28 @@ void InstrumentInstruction(INS ins, void*) {
                    REG_STACK_PTR,
                    IARG_END);
     INS_InsertIfCall(ins,
-                     IPOINT_AFTER,
+                     where,
                      reinterpret_cast<AFUNPTR>(StackIncreasePredicate),
                      IARG_REG_VALUE,
                      REG_STACK_PTR,
                      IARG_END);
     INS_InsertThenCall(ins,
-                       IPOINT_AFTER,
+                       where,
                        reinterpret_cast<AFUNPTR>(StackIncreaseCallback),
                        IARG_REG_VALUE,
                        REG_STACK_PTR,
                        IARG_END);
-  }
-
-  if (INS_IsRet(ins)) {  // TODO: do we need to handle farret?
-    assert(!alreadyInstrumented);
-    alreadyInstrumented = true;
-
+  } else if (INS_IsRet(ins)) {  // TODO: do we need to handle farret?
     // docs say `ret` implies control flow, but just want to be sure, since this
     // a precondition for IARG_BRANCH_TARGET_ADDR but idk if that does an
     // internal assert.
     assert(INS_IsControlFlow(ins));
     INS_InsertCall(ins,
-                   IPOINT_BEFORE,
+                   ::IPOINT_BEFORE,
                    reinterpret_cast<AFUNPTR>(RetCallback),
-                   IARG_BRANCH_TARGET_ADDR,
-                   IARG_END);
-  }
-
-  if (INS_IsCall(ins)) {
-    assert(!alreadyInstrumented);
-    alreadyInstrumented = true;
-
+                   ::IARG_BRANCH_TARGET_ADDR,
+                   ::IARG_END);
+  } else if (INS_IsCall(ins)) {
     INS_InsertCall(ins,
                    IPOINT_BEFORE,
                    reinterpret_cast<AFUNPTR>(CallCallback),
@@ -813,22 +919,19 @@ void InstrumentImage(IMG img, void*) {
   // assert(IMG_NumRegions(img) == 1);
 
   // track mapped memory regions
-  for (UINT32 i = 0; i < IMG_NumRegions(img); i++) {
-      cout << "Region " << dec << i << " from 0x" << hex << IMG_RegionLowAddress(img, i)
-           << " through 0x" << IMG_RegionHighAddress(img, i) << endl;
-    mappedRegions[IMG_RegionLowAddress(img, i)] =
-        IMG_RegionHighAddress(img, i) + 1;
+  for (UINT32 ii = 0; ii < IMG_NumRegions(img); ii++) {
+    cout << "Loading region " << ii << " from 0x" << hex
+         << IMG_RegionLowAddress(img, ii) << " through 0x"
+         << IMG_RegionHighAddress(img, ii) << dec << endl;
+
+    mappedRegions[IMG_RegionLowAddress(img, ii)] =
+        IMG_RegionHighAddress(img, ii);
   }
 
-  cout << hex << IMG_Name(img) << ", " << dec << IMG_NumRegions(img) << hex << " many regions" << endl;
+  cout << "Loading image: " << IMG_Name(img)
+       << ", regions: " << IMG_NumRegions(img) << endl;
 
-  // TODO: what if the user specifies a routine that's already detected
-  // automatically? Want to make sure we don't add it twice, but RTN isn't
-  // suitable for use in a set, so we need some manual way to prevent
-  // duplicates! (just compare addresses?)
-  vector<RTN> mallocRtns;
-  vector<RTN> freeRtns;
-  if (IMG_IsMainExecutable(img)) { // TODO: change to target DLLs on demand
+  if (IMG_IsMainExecutable(img)) {  // TODO: change to target DLLs on demand
     lowAddr = IMG_LowAddress(img);
 
     // store all procedures with symbols into the global map for debugging use.
@@ -838,95 +941,34 @@ void InstrumentImage(IMG img, void*) {
       }
     }
 
-    // HACK until we find the right way to determine the entry point
-    RTN mainRtn = RTN_FindByName(img, "main");
-    if (RTN_Valid(mainRtn)) {
-        RTN_Open(mainRtn);
-        RTN_InsertCall(mainRtn,
+    for (std::string operatorName : deleteOperators) {
+      RTN discoveredDelete = RTN_FindByName(img, operatorName.c_str());
+      if (RTN_Valid(discoveredDelete)) {
+        blacklistedProcedures.insert(RTN_Address(discoveredDelete) - lowAddr);
+
+        RTN_Open(discoveredDelete);
+        RTN_InsertCall(discoveredDelete,
                        IPOINT_BEFORE,
-                       reinterpret_cast<AFUNPTR>(EntryPointCallback),
-                       IARG_REG_VALUE,
-                       REG_STACK_PTR,
+                       reinterpret_cast<AFUNPTR>(OnDeleteInstrumented),
+                       IARG_FUNCARG_ENTRYPOINT_VALUE,
+                       0,
                        IARG_END);
-        RTN_Close(mainRtn);
-    }
-
-    for (size_t i = 0; i < mallocProcedures.size(); i++) {
-      // create routine if does not exist
-      ADDRINT mallocAddr = mallocProcedures[i];
-      if (!RTN_Valid(RTN_FindByAddress(mallocAddr + lowAddr))) {
-        string name = "malloc_custom_" + to_string(i);
-        RTN_CreateAt(mallocAddr + lowAddr, name);
+        RTN_Close(discoveredDelete);
       }
-      mallocRtns.push_back(RTN_FindByAddress(mallocAddr + lowAddr));
-    }
-    for (size_t i = 0; i < freeProcedures.size(); i++) {
-      // create routine if does not exist
-      ADDRINT freeAddr = freeProcedures[i];
-      if (!RTN_Valid(RTN_FindByAddress(freeAddr + lowAddr))) {
-        string name = "free_custom_" + to_string(i);
-        RTN_CreateAt(freeAddr + lowAddr, name);
-      }
-      freeRtns.push_back(RTN_FindByAddress(freeAddr + lowAddr));
-    }
-  }
-
-  // TODO: look more into what the malloc symbol is named on different
-  // platforms.
-  RTN discoveredMalloc = RTN_FindByName(img, MALLOC_SYMBOL);
-
-  // TODO: it seems that `free` in one library calls `free`
-  // in another library (at least on gnu libc linux), because...
-  RTN discoveredFree = RTN_FindByName(img, FREE_SYMBOL);
-
-  // TODO test this on compilers other than MSVC in the future
-  for (std::string operatorName : deleteOperators) {
-    RTN discoveredDelete = RTN_FindByName(img, operatorName.c_str());
-    if (RTN_Valid(discoveredDelete)) {
-      cout << "discovered delete operator " << RTN_Address(discoveredDelete)
-           << endl;
-      blacklistedProcedures.insert(RTN_Address(discoveredDelete) - lowAddr);
-
-      RTN_Open(discoveredDelete);
-      RTN_InsertCall(discoveredDelete,
-                     IPOINT_BEFORE,
-                     reinterpret_cast<AFUNPTR>(OnDeleteInstrumented),
-                     IARG_FUNCARG_ENTRYPOINT_VALUE,
-                     0,
-                     IARG_END);
-      RTN_Close(discoveredDelete);
     }
   }
 
   // Insert malloc/free discovered by name into routine list
 
-  if (RTN_Valid(discoveredMalloc)) {
+  // TODO: look more into what the malloc symbol is named on different
+  // platforms.
+  RTN mallocRtn = RTN_FindByName(img, MALLOC_SYMBOL);
+
+  if (RTN_Valid(mallocRtn)) {
 #ifdef LOG_INFO
     LOG("Found malloc procedure by symbol in img " + IMG_Name(img) + "\n");
 #endif
-    mallocRtns.push_back(discoveredMalloc);
-  } else {
-#ifdef LOG_INFO
-    LOG("Failed to find malloc procedure by symbol in img " + IMG_Name(img) +
-        "\n");
-#endif
-  }
-
-  if (RTN_Valid(discoveredFree)) {
-#ifdef LOG_INFO
-    LOG("Found free procedure by symbol in img " + IMG_Name(img) + "\n");
-#endif
-    freeRtns.push_back(discoveredFree);
-  } else {
-#ifdef LOG_INFO
-    LOG("Failed to find free procedure by symbol in img " + IMG_Name(img) +
-        "\n");
-#endif
-  }
-
-  for (RTN mallocRtn : mallocRtns) {
     RTN_Open(mallocRtn);
-    // save first argument
     RTN_InsertCall(mallocRtn,
                    IPOINT_BEFORE,
                    reinterpret_cast<AFUNPTR>(MallocBeforeCallback),
@@ -941,11 +983,18 @@ void InstrumentImage(IMG img, void*) {
     RTN_Close(mallocRtn);
   }
 
-  for (RTN freeRtn : freeRtns) {
+  // TODO: it seems that `free` in one library calls `free`
+  // in another library (at least on gnu libc linux), because...
+  RTN freeRtn = RTN_FindByName(img, FREE_SYMBOL);
+
+  if (RTN_Valid(freeRtn)) {
+#ifdef LOG_INFO
+    LOG("Found free procedure by symbol in img " + IMG_Name(img) + "\n");
+#endif
     RTN_Open(freeRtn);
     RTN_InsertCall(freeRtn,
                    IPOINT_BEFORE,
-                   reinterpret_cast<AFUNPTR>(FreeCallback),
+                   reinterpret_cast<AFUNPTR>(FreeBeforeCallback),
                    IARG_FUNCARG_ENTRYPOINT_VALUE,
                    0,
                    IARG_END);
@@ -964,14 +1013,13 @@ void InstrumentUnloadImage(IMG img, void*) {
 void Fini(INT32 code, void*) {
   cout << "Program run completed, writing object traces to disk..." << endl;
 
-  // end all in-progress traces, then print all to disk.
+  // End all in-progress traces, then print all to disk.
   auto lastObjectTraceIt = activeObjectTraces.rbegin();
   if (lastObjectTraceIt != activeObjectTraces.rend()) {
     EndObjectTracesInRegion(0, lastObjectTraceIt->first);
   }
 
-  cout << dec << "Blacklisted methods removed, found "
-       << finishedObjectTraces.size()
+  cout << "Blacklisted methods removed, found " << finishedObjectTraces.size()
        << " valid unique object traces. Writing object traces to a file..."
        << endl;
 
@@ -989,7 +1037,7 @@ void Fini(INT32 code, void*) {
   os.close();
   os.open(gtMethodsInstrumentedStr.c_str());
 
-  for (ADDRINT addr : gtCalledMethods) {
+  for (ADDRINT addr : gtMethodsInstrumented) {
     os << addr << endl;
   }
 
@@ -1003,18 +1051,39 @@ void Fini(INT32 code, void*) {
   cout << "Done! Exiting normally." << endl;
 }
 
+void OnThreadStart(THREADID threadIndex, LEVEL_VM::CONTEXT* ctxt, INT32 flags,
+                   VOID* v) {
+  ADDRINT sp = PIN_GetContextReg(ctxt, ::REG_STACK_PTR);
+
+  cout << "Thread started " << GetTid() << ", " << threadIndex
+       << ", stack pointer: 0x" << hex << sp << dec << endl;
+}
+
+void OnThreadFini(THREADID threadIndex, const ::CONTEXT* ctxt, INT32 code,
+                  VOID* v) {
+  cout << "Thread finished " << GetTid() << ", " << threadIndex << endl;
+}
+
 int main(int argc, char** argv) {
   PIN_InitSymbols();  // this /is/ necessary for debug symbols, but somehow it
   // doesn't have an entry in the PIN documentation? (though
   // its name is referenced in a few places).
-  PIN_Init(argc, argv);
+  ::PIN_Init(argc, argv);
   ParsePregame();
 
-  PIN_InitLock(&checkObjectTraceLock);
+  ::PIN_InitLock(&objectTracesLock);
+  ::PIN_InitLock(&heapAllocatedRegionsLock);
+  ::PIN_InitLock(&stackBaseLock);
+  ::PIN_InitLock(&lastRetAddrLock);
+
   IMG_AddInstrumentFunction(InstrumentImage, NULL);
   IMG_AddUnloadFunction(InstrumentUnloadImage, NULL);
   INS_AddInstrumentFunction(InstrumentInstruction, NULL);
+  PIN_AddThreadStartFunction(OnThreadStart, NULL);
+  PIN_AddThreadFiniFunction(OnThreadFini, NULL);
   PIN_AddFiniFunction(Fini, NULL);
+
+  // PIN_AddOutOfMemoryFunction
 
   // Start program, never returns
   PIN_StartProgram();
