@@ -5,15 +5,16 @@ import os
 import time
 import pygtrie
 import subprocess
+import sys
+import pathlib
+
 from copy import copy
 from collections import defaultdict
-from typing import List, Callable, Dict, Set, Any, Tuple, Optional
+from typing import List, Callable, Dict, Set, Any
 from method import Method
 from object_trace import ObjectTrace, TraceEntry
 from method_store import MethodStore
 from static_trace import StaticTrace, StaticTraceEntry
-import sys
-import pathlib
 
 fpath = pathlib.Path(__file__).parent.absolute()
 
@@ -364,18 +365,19 @@ class Postgame:
         self.runStep(self.splitTracesFn, 'splitting traces...', f'traces split')
         print(f'after splitting there are now {len(self.traces)} traces')
 
-        ###############################################################################
-        # Step: Update method statistics again now. Splitting traces won't reveal new #
-        # constructors/destructors; however, the number of times methods are seen in  #
-        # the head/body/fingerprint does change.                                      #
-        ###############################################################################
-        self.runStep(self.updateAllMethodStatistics, 'updating method statistics again...', 'method statistics updated')
+        if config['heuristicFingerprintImprovement']:
+            ###############################################################################
+            # Step: Update method statistics again now. Splitting traces won't reveal new #
+            # constructors/destructors; however, the number of times methods are seen in  #
+            # the head/body/fingerprint does change.                                      #
+            ###############################################################################
+            self.runStep(self.updateAllMethodStatistics, 'updating method statistics again...', 'method statistics updated')
 
-        ###############################################################################
-        # Step: Remove from fingerprints any methods that are not identified as       #
-        # destructors.                                                                #
-        ###############################################################################
-        self.runStep(self.removeNondestructorsFromFingerprints, 'removing methods that aren\'t destructors from fingerprints...', 'method removed')
+            ###############################################################################
+            # Step: Remove from fingerprints any methods that are not identified as       #
+            # destructors.                                                                #
+            ###############################################################################
+            self.runStep(self.removeNondestructorsFromFingerprints, 'removing methods that aren\'t destructors from fingerprints...', 'method removed')
 
         ###############################################################################
         # Step: Update method statistics again now. Splitting traces won't reveal new #

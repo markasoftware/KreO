@@ -1,46 +1,66 @@
+@rem NOTE pregame.py **must** be run on Linux before this pipeline is run.
+
+@echo off
+
+set argCount=0
+for %%x in (%*) do (
+   set /A argCount+=1
+   set "argVec[!argCount!]=%%~x"
+)
+
+if %argCount% NEQ 1 (
+  echo Expected exactly one argument -- the argument JSON file.
+  @echo on
+  exit /b 1
+)
+
 set arguments=%1
 
-@REM NOTE pregame.py **must** be run on Linux before this pipeline is run.
+echo generating dump from pdb
+python3.10 evaluation\generate_dump.py %arguments%
 
-@REM Generate dump file from pdb
-python analysis\generate_dump.py %arguments%
-
-IF %ERRORLEVEL% NEQ 0 (
-  echo "Previous command execution failed."
-  exit %ERRORLEVEL%
+if %errorlevel% NEQ 0 (
+  echo Previous command execution failed.
+  @echo on
+  exit /b %errorlevel%
 )
 
-@REM Generate gt-results.json file from the dump file
-.\analysis\build\Debug\analyze_pdb_dump.exe %arguments%
+echo generating gt results from dump
+.\evaluation\build\Debug\analyze_pdb_dump.exe %arguments%
 
-IF %ERRORLEVEL% NEQ 0 (
-  echo "Previous command execution failed."
-  exit %ERRORLEVEL%
+if %errorlevel% NEQ 0 (
+  echo Previous command execution failed.
+  @echo on
+  exit /b %errorlevel%
 )
 
-@REM Extract ground truth methods from results json file
-python analysis\extract_gt_methods.py %arguments%
+echo extracting gt methods from json file
+python3.10 evaluation\extract_gt_methods.py %arguments%
 
-IF %ERRORLEVEL% NEQ 0 (
-  echo "Previous command execution failed."
-  exit %ERRORLEVEL%
+if %errorlevel% NEQ 0 (
+  echo Previous command execution failed.
+  @echo on
+  exit /b %errorlevel%
 )
 
-@REM Run dynamic analysis
-python game.py %arguments%
+echo running dynamic analysis
+python3.10 game.py %arguments%
 
-IF %ERRORLEVEL% NEQ 0 (
-  echo "Previous command execution failed."
-  exit %ERRORLEVEL%
+if %errorlevel% NEQ 0 (
+  echo Previous command execution failed.
+  @echo on
+  exit /b %errorlevel%
 )
 
-@REM Run postgame, processing object traces and generating results.json
-python postgame\postgame.py %arguments%
+echo running postgame
+python3.10 postgame\postgame.py %arguments%
 
-IF %ERRORLEVEL% NEQ 0 (
-  echo "Previous command execution failed."
-  exit %ERRORLEVEL%
+if %errorlevel% NEQ 0 (
+  echo Previous command execution failed.
+  exit /b %errorlevel%
 )
 
-@REM Analyze results
-python analysis\evaluation.py %arguments%
+echo analyzing reuslts 
+python3.10 evaluation\evaluation.py %arguments%
+
+@echo on
