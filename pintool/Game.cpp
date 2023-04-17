@@ -11,23 +11,23 @@
 
 #include "pin.H"
 
-// Uncomment these to log messages of various levels
-// #define LOG_INFO
-// #define LOG_WARN
+/// Uncomment these to log messages of various levels
+/// #define LOG_INFO
+/// #define LOG_WARN
 
 using namespace std;
 
-// HACK: on Windows, Pintool uses STLP, which puts lots of the C++11 standard
-// library data structures into the tr1 namespace (as was normal pre-C++11).
-// Of course, this is fairly fragile because it depends on the exact
-// implementation Pin uses...but I doubt they'll change it in any way other
-// than eventually removing it and supporting C++11 on Windows
+/// HACK: on Windows, Pintool uses STLP, which puts lots of the C++11 standard
+/// library data structures into the tr1 namespace (as was normal pre-C++11).
+/// Of course, this is fairly fragile because it depends on the exact
+/// implementation Pin uses...but I doubt they'll change it in any way other
+/// than eventually removing it and supporting C++11 on Windows
 #ifdef _STLP_BEGIN_TR1_NAMESPACE
 using namespace std::tr1;
 #endif
 
-// malloc names -- not sure how correct it is, but it's how it's done in
-// malloctrace.c from pin examples
+/// malloc names -- not sure how correct it is, but it's how it's done in
+/// malloctrace.c from pin examples
 #ifdef TARGET_MAC
 #define MALLOC_SYMBOL "_malloc"
 #define FREE_SYMBOL "_free"
@@ -36,37 +36,19 @@ using namespace std::tr1;
 #define FREE_SYMBOL "free"
 #endif
 
-// Mangled delete operator (msvc-specific), not sure how applicable this is to
-// other compilers
+/// Mangled delete operator (msvc-specific), not sure how applicable this is to
+/// other compilers
 #define DELETE_OPERATOR_SIZE "??3@YAXPAXI@Z"
 #define DELETE_OPERATOR "??3@YAXPAX@Z"
 vector<string> deleteOperators;
 
+// ============================================================================
+//                                    Utilities
+// ============================================================================
+
 using Tid = OS_THREAD_ID;
 
 inline Tid GetTid() { return ::PIN_GetTid(); }
-
-// ============================================================================
-/// @brief Simple optional container (since std::optional doesn't exist in
-/// c++-03)
-template <typename T>
-class Optional {
- public:
-  void Set(T val) {
-    this->val = val;
-    this->valid = true;
-  }
-
-  void Invalidate() { this->valid = false; }
-
-  inline T get_val() const { return this->val; }
-
-  inline bool is_valid() const { return this->valid; }
-
- private:
-  T val{};
-  bool valid{false};
-};
 
 // ============================================================================
 /// @brief An entry in an object trace.
@@ -94,12 +76,12 @@ class ObjectTraceEntry {
   }
 
   friend ostream& operator<<(ostream& os, const ObjectTraceEntry& o) {
-    os << "{" << o.procedure << ", " << o.isCall << "}";
+    os << "{ 0x" << hex << o.procedure << ", " << dec << o.isCall << " }";
     return os;
   }
 };
 
-// Object traces are lists of ObjectTraceEntries.
+/// An object trace is a pointer to a list of ObjectTraceEntries.
 using ObjectTrace = vector<ObjectTraceEntry>*;
 
 // ============================================================================
@@ -118,6 +100,8 @@ struct ShadowStackEntry {
   ADDRINT procedure;
 };
 
+// ============================================================================
+//                                  Pin Knobs
 // ============================================================================
 KNOB<string> methodCandidatesPath(KNOB_MODE_WRITEONCE, "pintool",
                                   "method-candidates", "out/method-candidates",
@@ -140,70 +124,101 @@ KNOB<string> objectTracesPath(KNOB_MODE_WRITEONCE, "pintool", "object-traces",
                               "out/object-traces",
                               "Path to object traces output file.");
 
-// Potential method candidates, populated from the method candidates found
-// during pregame
+// ============================================================================
+/// Potential method candidates, populated from the method candidates found
+/// during pregame
 unordered_set<ADDRINT> methodCandidateAddrs;
 
-// Ground truth methods that were instrumented. Only populated during
-// evaluation and not used by KreO itself, just to measure method coverage.
+/// Ground truth methods that were instrumented. Only populated during
+/// evaluation and not used by KreO itself, just to measure method coverage.
 unordered_set<ADDRINT> gtMethodsInstrumented;
 
-// Ground truth method candidates, populated from ground truth method
-// candidates. Only used during evaluation and not used by KreO itself, just
-// used to measure method coverage.
+/// Ground truth method candidates, populated from ground truth method
+/// candidates. Only used during evaluation and not used by KreO itself, just
+/// used to measure method coverage.
 unordered_set<ADDRINT> gtMethodAddrs;
 
-// Current active object traces (those that are associated with objects that
-// are not deallocated). Map potential this-pointer to the object trace
-// associated with the pointer.
+/// Lock to manage active object traces. When registering callbacks using
+/// RTN_InsertCall, the pin client lock is not acquired, so we must manage
+/// our own lock.
+::PIN_LOCK activeObjectTracesLock;
+
+/// Current active object traces (those that are associated with objects that
+/// are not deallocated). Map potential this-pointer to the object trace
+/// associated with the pointer.
 map<ADDRINT, ObjectTrace> activeObjectTraces;
 
-// List of object traces that are done.
+/// Manages access to finishedObjectTraces.
+::PIN_LOCK finishedObjectTracesLock;
+
+/// List of object traces that are done.
 vector<ObjectTrace> finishedObjectTraces;
 
-// Lock to manage active object traces. When registering callbacks using
-// RTN_InsertCall, the pin client lock is not acquired, so we must manage
-// our own lock.
-::PIN_LOCK objectTracesLock;
-
+/// Our own stack that we use to allow us to perform proper call return
+/// matching. This is required because optimization may happen that results in
+/// some calls not having matching returns.
 vector<ShadowStackEntry> shadowStack;
 
-// number of times each return address appears in the method stack.
+/// number of times each return address appears in the method stack.
 unordered_map<ADDRINT, int> stackEntryCount;
 
-// Lock that manages access to heap allocated regions.
+/// Lock that manages access to heap allocated regions.
 ::PIN_LOCK heapAllocatedRegionsLock;
 
-// Map starts of regions to ends of regions.
+/// Map starts of regions to ends of regions.
 map<ADDRINT, ADDRINT> heapAllocatedRegions;
 
-// ^^^, but for mapped areas of memory (images). Used to determine valid object
-// ptrs
+/// ^^^, but for mapped areas of memory (images). Used to determine valid object
+/// ptrs.
 map<ADDRINT, ADDRINT> mappedRegions;
 
-// Base offset of the executable image.
+/// Base offset of the executable image. Used to offset procedure addresses so
+/// they are absolute and not relative to some offset base address of the loaded
+/// in image.
 ADDRINT lowAddr;
 
+/// Regulates access to tidToStackBaseMap.
 ::PIN_LOCK stackBaseLock;
 
-// Maps thread ID to the base of the stack for the thread associated with
-// said ID.
-map<Tid, ADDRINT> threadToStackBaseMap;
+/// Maps thread ID to the base of the stack for the thread associated with
+/// said ID.
+map<Tid, ADDRINT> tidToStackBaseMap;
 
-// Set of blacklisted addresses. Any address in the blacklist will have any
-// methods that call the address as this receiver removed from the list of
-// finalized object traces.
+/// Set of blacklisted procedures. This set is saved when the pintool is
+/// complete.
 set<ADDRINT> blacklistedProcedures;
 
-// can't use RTN methods during Fini, so we explicitly store all the symbol
-// names here (for debugging)
+/// Can't use RTN methods during Fini, so we explicitly store all the symbol
+/// names here during InstrumentImage (for debugging).
 unordered_map<ADDRINT, string> procedureSymbolNames;
+
+/// Regulates access to tidToMallocSize.
+::PIN_LOCK tidToMallocSizeLock;
+
+/// Maps thread ID to current malloc size recorded in a malloc observer
+/// function.
+map<Tid, ADDRINT> tidToMallocSize;
+
+/// Regulates access to threadToLastRetAddrMap.
+::PIN_LOCK threadToLastRetAddrLock;
+
+/// Updated when call instruction instrumented. Stores the last return address
+/// for each given thread.
+map<Tid, ADDRINT> threadToLastRetAddrMap;
 
 // ============================================================================
 /// @brief Removes any methods that are blacklisted from the finished object
 /// traces. Also removes the trace if the trace is empty after blacklisted
 /// procedures are removed from it.
+/// @note This does not guarantee that /all/ object-traces have all blacklisted
+/// procedures removed because we periodically write object-traces to disk
+/// before all blacklisted procedures have been identified. One should remove
+/// all blacklisted methods saved prior to performing additional analysis.
 void RemoveBlacklistedMethods() {
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&finishedObjectTracesLock, tid);
+
   for (auto traceIt = finishedObjectTraces.begin();
        traceIt != finishedObjectTraces.end();) {
     ObjectTrace trace = *traceIt;
@@ -218,20 +233,28 @@ void RemoveBlacklistedMethods() {
     }
 
     if (trace->empty()) {
+      // The trace contains not more entries (all were blacklisted), so remove
+      // the trace.
       traceIt = finishedObjectTraces.erase(traceIt);
       delete trace;
     } else {
       traceIt++;
     }
   }
+
+  ::PIN_ReleaseLock(&finishedObjectTracesLock);
 }
 
 // ============================================================================
-/// @brief Writes finished object traces to disk.
-void WriteObjectTraces() {
+/// @brief Write all finished object traces to disk.
+void WriteFinishedObjectTraces() {
   RemoveBlacklistedMethods();
 
-  cout << "writing object traces..." << endl;
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&finishedObjectTracesLock, tid);
+
+  cout << "writing object traces from thread " << tid << "..." << endl;
   string objectTracesPathStr = objectTracesPath.Value().c_str();
 
   ofstream os(objectTracesPathStr.c_str(), ios_base::app);
@@ -248,6 +271,8 @@ void WriteObjectTraces() {
 
   finishedObjectTraces.clear();
   cout << "object traces written" << endl;
+
+  ::PIN_ReleaseLock(&finishedObjectTracesLock);
 }
 
 // ============================================================================
@@ -291,22 +316,36 @@ void ParsePregame() {
 /// @note The iterator is not removed from the activeObjectTraces. The user is
 /// responsible for erasing the iterator.
 void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
+  assert(GetTid() == activeObjectTracesLock._owner);
+
   ObjectTrace objectTrace = it->second;
   assert(objectTrace != nullptr);
+  // Relinquish ownership of the ObjectTrace (mostly just a safety measure to
+  // ensure if the user does not remove the iterator from activeObjectTraces
+  // they at least won't have access to the ObjectTrace they requested to end).
   it->second = nullptr;
 
   if (objectTrace->empty()) {
     // Don't insert empty object trace
     delete objectTrace;
   } else {
+    Tid tid = GetTid();
+
+    ::PIN_GetLock(&finishedObjectTracesLock, tid);
+
+    // Check to see if the iterator associated with the object trace being
+    // finished is already in finishedObjectTraces.
     const auto& finishedObjectTracesIt =
         find_if(finishedObjectTraces.begin(),
                 finishedObjectTraces.end(),
                 [objectTrace](const ObjectTrace finishedObjectTrace) {
                   return *finishedObjectTrace == *objectTrace;
                 });
+
     if (finishedObjectTracesIt == finishedObjectTraces.end()) {
       if (objectTrace->size() == 1) {
+        ::PIN_ReleaseLock(&finishedObjectTracesLock);
+
         // This is invalid since each call must have a matching return in the
         // object-trace.
         cout << "attempting to add object-trace with size 1: "
@@ -317,11 +356,15 @@ void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
         finishedObjectTraces.push_back(objectTrace);
 
         if (finishedObjectTraces.size() > 1000) {
-          WriteObjectTraces();
-          cout << "###### " << dec << activeObjectTraces.size() << endl;
+          ::PIN_ReleaseLock(&finishedObjectTracesLock);
+          WriteFinishedObjectTraces();
+        } else {
+          ::PIN_ReleaseLock(&finishedObjectTracesLock);
         }
       }
     } else {
+      ::PIN_ReleaseLock(&finishedObjectTracesLock);
+
       // Don't insert duplicate object trace
       delete objectTrace;
     }
@@ -332,6 +375,8 @@ void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
 /// @brief Ends object trace with object pointer address of objPtr. If objPtr
 /// doesn't exist (isn't in activeObjectTraces), does nothing.
 void EndObjectTrace(ADDRINT objPtr) {
+  assert(GetTid() == activeObjectTracesLock._owner);
+  
   auto it = activeObjectTraces.find(objPtr);
   if (it != activeObjectTraces.end()) {
     EndObjectTraceIt(it);
@@ -342,6 +387,7 @@ void EndObjectTrace(ADDRINT objPtr) {
 // ============================================================================
 /// @brief Ends any object traces whose object pointers reside within the
 /// given region, that is, within the set of values [regionStart, regionEnd).
+/// It is required that regionStart <= regionEnd.
 /// The global activeObjectTraces object will be modified by this function.
 void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
   // lower_bound means that the argument is the lower bound and that the
@@ -349,6 +395,7 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
   // argument. And, as you'd expect, upper_bound points /after/ the position
   // you really want, to make it easy to use in the end condition of a loop.
 
+  assert(GetTid() == activeObjectTracesLock._owner);
   assert(regionStart <= regionEnd);
 
   auto firstTrace = activeObjectTraces.lower_bound(regionStart);
@@ -363,13 +410,16 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
 //                          Malloc/Free Observers
 // ============================================================================
 
-Optional<ADDRINT> mallocSize;
-
 // ============================================================================
-// TODO this won't work when an executable being instrumented has threads
 /// @brief Call when malloc is called. Stores the size malloced.
 /// @param size Size to be malloc'ed.
-void MallocBeforeCallback(ADDRINT size) { mallocSize.Set(size); }
+void MallocBeforeCallback(ADDRINT size) {
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&tidToMallocSizeLock, tid);
+  tidToMallocSize[tid] = size;
+  ::PIN_ReleaseLock(&tidToMallocSizeLock);
+}
 
 // ============================================================================
 /// @brief Call when malloc returned from. Adds new heap allocated region.
@@ -384,23 +434,24 @@ void MallocAfterCallback(ADDRINT regionStart) {
   }
 #endif
 
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&tidToMallocSizeLock, tid);
+  assert(tidToMallocSize.count(tid) != 0);
+  ADDRINT mallocSize = tidToMallocSize[tid];
+  tidToMallocSize.erase(tid);
+  ::PIN_ReleaseLock(&tidToMallocSizeLock);
+
 #ifdef LOG_INFO
   stringstream ss;
-  ss << "Malloc @ " << regionStart << " (" << dec << mallocSize.get_val()
-     << " bytes)" << endl;
+  ss << "Malloc @ " << regionStart << " (" << dec << mallocSize << " bytes)"
+     << endl;
   LOG(ss.str());
 #endif
 
-  // If mallocSize is -1, MallocBeforeCallback wasn't called or there is some
-  // issue with interleaved calls to MallocBeforeCallback and
-  // MallocAfterCallback.
-  assert(mallocSize.is_valid());
-
   ::PIN_GetLock(&heapAllocatedRegionsLock, GetTid());
-  heapAllocatedRegions[regionStart] = regionStart + mallocSize.get_val();
+  heapAllocatedRegions[regionStart] = regionStart + mallocSize;
   ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
-
-  mallocSize.Invalidate();
 }
 
 // ============================================================================
@@ -435,9 +486,9 @@ void FreeBeforeCallback(ADDRINT freedRegionStart) {
     heapAllocatedRegions.erase(freedRegionIt);
     ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
 
-    ::PIN_GetLock(&objectTracesLock, tid);
+    ::PIN_GetLock(&activeObjectTracesLock, tid);
     EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
-    ::PIN_ReleaseLock(&objectTracesLock);
+    ::PIN_ReleaseLock(&activeObjectTracesLock);
   }
 }
 
@@ -488,16 +539,10 @@ void OnDeleteInstrumented(ADDRINT deletedObject) {
 PIN_LOCK lastStackPtrLock;
 map<Tid, ADDRINT> threadIdToLastStackPtrMap;
 
-/// @brief Call before stack incrase happens.
+/// @brief Called before stack increase happens.
 /// @param stackPtr Stack pointer at point before stack increase happens.
 void StackIncreaseBeforeCallback(ADDRINT stackPtr) {
   Tid tid = GetTid();
-
-  ::PIN_GetLock(&stackBaseLock, tid);
-  if (threadToStackBaseMap.count(tid) == 0) {
-    threadToStackBaseMap[tid] = stackPtr;
-  }
-  ::PIN_ReleaseLock(&stackBaseLock);
 
   ::PIN_GetLock(&lastStackPtrLock, tid);
   threadIdToLastStackPtrMap[tid] = stackPtr;
@@ -524,9 +569,8 @@ void StackIncreaseCallback(ADDRINT stackPtr) {
 
   // Update stack base if the stack pointer is < the currently recorded base.
   ::PIN_GetLock(&stackBaseLock, tid);
-  if (threadToStackBaseMap.count(tid) == 0 ||
-      threadToStackBaseMap[tid] < stackPtr) {
-    threadToStackBaseMap[tid] = stackPtr;
+  if (tidToStackBaseMap.count(tid) == 0 || tidToStackBaseMap[tid] < stackPtr) {
+    tidToStackBaseMap[tid] = stackPtr;
   }
   ::PIN_ReleaseLock(&stackBaseLock);
 
@@ -534,9 +578,10 @@ void StackIncreaseCallback(ADDRINT stackPtr) {
   ADDRINT lastStackPtr = threadIdToLastStackPtrMap[tid];
   ::PIN_ReleaseLock(&lastStackPtrLock);
 
-  ::PIN_GetLock(&objectTracesLock, tid);
+  // End traces in the deallocated region.
+  ::PIN_GetLock(&activeObjectTracesLock, tid);
   EndObjectTracesInRegion(lastStackPtr, stackPtr);
-  ::PIN_ReleaseLock(&objectTracesLock);
+  ::PIN_ReleaseLock(&activeObjectTracesLock);
 }
 
 // ============================================================================
@@ -551,26 +596,16 @@ bool IsPossibleStackIncrease(INS ins) {
   // one, it shouldn't matter unless you are jumping to an object pointer -- and
   // in that case, we have larger problems!
 
-// Identifying operation codes for various instructions that we exclude.
+/// Identifying operation codes for various instructions that we exclude.
 #define RET_NEAR 740
 #define CALL_NEAR 75
 #define POP 616
 #define PUSH 671
 
-  UINT32 operandCount = LEVEL_CORE::INS_OperandCount(ins);
-  for (UINT32 opIdx = 0; opIdx < operandCount; opIdx++) {
-    // If the instruction operand at the given index is written to and if the
-    // operand register is the stack pointer
-    if (LEVEL_CORE::INS_OperandWritten(ins, opIdx) &&
-        LEVEL_CORE::INS_OperandReg(ins, opIdx) == REG_STACK_PTR) {
-      return true;
-    }
-  }
-
   OPCODE insOpcode = LEVEL_CORE::INS_Opcode(ins);
 
   // Note: checking insOpcode == PUSH and insOpcode == CALL_NEAR are not
-  // required but are don't to avoid as many calls to stack checking.
+  // required but are done to avoid as many calls to stack checking.
   if (insOpcode == RET_NEAR || insOpcode == CALL_NEAR || insOpcode == POP ||
       insOpcode == PUSH || LEVEL_CORE::INS_IsSub(ins)) {
     return false;
@@ -581,18 +616,13 @@ bool IsPossibleStackIncrease(INS ins) {
 
 // ============================================================================
 
-/// Updated when call instruction instrumented.
-::PIN_LOCK lastRetAddrLock;
-
-map<Tid, ADDRINT> threadToLastRetAddrMap;
-
 /// @brief Called when a call instruction is called. Saves return address.
 /// @param retAddr Expected return address for the given call.
 void CallCallback(ADDRINT retAddr) {
   Tid tid = GetTid();
-  ::PIN_GetLock(&lastRetAddrLock, tid);
+  ::PIN_GetLock(&threadToLastRetAddrLock, tid);
   threadToLastRetAddrMap[tid] = retAddr;
-  ::PIN_ReleaseLock(&lastRetAddrLock);
+  ::PIN_ReleaseLock(&threadToLastRetAddrLock);
 }
 
 // ============================================================================
@@ -617,8 +647,8 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
   Tid tid = GetTid();
 
   ::PIN_GetLock(&stackBaseLock, tid);
-  assert(threadToStackBaseMap.count(tid) != 0);
-  ADDRINT stackBase = threadToStackBaseMap[tid];
+  assert(tidToStackBaseMap.count(tid) != 0);
+  ADDRINT stackBase = tidToStackBaseMap[tid];
   ::PIN_ReleaseLock(&stackBaseLock);
 
   // If within stack, address valid.
@@ -639,8 +669,12 @@ bool IsPossibleObjPtr(ADDRINT ptr, ADDRINT stackPtr) {
 }
 
 // ============================================================================
-/// @brief Inserts object trace entry into the active object traces
+/// @brief Inserts object trace entry into the active object traces.
+/// @note Caller is required to obtain the activeObjectTracesLock prior to calling
+/// This function.
 void InsertObjectTraceEntry(ADDRINT objPtr, const ObjectTraceEntry& entry) {
+  assert(GetTid() == activeObjectTracesLock._owner);
+
   auto objectTraceIt = activeObjectTraces.find(objPtr);
 
   // No active object-trace for the given objPtr, so create a new object trace.
@@ -663,7 +697,7 @@ void InsertObjectTraceEntry(ADDRINT objPtr, const ObjectTraceEntry& entry) {
 
 // ============================================================================
 // Shadow stack helpers
-// ============================================================================
+// ============================================================================s
 /// @brief Removes the top entry in the shadow stack and decrements the
 /// associated counter in the stackEntryCount. Also removes the entry in the
 /// stackEntryCount if the counter is 0 to preserve memory.
@@ -753,11 +787,11 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
 
   Tid tid = GetTid();
 
-  ::PIN_GetLock(&objectTracesLock, tid);
+  ::PIN_GetLock(&activeObjectTracesLock, tid);
   InsertObjectTraceEntry(objPtr, ObjectTraceEntry(procAddr, true));
-  ::PIN_ReleaseLock(&objectTracesLock);
+  ::PIN_ReleaseLock(&activeObjectTracesLock);
 
-  ::PIN_GetLock(&lastRetAddrLock, tid);
+  ::PIN_GetLock(&threadToLastRetAddrLock, tid);
   // should always appear just after a `call` (or should it?)
   if (threadToLastRetAddrMap.count(tid) == 0) {
     // return address invalid, don't add procedure to shadow stack
@@ -775,16 +809,12 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
     shadowStack.push_back(
         ShadowStackEntry(objPtr, threadToLastRetAddrMap[tid], procAddr));
 
-    // TODO this is for debugging purposes since I don't think
-    // stackEntryCount can ever have a nonzero entry at this point
-    assert(stackEntryCount[threadToLastRetAddrMap[tid]] == 0);
-
     stackEntryCount[threadToLastRetAddrMap[tid]]++;
 
     threadToLastRetAddrMap.erase(tid);
   }
 
-  ::PIN_ReleaseLock(&lastRetAddrLock);
+  ::PIN_ReleaseLock(&threadToLastRetAddrLock);
 }
 
 // ============================================================================
@@ -806,9 +836,8 @@ void RetCallback(ADDRINT returnAddr) {
   if (!IgnoreReturn(returnAddr)) {
     ShadowStackEntry stackTop = ShadowStackRemoveAndReturnTop();
 
-    ::PIN_GetLock(&objectTracesLock, 0);
+    ::PIN_GetLock(&activeObjectTracesLock, GetTid());
 
-    // TODO I don't think this comment matches the logic????
     // If the first element in the object trace is a returned value, the
     // function is likely a scalar/vector deleting destructor that is not
     // actually a method of the class. Blacklist the method.
@@ -819,7 +848,7 @@ void RetCallback(ADDRINT returnAddr) {
                              ObjectTraceEntry(stackTop.procedure, false));
     }
 
-    ::PIN_ReleaseLock(&objectTracesLock);
+    ::PIN_ReleaseLock(&activeObjectTracesLock);
   }
 }
 
@@ -828,10 +857,10 @@ void RetCallback(ADDRINT returnAddr) {
 // ============================================================================
 
 #ifdef _WIN32
-// in this case, FUNCARG ENTRYPOINT stuff doesn't know whether it's a method or
-// not, and probably looks at the stack. TODO: figure out how FUNCARG ENTRYPOINT
-// works in general, and if we're allowed to put it on things we haven't marked
-// as routines.
+/// in this case, FUNCARG ENTRYPOINT stuff doesn't know whether it's a method or
+/// not, and probably looks at the stack. TODO: figure out how FUNCARG
+/// ENTRYPOINT works in general, and if we're allowed to put it on things we
+/// haven't marked as routines.
 #define IARG_KREO_FIRST_ARG IARG_REG_VALUE
 #define IARG_KREO_FIRST_ARG_VALUE REG_ECX
 #else
@@ -847,8 +876,8 @@ void InstrumentInstruction(INS ins, void*) {
   // We want to instrument:
   // + Calls to candidate methods, to add to the trace.
   // + Return instructions, to add to the trace.
-  // + Upward motion of the stack pointer, to track allocated memory and perhaps
-  // end traces.
+  // + Upward motion of the stack pointer, to track allocated memory and end
+  //   traces in deallocated regions.
 
   ADDRINT insRelAddr = INS_Address(ins) - lowAddr;
   if (methodCandidateAddrs.count(insRelAddr) == 1) {
@@ -1013,17 +1042,21 @@ void InstrumentUnloadImage(IMG img, void*) {
 void Fini(INT32 code, void*) {
   cout << "Program run completed, writing object traces to disk..." << endl;
 
+  ::PIN_GetLock(&activeObjectTracesLock, GetTid());
+
   // End all in-progress traces, then print all to disk.
   auto lastObjectTraceIt = activeObjectTraces.rbegin();
   if (lastObjectTraceIt != activeObjectTraces.rend()) {
     EndObjectTracesInRegion(0, lastObjectTraceIt->first);
   }
 
+  ::PIN_ReleaseLock(&activeObjectTracesLock);
+
   cout << "Blacklisted methods removed, found " << finishedObjectTraces.size()
        << " valid unique object traces. Writing object traces to a file..."
        << endl;
 
-  WriteObjectTraces();
+  WriteFinishedObjectTraces();
 
   ofstream os;
   os.close();
@@ -1055,8 +1088,16 @@ void OnThreadStart(THREADID threadIndex, LEVEL_VM::CONTEXT* ctxt, INT32 flags,
                    VOID* v) {
   ADDRINT sp = PIN_GetContextReg(ctxt, ::REG_STACK_PTR);
 
-  cout << "Thread started " << GetTid() << ", " << threadIndex
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&stackBaseLock, tid);
+
+  cout << "Thread started " << tid << ", " << threadIndex
        << ", stack pointer: 0x" << hex << sp << dec << endl;
+
+  tidToStackBaseMap[tid] = sp;
+
+  ::PIN_ReleaseLock(&stackBaseLock);
 }
 
 void OnThreadFini(THREADID threadIndex, const ::CONTEXT* ctxt, INT32 code,
@@ -1071,10 +1112,12 @@ int main(int argc, char** argv) {
   ::PIN_Init(argc, argv);
   ParsePregame();
 
-  ::PIN_InitLock(&objectTracesLock);
+  ::PIN_InitLock(&activeObjectTracesLock);
   ::PIN_InitLock(&heapAllocatedRegionsLock);
   ::PIN_InitLock(&stackBaseLock);
-  ::PIN_InitLock(&lastRetAddrLock);
+  ::PIN_InitLock(&threadToLastRetAddrLock);
+  ::PIN_InitLock(&finishedObjectTracesLock);
+  ::PIN_InitLock(&tidToMallocSizeLock);
 
   IMG_AddInstrumentFunction(InstrumentImage, NULL);
   IMG_AddUnloadFunction(InstrumentUnloadImage, NULL);
