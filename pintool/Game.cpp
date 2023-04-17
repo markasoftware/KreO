@@ -1051,7 +1051,7 @@ void InstrumentUnloadImage(IMG img, void*) {
 }
 
 void Fini(INT32 code, void*) {
-  cout << "Program run completed, writing object traces to disk..." << endl;
+  cout << "Program run completed, ending " << activeObjectTraces.size() << " active object traces" << endl;
 
   ::PIN_GetLock(&activeObjectTracesLock, GetTid());
 
