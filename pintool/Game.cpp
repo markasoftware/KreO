@@ -17,6 +17,9 @@
 
 using namespace std;
 
+/// Max number of elements in the finished object traces map.
+#define FINISHED_OBJECT_TRACES_MAX_SIZE 1'000
+
 /// HACK: on Windows, Pintool uses STLP, which puts lots of the C++11 standard
 /// library data structures into the tr1 namespace (as was normal pre-C++11).
 /// Of course, this is fairly fragile because it depends on the exact
@@ -154,6 +157,12 @@ map<ADDRINT, ObjectTrace> activeObjectTraces;
 /// List of object traces that are done.
 vector<ObjectTrace> finishedObjectTraces;
 
+/// Total number of object traces found (number includes those already
+/// written to memory). This is a rough estimate that does not include
+/// object-traces that are eliminated because they contain only blacklisted
+/// procedures.
+ADDRINT totalObjectTraces = 0;
+
 /// Our own stack that we use to allow us to perform proper call return
 /// matching. This is required because optimization may happen that results in
 /// some calls not having matching returns.
@@ -269,6 +278,8 @@ void WriteFinishedObjectTraces() {
     delete trace;
   }
 
+  totalObjectTraces += finishedObjectTraces.size();
+
   finishedObjectTraces.clear();
   cout << "object traces written" << endl;
 
@@ -355,7 +366,7 @@ void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
       } else {
         finishedObjectTraces.push_back(objectTrace);
 
-        if (finishedObjectTraces.size() > 1000) {
+        if (finishedObjectTraces.size() > FINISHED_OBJECT_TRACES_MAX_SIZE) {
           ::PIN_ReleaseLock(&finishedObjectTracesLock);
           WriteFinishedObjectTraces();
         } else {
@@ -1052,11 +1063,9 @@ void Fini(INT32 code, void*) {
 
   ::PIN_ReleaseLock(&activeObjectTracesLock);
 
-  cout << "Blacklisted methods removed, found " << finishedObjectTraces.size()
-       << " valid unique object traces. Writing object traces to a file..."
-       << endl;
-
+  cout << "Blacklisted methods removed. Writing object-traces to a file..." << endl;
   WriteFinishedObjectTraces();
+  cout << "Wrote approximately " << totalObjectTraces << " object-traces" << endl;
 
   ofstream os;
   os.close();
