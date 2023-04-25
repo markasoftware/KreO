@@ -59,5 +59,5 @@ class Method:
 
     def __str__(self) -> str:
         return ('' if self.name == None else (self.name + ' ')) +\
-               hex(self.address) +\
+               str(self.address) +\
                ('' if self.type == '' else ' ' + self.type)
