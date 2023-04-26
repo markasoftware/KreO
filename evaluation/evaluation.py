@@ -11,8 +11,6 @@ fpath = pathlib.Path(__file__).parent.absolute()
 
 sys.path.append(os.path.join(fpath, '..'))
 
-from parseconfig import config
-
 kConstructorType = 'ctor'
 kDestructorType = 'dtor'
 kBaseAddr = 0x400000
@@ -587,19 +585,17 @@ def MatchGenToGtClasses(ground_truth: List[ClassInfo],
 
     return matched_classes
 
-def main():
-    gt_class_info_list = LoadClassInfoListFromJson(config['gtResultsJson'])
+def run_evaluation(gt_class_info, gen_class_info, results_path, results_instrumented_path, gt_methods_instrumented_path):
+    gt_class_info_list = LoadClassInfoListFromJson(gt_class_info)
 
-    gen_class_info_list = LoadClassInfoListFromJson(config['resultsJson'])
+    gen_class_info_list = LoadClassInfoListFromJson(gen_class_info)
 
-    gt_methods_instrumented = get_gt_methods_instrumented_set(config['gtMethodsInstrumentedPath'])
+    if gt_methods_instrumented_path is not None:
+        gt_methods_instrumented = get_gt_methods_instrumented_set(gt_methods_instrumented_path)
 
-    LoadAndRecordGtMethodStats(gt_methods_instrumented,
-                               gt_class_info_list,
-                               config['gtMethodsInstrumentedPath'] + '.stats')
-
-    results_path = config['resultsPath']
-    results_instrumented_path = config['resultsInstrumentedPath']
+        LoadAndRecordGtMethodStats(gt_methods_instrumented,
+                                gt_class_info_list,
+                                gt_methods_instrumented_path + '.stats')
 
     def RunAllTests(gt_class_info_list: List[ClassInfo], file: TextIOWrapper):
         '''
@@ -624,10 +620,18 @@ def main():
     with open(results_path, 'w') as gt_out:
         RunAllTests(gt_class_info_list, gt_out)
 
-    gt_class_info_instrumented_list = GetGtClassInfoInstrumentedList(gt_methods_instrumented, gt_class_info_list)
+    if gt_methods_instrumented_path is not None:
+        gt_class_info_instrumented_list = GetGtClassInfoInstrumentedList(gt_methods_instrumented, gt_class_info_list)
 
-    with open(results_instrumented_path, 'w') as gt_out_instrumented:
-        RunAllTests(gt_class_info_instrumented_list, gt_out_instrumented)
+        with open(results_instrumented_path, 'w') as gt_out_instrumented:
+            RunAllTests(gt_class_info_instrumented_list, gt_out_instrumented)
+
+def main():
+    from parseconfig import config
+
+    run_evaluation(config['gtResultsJson'], config['resultsJson'],
+                   config['resultsPath'], config['resultsInstrumentedPath'],
+                    config['gtMethodsInstrumentedPath'])
 
 if __name__ == '__main__':
     main()
