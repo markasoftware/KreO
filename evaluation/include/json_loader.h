@@ -22,9 +22,6 @@ class JsonLoader {
 
     file.close();
 
-    boost::json::error_code ec;
-    boost::json::stream_parser parser;
-
     return boost::json::parse(buf.data());
   }
 };

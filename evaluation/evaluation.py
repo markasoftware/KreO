@@ -151,9 +151,9 @@ def LoadAndRecordGtMethodStats(gt_methods_instrumented_set: Set[int],
             gt_methods += 1
 
     with open(gt_method_stats_fname, 'w') as gt_method_info:
-        gt_coverage_all_methods = float(len(gt_methods_instrumented_set)) / float(gt_methods)
-        gt_coverage_ctor = float(ctor_instrumented) / float(len(ctor_set))
-        gt_coverage_dtor = float(dtor_instrumented) / float(len(dtor_set))
+        gt_coverage_all_methods = float(len(gt_methods_instrumented_set)) / float(gt_methods) if gt_methods != 0 else 0
+        gt_coverage_ctor = float(ctor_instrumented) / float(len(ctor_set)) if len(ctor_set) != 0 else 0.0
+        gt_coverage_dtor = float(dtor_instrumented) / float(len(dtor_set)) if len(dtor_set) != 0 else 0.0
 
         gt_method_info.write('all method coverage: {:.2}, ctor coverage: {:.2}, dtor coverage: {:.2}'
             .format(gt_coverage_all_methods, gt_coverage_ctor, gt_coverage_dtor))
@@ -387,7 +387,8 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
         precision += result.precision * result.ground_truth_class_size
         recall += result.recall * result.ground_truth_class_size
         total_methods += result.ground_truth_class_size
-    return (precision / (float(total_methods)), recall / float(total_methods))
+    return (precision / (float(total_methods))) if total_methods != 0 else 0, \
+           (recall / float(total_methods)) if total_methods != 0 else 0
 
 def get_gen_gt_cls_pair(gen_cls_mangled_name: str,
                         matched_classes: Set[Tuple[ClassInfo, ClassInfo]]) -> Tuple[ClassInfo, ClassInfo]:

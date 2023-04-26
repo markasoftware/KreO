@@ -18,12 +18,16 @@ link_directories(${Boost_LIBRARY_DIRS})
 add_executable(analyze_pdb_dump src/analyze_pdb_dump.cpp)
 
 target_sources(analyze_pdb_dump PRIVATE
-    src/pdb_analyzer.cpp
-    src/pdb_results.cpp)
+    src/analyze_pdb_dump.cpp
+    src/pdb_organizer.cpp
+    src/pdb_parser.cpp
+    src/pdb_results_generator.cpp
+    src/type_data_instances.cpp
+    src/utils.cpp)
 
 target_link_libraries(analyze_pdb_dump ${Boost_LIBRARIES})
 
-target_compile_features(analyze_pdb_dump PRIVATE cxx_std_17)
+target_compile_features(analyze_pdb_dump PRIVATE cxx_std_20)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
