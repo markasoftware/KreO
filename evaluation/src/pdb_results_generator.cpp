@@ -38,13 +38,14 @@ boost::json::object PdbResultsGenerator::json_generate_base_class_info(
 }
 
 boost::json::object PdbResultsGenerator::json_generate_method_info(
-    const std::string &name, const std::string &addr) const {
+    const std::string &name, const std::string &addr,
+    const std::string &type) const {
   boost::json::object method;
   method["demangled_name"] = name;
   method["ea"] = addr;
   method["import"] = false;
   method["name"] = name;
-  method["type"] = "meth";  // TODO
+  method["type"] = type;
   return method;
 }
 
@@ -66,15 +67,83 @@ boost::json::value PdbResultsGenerator::ToJson() const {
 
     const auto &method_list = method_list_it->second;
 
+    // Removing namespace (make sure not to remove any namespace inside
+    // template) Do this by first removing trailing namespace after class name,
+    // then removing everything before last "::"
+    auto remove_trailing_template = [](const std::string &cls_name) {
+      std::string class_name_template_removed = cls_name;
+      if (class_name_template_removed[class_name_template_removed.size() - 1] ==
+          '>') {
+        size_t num_brackets{1};
+        class_name_template_removed = class_name_template_removed.substr(
+            0, class_name_template_removed.size() - 1);
+
+        while (num_brackets > 0) {
+          size_t next_close = class_name_template_removed.rfind('>');
+          size_t next_open = class_name_template_removed.rfind('<');
+
+          if (next_close == std::string::npos || next_close < next_open) {
+            num_brackets--;
+            class_name_template_removed =
+                class_name_template_removed.substr(0, next_open);
+          } else {
+            num_brackets++;
+            class_name_template_removed =
+                class_name_template_removed.substr(0, next_close);
+          }
+        }
+      }
+      return class_name_template_removed;
+    };
+
+    std::string class_name_template_removed =
+        remove_trailing_template(cls->get_class_name());
+    size_t last_colons = class_name_template_removed.rfind("::");
+    std::string constructor_name =
+        last_colons == std::string::npos
+            ? cls->get_class_name()
+            : cls->get_class_name().substr(last_colons + 2);
+
     boost::json::object method_objs;
     for (const auto &method : method_list) {
-      size_t addr = method->get_addr();
-      if (addr != 0) {
-        std::stringstream ea_ss;
-        ea_ss << "0x" << std::hex << method->get_addr();
-        method_objs[ea_ss.str()] =
-            json_generate_method_info(method->get_name(), ea_ss.str());
+      size_t addr = method.addr;
+      std::stringstream ea_ss;
+      ea_ss << "0x" << std::hex << addr;
+
+      std::string type;
+      std::cout << method.name << std::endl;
+      if (method.name.find(cls->get_class_name()) == 0) {
+        if (method.name == cls->get_class_name() + "::" + constructor_name) {
+          type = "ctor";
+        } else if (method.name ==
+                   cls->get_class_name() + "::~" + constructor_name) {
+          type = "dtor";
+        } else {
+          type = "meth";
+        }
+      } else {
+        // This might happen if name is a bit mangled
+        // For example, `main'::`209'::TestUtil vs main::L209::TestUtil
+        // Get method name with leading namespace removed
+
+        std::string method_name_template_removed =
+            remove_trailing_template(method.name);
+        last_colons = method_name_template_removed.rfind("::");
+        std::string method_name = last_colons == std::string::npos
+                                      ? method.name
+                                      : method.name.substr(last_colons + 2);
+
+        if (method_name == constructor_name) {
+          type = "ctor";
+        } else if (method_name == "~" + constructor_name) {
+          type = "dtor";
+        } else {
+          type = "meth";
+        }
       }
+
+      method_objs[ea_ss.str()] =
+          json_generate_method_info(method.name, ea_ss.str(), type);
     }
 
     // Get field list associated with this class.

@@ -23,7 +23,7 @@ def generateJsonSingleClass(methodList: List[MethodInfo], jsonFname):
             'demangled_name': hex(method.address),
             'ea': hex(method.address),
             'import': False,
-            'name': method.type + '_' + hex(method.address),
+            'name': method.name,
             'type': method.type,
         }
 

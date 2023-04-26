@@ -20,7 +20,7 @@ static TypeId ToTypeId(const std::string &str) {
   if (str == "LF_MFUNCTION") {
     return TypeId::kMemberFunction;
   }
-  if (str == "LF_CLASS") {
+  if (str == "LF_CLASS" || str == "LF_STRUCTURE") {
     return TypeId::kClass;
   }
   if (str == "LF_FIELDLIST") {
@@ -53,8 +53,6 @@ void PdbParser::ParseTypeData() {
       type_to_typedata_map_[td->get_type()] = td;
     }
   }
-
-  std::cout << type_to_typedata_map_.size() << std::endl;
 }
 
 // ============================================================================
@@ -81,19 +79,15 @@ void PdbParser::ParseSymbols() {
   SeekToSymbols();
 
   std::string next_line = PeekNextLine();
-  int ii=0;
   while (next_line != "*** GLOBALS") {
     if (next_line == "" || next_line.find("** Module: ") != std::string::npos) {
       GetNextLine();
     } else {
-      ii++;
       HandleNextSymbol();
     }
 
     next_line = PeekNextLine();
   }
-
-  std::cout << "symbols " << ii<< std::endl;
 }
 
 // ============================================================================
@@ -205,8 +199,11 @@ void PdbParser::HandleNextSymbol() {
 
       // We only care about the type if it exists in the typedata map.
       if (type_to_typedata_map_.contains(type)) {
-        type_to_typedata_map_[type]->set_addr(addr);
-        type_to_typedata_map_[type]->set_name(name);
+        procedure_list_.push_back(ProcedureSymbolData{
+            .type_id{type},
+            .addr{addr},
+            .name{name},
+        });
       }
     }
   }

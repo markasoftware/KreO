@@ -21,9 +21,10 @@ class MethodInfo:
     '''
     Object that contains an address and type associated with a particular method.
     '''
-    def __init__(self, address: int, type: str):
+    def __init__(self, address: int, type: str, name: str):
         self.address = address
         self.type = type
+        self.name = name
 
     def __str__(self):
         return f'(ea: {hex(self.address)}, {self.type})'
@@ -182,7 +183,8 @@ def LoadClassInfoListFromJson(json_str: str) -> List[ClassInfo]:
         for method in methods.values():
             method_ea = int(method['ea'], 16)
             type = method['type']
-            method_set.add(MethodInfo(method_ea, type))
+            name = method['name']
+            method_set.add(MethodInfo(method_ea, type, name))
 
         # Extract class members (parent classes)
         for member in members.values():

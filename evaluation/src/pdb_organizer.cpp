@@ -8,6 +8,9 @@ void PdbOrganizer::Organize(const PdbParser &parser) {
   const std::map<size_t, std::shared_ptr<TypeData>> &type_to_typedata_map =
       parser.get_type_to_typedata_map();
 
+  const std::vector<ProcedureSymbolData> &procedure_list =
+      parser.get_procedure_list();
+
   std::map<std::string, size_t> unique_class_name_to_type_id;
 
   // First pass (map unique class names to type IDs)
@@ -114,28 +117,18 @@ void PdbOrganizer::Organize(const PdbParser &parser) {
   //   }
   // }
 
-  for (const auto &procedure : type_id_to_procedure_data_map_) {
-    size_t ref_class_type = procedure.second->get_class_type_ref();
-    size_t class_type = ref_cls_to_defined_cls_map_[ref_class_type];
+  for (const auto &procedure : procedure_list) {
+    const auto &proc_data = type_id_to_procedure_data_map_[procedure.type_id];
+    size_t class_type =
+        ref_cls_to_defined_cls_map_[proc_data->get_class_type_ref()];
 
-    if (!class_type_to_procedure_list_.contains(class_type)) {
-      class_type_to_procedure_list_[class_type] =
-          std::vector<std::shared_ptr<ProcedureTypeData>>();
+    if (!class_type_to_symbol_proc_list_.contains(class_type)) {
+      if (proc_data->get_call_type() == "ThisCall") {
+        class_type_to_symbol_proc_list_[class_type] =
+            std::vector<ProcedureSymbolData>();
+      }
     }
 
-    class_type_to_procedure_list_.find(class_type)
-        ->second.push_back(procedure.second);
+    class_type_to_symbol_proc_list_[class_type].push_back(procedure);
   }
-
-  // for (const auto &it : class_type_to_procedure_list_) {
-  //   std::cout << std::hex << it.first << std::endl;
-
-  //   for (const auto &it2 : it.second) {
-  //     std::cout << "    " << *it2 << std::endl;
-  //   }
-
-  //   std::cout << std::endl;
-  // }
-
-  // std::cout << "=============" << std::endl;
 }

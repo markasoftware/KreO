@@ -8,6 +8,13 @@
 
 #include "type_data.h"
 
+
+struct ProcedureSymbolData {
+  size_t type_id{};
+  size_t addr{};
+  std::string name{};
+};
+
 /**
  * Parse the given PDB file. Extracts object oriented features from the PDB
  * file and stores them in a data structure contained in this class. Data can
@@ -29,6 +36,10 @@ class PdbParser {
   const std::map<size_t, std::shared_ptr<TypeData>> &get_type_to_typedata_map()
       const {
     return type_to_typedata_map_;
+  }
+
+  const std::vector<ProcedureSymbolData> &get_procedure_list() const {
+    return procedure_list_;
   }
 
  private:
@@ -65,6 +76,8 @@ class PdbParser {
   std::fstream pdb_;
 
   std::map<size_t, std::shared_ptr<TypeData>> type_to_typedata_map_;
+
+  std::vector<ProcedureSymbolData> procedure_list_;
 
   std::map<size_t, SectionHeaderInfo> header_info_;
 };

@@ -206,7 +206,7 @@ void ProcedureTypeData::Parse(const std::vector<std::string> &lines) {
     }
   }
 
-  call_type_ = GetStrAfter(lines[2], "Call type = ");
+  call_type_ = GetStrBetween(lines[2], "Call type = ", ",");
   call_type_ = call_type_.substr(0, call_type_.size());
 
   func_attr_ = StrToFuncAttr(GetNthStr(GetNthStr(lines[2], 1, ','), 1, '='));
@@ -233,8 +233,7 @@ static const char *FuncAttrToStr(ProcedureTypeData::FuncAttr attr) {
 
 // ============================================================================
 void ProcedureTypeData::to_string(std::ostream &os) const {
-  os << "procedure: {name: " << name_ << ", address: 0x" << std::hex << addr_
-     << ", id: 0x" << type_ << ", return type: " << return_type_
+  os << "procedure: {id: 0x" << type_ << ", return type: " << return_type_
      << ", class type: 0x" << class_type_ref_ << ", this type: 0x" << this_type_
      << ", call type: " << call_type_
      << ", func attr: " << FuncAttrToStr(func_attr_) << ", params: " << std::dec

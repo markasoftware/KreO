@@ -16,7 +16,8 @@ class PdbResultsGenerator {
   boost::json::object json_generate_base_class_info(size_t base_class) const;
 
   boost::json::object json_generate_method_info(const std::string &name,
-                                                const std::string &addr) const;
+                                                const std::string &addr,
+                                                const std::string &type) const;
 
   const PdbOrganizer &organizer_;
 };

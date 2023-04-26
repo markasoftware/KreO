@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 
+#include "pdb_parser.h"
 #include "type_data_instances.h"
 
 class PdbParser;
@@ -29,9 +30,9 @@ class PdbOrganizer {
     return type_id_to_field_list_data_map_;
   }
 
-  const std::map<size_t, std::vector<std::shared_ptr<ProcedureTypeData>>>&
+  const std::map<size_t, std::vector<ProcedureSymbolData>>&
   get_class_type_to_procedure_list() const {
-    return class_type_to_procedure_list_;
+    return class_type_to_symbol_proc_list_;
   }
 
   const std::map<size_t, size_t>& get_ref_cls_to_defined_cls_map() const {
@@ -47,8 +48,8 @@ class PdbOrganizer {
   std::map<size_t, std::shared_ptr<FieldListTypeData>>
       type_id_to_field_list_data_map_;
 
-  std::map<size_t, std::vector<std::shared_ptr<ProcedureTypeData>>>
-      class_type_to_procedure_list_;
+  std::map<size_t, std::vector<ProcedureSymbolData>>
+      class_type_to_symbol_proc_list_;
 
   /// @brief Maps reference class type ID to class definition type ID.
   std::map<size_t, size_t> ref_cls_to_defined_cls_map_;
