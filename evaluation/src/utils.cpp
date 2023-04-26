@@ -45,8 +45,8 @@ size_t GetNumBetween(const std::string str, const std::string &before,
   size_t end = str_before_removed.find(after);
 
   if (end == std::string::npos) {
-    throw std::runtime_error(std::string("GetNumBetween() failed to find \"") + after.data() +
-                             "\" in string \"" + str + "\"");
+    throw std::runtime_error(std::string("GetNumBetween() failed to find \"") +
+                             after.data() + "\" in string \"" + str + "\"");
   }
 
   std::string sub_str = str_before_removed.substr(0, end);
@@ -72,7 +72,8 @@ size_t GetNumAfter(const std::string &str, const std::string &before,
   size_t start = str.find(before);
 
   if (start == std::string::npos) {
-    throw std::runtime_error(std::string("GetNumAfter() failed to find \"") + before + "\" in string \"" + str + "\"");
+    throw std::runtime_error(std::string("GetNumAfter() failed to find \"") +
+                             before + "\" in string \"" + str + "\"");
   }
 
   return GetFirstNum(str.substr(start + before.size()), fn);

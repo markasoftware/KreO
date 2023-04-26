@@ -269,8 +269,11 @@ def PrecisionAndRecallMethods(ground_truth: List[ClassInfo],
 
     Methods are equal if their address is equal.
     '''
-    ground_truth_methods: Set[int] = GetMethodSetOfGivenType(ground_truth, None)
-    generated_data_methods: Set[int] = GetMethodSetOfGivenType(generated_data, None)
+    ground_truth_methods: Set[MethodInfo] = GetMethodSetOfGivenType(ground_truth, None)
+    ground_truth_methods = set(map(lambda x: x.address, ground_truth_methods))
+
+    generated_data_methods: Set[MethodInfo] = GetMethodSetOfGivenType(generated_data, None)
+    generated_data_methods = set(map(lambda x: x.address, generated_data_methods))
 
     true_positives = IntersectionSize(generated_data_methods, ground_truth_methods)
 
@@ -286,7 +289,9 @@ def PrecisionAndRecallSpecificType(ground_truth: List[ClassInfo],
     returning the precision and recall.
     '''
     ground_truth_type = GetMethodSetOfGivenType(ground_truth, t)
+    ground_truth_type = set(map(lambda x: x.address, ground_truth_type))
     generated_data_type = GetMethodSetOfGivenType(generated_data, t)
+    generated_data_type = set(map(lambda x: x.address, generated_data_type))
 
     true_positives = IntersectionSize(generated_data_type, ground_truth_type)
 
@@ -565,7 +570,9 @@ def MatchGenToGtClasses(ground_truth: List[ClassInfo],
             if gt_cls in gt_classes_referenced:
                 continue
 
-            s = IntersectionSize(gen_cls.method_set, gt_cls.method_set)
+            gen_cls_method_set = set(map(lambda x: x.address, gen_cls.method_set))
+            gt_cls_method_set = set(map(lambda x: x.address, gt_cls.method_set))
+            s = IntersectionSize(gen_cls_method_set, gt_cls_method_set)
             if s != 0:
                 if s not in gen_gt_intersection_sizes:
                     gen_gt_intersection_sizes[s] = list()

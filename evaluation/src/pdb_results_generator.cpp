@@ -111,7 +111,6 @@ boost::json::value PdbResultsGenerator::ToJson() const {
       ea_ss << "0x" << std::hex << addr;
 
       std::string type;
-      std::cout << method.name << std::endl;
       if (method.name.find(cls->get_class_name()) == 0) {
         if (method.name == cls->get_class_name() + "::" + constructor_name) {
           type = "ctor";

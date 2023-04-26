@@ -11,7 +11,6 @@ enum class TypeId {
   kMemberFunction,
   kClass,
   kFieldList,
-  kMethodList,
   kUnknown,
 };
 
@@ -28,9 +27,6 @@ static TypeId ToTypeId(const std::string &str) {
   }
   if (str == "LF_MFUNCTION") {
     return TypeId::kMemberFunction;
-  }
-  if (str == "LF_METHODLIST") {
-    return TypeId::kMethodList;
   }
   return TypeId::kUnknown;
 }
@@ -131,13 +127,10 @@ std::optional<std::shared_ptr<TypeData>> PdbParser::GetNextTypeData() {
     case TypeId::kFieldList:
       data = std::make_shared<FieldListTypeData>();
       break;
-      // case TypeId::kMethodList:
-      //   data = std::make_shared<MethodListTypeData>();
-      //   break;
-      // case TypeId::kUnknown:
-      //   break;
-      // default:
-      //   assert(false);
+    case TypeId::kUnknown:
+      break;
+    default:
+      assert(false);
   }
 
   if (data != nullptr) {

@@ -65,7 +65,7 @@ class TriePrinter:
             if cls in self.kreoClassToMethodSetMap:
                 for method in self.kreoClassToMethodSetMap[cls]:
                     method.updateType()
-                    print(f'{self.indent}* {method} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso}')
+                    print(f' {self.indent}* {method} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso}')
 
         self.indent += '    '
         list(children)
@@ -384,7 +384,7 @@ class Postgame:
         self.runStep(self.mapTrieNodesToMethods, 'mapping trie nodes to methods...', 'trie nodes mapped')
         self.runStep(self.generateJson, 'generating json...', 'json generated')
 
-        # TriePrinter(self.kreoClassToMethodSetMap, self.trie)
+        TriePrinter(self.kreoClassToMethodSetMap, self.trie)
 
         print('Done, Kreo exiting normally.')
 
