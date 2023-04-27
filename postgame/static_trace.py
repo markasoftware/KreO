@@ -5,7 +5,7 @@ class StaticTraceEntry:
     def __init__(self, line: str, findOrInsertMethod: Callable[[int], Method]):
         assert line[0] != '#', 'Tried to construct StaticTraceEntry from a comment.'
         splitLine = line.split()
-        self.method = findOrInsertMethod(int(splitLine[0]))
+        self.method = findOrInsertMethod(int(splitLine[0]) - 0x400000)  # TODO unhard code this
         # Name is in there mainly for debugging looking at the trace manually -- don't really need it.
 
     def __str__(self) -> str:
