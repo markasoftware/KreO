@@ -123,7 +123,7 @@ class Postgame:
                 self.staticTraces.add(StaticTrace(curTrace))
 
         for line in open(config['staticTracesPath']):
-            if len(line) == 1:
+            if line == "END_TRACE\n":
                 flushCurTrace()
             elif line[0] != '#':
                 curTrace.append(StaticTraceEntry(line, self.methodStore.findOrInsertMethod))
