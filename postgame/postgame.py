@@ -86,7 +86,9 @@ class Postgame:
         self.methodToKreoClassMap: Dict[Method, Set[KreoClass]] = defaultdict(set)
 
         # kreoClassToMethodSetMap does not need to be maintained manually -- it will be populated all at once during the mapTrieNodesToMethods step.
-        self.kreoClassToMethodSetMap: DefaultDict[KreoClass, Set[Method]] = defaultdict(set)
+        self.kreoClassToMethodSetMap: Dict[KreoClass, Set[Method]] = defaultdict(set)
+
+        self.methodCandidates: Set[int] = set()
 
     def runStep(self, function: Callable[[None], None], startMsg: str, endMsg: str)-> None:
         '''
@@ -126,7 +128,9 @@ class Postgame:
             if line == "END_TRACE\n":
                 flushCurTrace()
             elif line[0] != '#':
-                curTrace.append(StaticTraceEntry(line, self.methodStore.findOrInsertMethod))
+                addr = int(line.split()[0])
+                if addr in self.methodCandidates:
+                    curTrace.append(StaticTraceEntry(line, self.methodStore.findOrInsertMethod))
 
         flushCurTrace()
 
@@ -348,6 +352,11 @@ class Postgame:
         jsonFile = open(config['resultsJson'], 'w')
         jsonFile.write(json.JSONEncoder(indent = None if config['resultsIndent'] == 0 else config['resultsIndent']).encode(finalJson))
 
+    def loadMethodCandidates(self):
+        with open(config['methodCandidatesPath'], 'r') as f:
+            for line in f:
+                self.methodCandidates.add(int(line))
+
     def main(self):
         ###############################################################################
         # Step: Read traces and other info from disk                                  #
@@ -396,15 +405,23 @@ class Postgame:
         self.runStep(self.swimDestructors, 'moving destructors up in trie...', 'destructors moved up')
 
         if config['enableAliasAnalysis']:
+            ###############################################################################
+            # Step: Load method candidates so we only add candidates from static traces.  #
+            ###############################################################################
+            print(len(self.methodStore._methods))
+            self.runStep(self.loadMethodCandidates, 'loading method candidates...', 'method candidates loaded')
+
             self.runStep(self.parseStaticTraces, 'parsing static traces...', 'static traces parsed')
             self.runStep(self.splitStaticTraces, 'splitting static traces...', 'static traces split')
             self.runStep(self.discoverMethodsStatically, 'discovering methods from static traces...', 'static methods discovered')
             # discoverMethodsStatically leaves the new methods assigned to sets of classes still
             self.runStep(self.reorganizeTrie, '2nd reorganizing trie...', '2nd trie reorganization complete')
+            print(len(self.methodStore._methods))
 
         self.runStep(self.parseMethodNames, 'parsing method names...', 'method names parsed')
 
         self.runStep(self.mapTrieNodesToMethods, 'mapping trie nodes to methods...', 'trie nodes mapped')
+
         self.runStep(self.generateJson, 'generating json...', 'json generated')
 
         TriePrinter(self.kreoClassToMethodSetMap, self.trie)
