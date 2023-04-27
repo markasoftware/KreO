@@ -2,10 +2,10 @@ from typing import List, Callable
 from method import Method
 
 class StaticTraceEntry:
-    def __init__(self, line: str, findOrInsertMethod: Callable[[int], Method]):
+    def __init__(self, line: str, findOrInsertMethod: Callable[[int, bool], Method]):
         assert line[0] != '#', 'Tried to construct StaticTraceEntry from a comment.'
         splitLine = line.split()
-        self.method = findOrInsertMethod(int(splitLine[0]) - 0x400000)  # TODO unhard code this
+        self.method = findOrInsertMethod(int(splitLine[0]), False)
         # Name is in there mainly for debugging looking at the trace manually -- don't really need it.
 
     def __str__(self) -> str:
@@ -32,9 +32,11 @@ class StaticTrace:
 
     def split(self):
         '''
-        Returns a list of updated traces, by splitting after any destructors. Uses method.isFinalizer to determine destructors, so ensure that statistics are up-to-date.
+        Returns a list of updated traces, by splitting after any destructors.
+        Uses method.isFinalizer to determine destructors, so ensure that
+        method statistics are up-to-date before splitting.
         '''
-        result: List[List[TraceEntry]] = [StaticTrace([])] # start with single empty trace
+        result: List[StaticTrace] = [StaticTrace([])]  # start with single empty trace
 
         for entry in self.entries:
             result[-1].entries.append(entry)
