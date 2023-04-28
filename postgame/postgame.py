@@ -275,6 +275,8 @@ class Postgame:
     def mapTrieNodesToMethods(self):
         # map trie nodes to methods now that method locations are fixed
         for method, trieNode in self.methodToKreoClassMap.items():
+            if len(trieNode) > 1:
+                print(f'Method mapped to multiple classes {method}')
             trieNode = list(trieNode)[0]
             self.kreoClassToMethodSetMap[trieNode].add(method)
 
@@ -408,15 +410,16 @@ class Postgame:
             ###############################################################################
             # Step: Load method candidates so we only add candidates from static traces.  #
             ###############################################################################
-            print(len(self.methodStore._methods))
             self.runStep(self.loadMethodCandidates, 'loading method candidates...', 'method candidates loaded')
 
             self.runStep(self.parseStaticTraces, 'parsing static traces...', 'static traces parsed')
             self.runStep(self.splitStaticTraces, 'splitting static traces...', 'static traces split')
             self.runStep(self.discoverMethodsStatically, 'discovering methods from static traces...', 'static methods discovered')
             # discoverMethodsStatically leaves the new methods assigned to sets of classes still
-            self.runStep(self.reorganizeTrie, '2nd reorganizing trie...', '2nd trie reorganization complete')
-            print(len(self.methodStore._methods))
+
+            # Don't reorganize the trie based on statically discovered methods
+            # due to low precision of the method being assigned to the correct class.
+            # self.runStep(self.reorganizeTrie, '2nd reorganizing trie...', '2nd trie reorganization complete')
 
         self.runStep(self.parseMethodNames, 'parsing method names...', 'method names parsed')
 
