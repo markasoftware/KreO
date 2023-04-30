@@ -7,6 +7,7 @@ import pygtrie
 import subprocess
 import sys
 import pathlib
+import parse_object_trace
 
 from copy import copy
 from collections import defaultdict
@@ -64,7 +65,7 @@ class TriePrinter:
             if cls in self.kreoClassToMethodSetMap:
                 for method in self.kreoClassToMethodSetMap[cls]:
                     method.updateType()
-                    print(f'{self.indent}* {method} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso}')
+                    print(f' {self.indent}* {method} | {method.seenInHead} {method.seenInFingerprint} {method.seenInTorso}')
 
         self.indent += '    '
         list(children)
@@ -85,7 +86,9 @@ class Postgame:
         self.methodToKreoClassMap: Dict[Method, Set[KreoClass]] = defaultdict(set)
 
         # kreoClassToMethodSetMap does not need to be maintained manually -- it will be populated all at once during the mapTrieNodesToMethods step.
-        self.kreoClassToMethodSetMap: DefaultDict[KreoClass, Set[Method]] = defaultdict(set)
+        self.kreoClassToMethodSetMap: Dict[KreoClass, Set[Method]] = defaultdict(set)
+
+        self.methodCandidates: Set[int] = set()
 
     def runStep(self, function: Callable[[None], None], startMsg: str, endMsg: str)-> None:
         '''
@@ -98,40 +101,21 @@ class Postgame:
         print(f'{endMsg} ({endTime - startTime:0.2f}s)')
 
     def parseInput(self):
-        self.baseOffset = int(next(iter(open(config['baseOffsetPath']))))
-
-        blacklistedMethods: Set[int] = set()
-        for line in open(config['blacklistedMethodsPath']):
-            blacklistedMethods.add(int(line))
-
-        def addIfValid(trace: List[TraceEntry]):
-            # Sanity check object-trace before adding to traces
-            if len(trace) >= 2:
-                self.traces.add(ObjectTrace(trace))
-
-        curTrace: List[TraceEntry] = []
-        # there can be multiple object trace files...find all of them
-        for line in open(config['objectTracesPath']):
-            # each line ends with \n, empty line indicates new trace
-            if len(line) == 1:
-                addIfValid(curTrace)
-                curTrace = []
-            else:
-                addr = int(line.split()[1])
-                if addr not in blacklistedMethods:
-                    curTrace.append(TraceEntry(line, self.methodStore.findOrInsertMethod))
-        # finish the last trace
-        addIfValid(curTrace)
+        self.baseOffset, self.traces = parse_object_trace.parseInput(config, self.methodStore)
 
     def parseMethodNames(self):
         for line in open(config['objectTracesPath'] + '-name-map'):
-            splitlines = line.split()
+            method_addr = int(line[:line.find(' ')])
+            mangled_name = line[line.find(' ') + 1:-1]
             try:
-                p1 = subprocess.Popen(['demangle', '--noerror', '-n', splitlines[1]], stdout=subprocess.PIPE)
+                p1 = subprocess.Popen(['undname', mangled_name], stdout=subprocess.PIPE)
                 demangledName = str(p1.stdout.read())
+                demangledName = demangledName.split('\\n')
+                demangledName = demangledName[4]
+                demangledName = demangledName[demangledName.find('"') + 1:demangledName.rfind('"')]
             except FileNotFoundError as _:
-                demangledName = splitlines[1]
-            self.methodStore.insertMethodName(int(splitlines[0]), demangledName)
+                demangledName = mangled_name
+            self.methodStore.insertMethodName(method_addr, demangledName)
 
     def parseStaticTraces(self):
         curTrace: List[StaticTraceEntry] = []
@@ -141,10 +125,12 @@ class Postgame:
                 self.staticTraces.add(StaticTrace(curTrace))
 
         for line in open(config['staticTracesPath']):
-            if len(line) == 1:
+            if line == "END_TRACE\n":
                 flushCurTrace()
             elif line[0] != '#':
-                curTrace.append(StaticTraceEntry(line, self.methodStore.findOrInsertMethod))
+                addr = int(line.split()[0])
+                if addr in self.methodCandidates:
+                    curTrace.append(StaticTraceEntry(line, self.methodStore.findOrInsertMethod))
 
         flushCurTrace()
 
@@ -161,18 +147,37 @@ class Postgame:
 
     def discoverMethodsStatically(self):
         '''
-        Uses the data from the static traces to discover new methods and assign them to the appropriate class. Does not update how dynamically-detected methods are assigned, because their destructor fingerprints usually provide more information about hierarchy than we can hope to glean from such a simple static analysis (we just assign things to the LCA of all the classes of all dynamically detected methods in the traces).
+        Uses the data from the static traces to discover new methods and assign
+        them to the appropriate class. Does not update how dynamically-detected
+        methods are assigned, because their destructor fingerprints usually
+        provide more information about hierarchy than we can hope to glean from
+        such a simple static analysis (we just assign things to the LCA of all
+        the classes of all dynamically detected methods in the traces).
         '''
-        # In reality, this routine is only called after the first reorganization, so every dynamically detected method is already assigned to a single class, not a set, but we write assuming it is assigned to a set anyway to be safe (e.g., no next(iter(...)))
+        # In reality, this routine is only called after the first
+        # reorganization, so every dynamically detected method is already
+        # assigned to a single class, not a set, but we write assuming it is
+        # assigned to a set anyway to be safe (e.g., no next(iter(...)))
         for staticTrace in self.staticTraces:
             traceEntries = set(staticTrace.entries)
-            dynamicEntries = set(filter(lambda entry: self.dynamicallyDetectedMethods.getMethod(entry.method.address), traceEntries))
+
+            dynamicEntries: Set[StaticTraceEntry] = set()
+            for entry in traceEntries:
+                meth = self.methodStore.getMethod(entry.method.address)
+                if meth is not None and meth.foundDynamically:
+                    dynamicEntries.add(entry)
+
             staticEntries = traceEntries - dynamicEntries
+
+            # Map statically found methods to classes containing dynamic methods
+            # in the same trace.
             for staticEntry in staticEntries:
                 staticMethod = staticEntry.method
                 for dynamicEntry in dynamicEntries:
                     dynamicMethod = dynamicEntry.method
-                    self.methodToKreoClassMap[staticMethod].update(self.methodToKreoClassMap[dynamicMethod])
+
+                    if dynamicMethod in self.methodToKreoClassMap:
+                        self.methodToKreoClassMap[staticMethod].update(self.methodToKreoClassMap[dynamicMethod])
 
     def removeNondestructorsFromFingerprints(self):
         for trace in self.traces:
@@ -200,12 +205,13 @@ class Postgame:
             for trace in traces:
                 if minLenTrace is None or len(minLenTrace[1]) > len(trace[1]):
                     minLenTrace = trace
-                    
+            assert minLenTrace != None
+
             for i in range(len(minLenTrace)):
                 for trace in traces:
                     if trace[1][i] != traces[0][1][i]:
                         return trace[1][:i]
-                
+
             return minLenTrace[1]
 
         clsTraces = list()
@@ -228,7 +234,7 @@ class Postgame:
                 self.methodToKreoClassMap[method] = set([lca])
             else:
                 # LCA doesn't exist, have to add class to trie
-                
+
                 # Create class that will be inserted into the trie. This
                 # class must have a new fingerprint that is the method
                 # that will be assigned to the class that the two
@@ -260,15 +266,17 @@ class Postgame:
             # Find fingerprint[-1] in methodToKreoClassMap and replace the reference
             # with this class
             node = self.trie[key]
-            if node.fingerprint[-1] in self.methodToKreoClassMap:
-                self.methodToKreoClassMap[node.fingerprint[-1]] = set([node])
-
-    def recordDynamicallyDetectedMethods(self):
-        self.dynamicallyDetectedMethods = copy(self.methodStore)
+            destructor = node.fingerprint[-1]
+            if destructor in self.methodToKreoClassMap:
+                clsSet = set([node])
+                if clsSet != self.methodToKreoClassMap[destructor]:
+                    self.methodToKreoClassMap[destructor] = clsSet
 
     def mapTrieNodesToMethods(self):
         # map trie nodes to methods now that method locations are fixed
         for method, trieNode in self.methodToKreoClassMap.items():
+            if len(trieNode) > 1:
+                print(f'Method mapped to multiple classes {method}')
             trieNode = list(trieNode)[0]
             self.kreoClassToMethodSetMap[trieNode].add(method)
 
@@ -331,7 +339,7 @@ class Postgame:
                 'name': str(cls),
                 'members': members,
                 'methods': methods,
-                'size': 0, # TODO: this 
+                'size': 0, # TODO: this
                 'vftables': [],
             }
 
@@ -345,6 +353,11 @@ class Postgame:
 
         jsonFile = open(config['resultsJson'], 'w')
         jsonFile.write(json.JSONEncoder(indent = None if config['resultsIndent'] == 0 else config['resultsIndent']).encode(finalJson))
+
+    def loadMethodCandidates(self):
+        with open(config['methodCandidatesPath'], 'r') as f:
+            for line in f:
+                self.methodCandidates.add(int(line))
 
     def main(self):
         ###############################################################################
@@ -385,7 +398,6 @@ class Postgame:
         # the head/body/fingerprint does change.                                      #
         ###############################################################################
         self.runStep(self.updateAllMethodStatistics, 'updating method statistics again...', 'method statistics updated')
-        self.runStep(self.recordDynamicallyDetectedMethods, 'recording dynamic methods...', 'dynamic methods recoded')
 
         ###############################################################################
         # Step: Look at fingerprints to determine hierarchy. Insert entries into trie.#
@@ -395,15 +407,24 @@ class Postgame:
         self.runStep(self.swimDestructors, 'moving destructors up in trie...', 'destructors moved up')
 
         if config['enableAliasAnalysis']:
+            ###############################################################################
+            # Step: Load method candidates so we only add candidates from static traces.  #
+            ###############################################################################
+            self.runStep(self.loadMethodCandidates, 'loading method candidates...', 'method candidates loaded')
+
             self.runStep(self.parseStaticTraces, 'parsing static traces...', 'static traces parsed')
             self.runStep(self.splitStaticTraces, 'splitting static traces...', 'static traces split')
             self.runStep(self.discoverMethodsStatically, 'discovering methods from static traces...', 'static methods discovered')
             # discoverMethodsStatically leaves the new methods assigned to sets of classes still
-            self.runStep(self.reorganizeTrie, '2nd reorganizing trie...', '2nd trie reorganization complete')
+
+            # Don't reorganize the trie based on statically discovered methods
+            # due to low precision of the method being assigned to the correct class.
+            # self.runStep(self.reorganizeTrie, '2nd reorganizing trie...', '2nd trie reorganization complete')
 
         self.runStep(self.parseMethodNames, 'parsing method names...', 'method names parsed')
 
         self.runStep(self.mapTrieNodesToMethods, 'mapping trie nodes to methods...', 'trie nodes mapped')
+
         self.runStep(self.generateJson, 'generating json...', 'json generated')
 
         TriePrinter(self.kreoClassToMethodSetMap, self.trie)

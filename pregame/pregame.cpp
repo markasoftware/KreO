@@ -167,8 +167,10 @@ namespace Kreo {
     public:
         Base::SValue::Ptr objPtr;
         std::vector<P2::Function::Ptr> fns;
+        rose_addr_t baseOffset;
 
-        StaticObjectTrace(const Base::SValue::Ptr &objPtr) : objPtr(objPtr) { }
+        StaticObjectTrace(const Base::SValue::Ptr &objPtr, rose_addr_t baseOffset)
+            : objPtr(objPtr), baseOffset(baseOffset) { }
     };
 
     std::ostream &operator<<(std::ostream &os, const StaticObjectTrace &trace) {
@@ -178,16 +180,18 @@ namespace Kreo {
         }
         for (auto fn : trace.fns) {
             if (fn) {
-                os << fn->address();
+                rose_addr_t relAddr = fn->address() - trace.baseOffset;
+                os << relAddr;
                 if (!fn->name().empty()) {
                     os << " " << fn->name();
                 }
-                os << std::endl;
+                os << '\n';
             } else {
                 // TODO: figure out why this function might be null (indeterminate faked_call??)
                 // os << "(unknown)" << std::endl;
             }
         }
+        os << "END_TRACE" << std::endl;
         return os;
     }
 
@@ -301,15 +305,18 @@ namespace Kreo {
 
     AnalyzeProcedureResult analyzeProcedure(const P2::PartitionerPtr &partitioner,
                                             const Disassembler::BasePtr &disassembler,
-                                            const P2::Function::Ptr &proc) {
-        bool debugFunction = proc->address() == Kreo::settings.debugFunctionAddr;
+                                            const P2::Function::Ptr &proc,
+                                            rose_addr_t baseOffset) {
+        rose_addr_t absAddr = proc->address();
+        rose_addr_t relAddr = absAddr - baseOffset;
+        bool debugFunction = relAddr == Kreo::settings.debugFunctionAddr;
         if (proc->isThunk()) { // usually dosen't call methods or anything
             return AnalyzeProcedureResult();
         }
         // some of this is modeled off of the dataflow analysis in Rose/BinaryAnalysis/CallingConvention.C
 
         const CallingConventionGuess cc = guessCallingConvention(disassembler);
-        DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner->cfg(), partitioner->findPlaceholder(proc->address()));
+        DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner->cfg(), partitioner->findPlaceholder(absAddr));
         if (debugFunction) {
             std::string dfCfgDotFileName = "dfcfg-" + proc->name() + ".dot";
             std::cerr << "Printing dot to " << dfCfgDotFileName << std::endl;
@@ -465,7 +472,7 @@ namespace Kreo {
                 }
             }
             if (matchingTrace == NULL) {
-                traces.push_back(StaticObjectTrace(firstArg));
+                traces.push_back(StaticObjectTrace(firstArg, baseOffset));
                 matchingTrace = &traces.back();
             }
             matchingTrace->fns.push_back(vertexProc);
@@ -545,10 +552,10 @@ int main(int argc, char *argv[]) {
     MemoryMap::Ptr memoryMap = engine->memoryMap();
     // std::cerr << "Dumping memory map" << std::endl;
     // memoryMap->dump(std::cerr);
-    size_t baseOffset = memoryMap->nodes().begin()->key().least();
+    rose_addr_t baseOffset = memoryMap->nodes().begin()->key().least();
     std::cerr << "Detected minimum address as " << baseOffset << std::endl;
     std::ofstream(Kreo::settings.baseOffsetPath) << baseOffset << std::endl;
-    Kreo::settings.debugFunctionAddr += baseOffset;
+    Kreo::settings.debugFunctionAddr;
 
     std::ofstream methodCandidatesStream(Kreo::settings.methodCandidatesPath);
 
@@ -559,25 +566,32 @@ int main(int argc, char *argv[]) {
 
     int numMethodsFound = 0;
     int i = 0;
+#pragma omp parallel for
     for (const P2::Function::Ptr &proc : partitioner->functions()) {
-        std::cerr << "Analyze function " << std::dec << proc->address() << ", which is "
-                  << i++ << " out of " << partitioner->functions().size() << std::endl;
+        const size_t relAddr = proc->address() - baseOffset;
+// #pragma omp critical (printStderr)
+        {
+            std::cerr << "Analyze function " << std::dec << relAddr << ", which is "
+                      << i++ << " out of " << partitioner->functions().size() << std::endl;
+        }
         // there's already a conditional for chunks in the static analysis part, but if static analysis is disabled that won't be reached.
         // We're essentially checking two conditions: 1., before static analysis, that it's not a thunk, and 2., after static analysis, that it uses the this pointer.
         if (proc->isThunk()) {
             continue;
         }
 
-        const size_t relativeProcAddr = proc->address() - baseOffset;
         bool usesThisPointer = true; // assume it uses this pointer, possible set to false if static analysis is enabled and finds that the register is not in fact used.
 
         if (Kreo::settings.enableAliasAnalysis || Kreo::settings.enableCallingConventionAnalysis) {
-            auto analysisResult = Kreo::analyzeProcedure(partitioner, disassembler, proc);
+            auto analysisResult = Kreo::analyzeProcedure(partitioner, disassembler, proc, baseOffset);
 
             if (Kreo::settings.enableAliasAnalysis) {
-                staticTracesStream << "# Analysis from procedure " << proc->name() << " @ " << relativeProcAddr
+#pragma omp critical (printStaticTrace)
+                {
+                staticTracesStream << "# Analysis from procedure " << proc->name() << " @ " << relAddr
                                    << " (" << analysisResult.traces.size() << " many traces):" << std::endl
                                    << analysisResult;
+                }
             }
 
             if (Kreo::settings.enableCallingConventionAnalysis) {
@@ -586,8 +600,11 @@ int main(int argc, char *argv[]) {
         }
 
         if (usesThisPointer) {
-            numMethodsFound++;
-            methodCandidatesStream << relativeProcAddr << std::endl;
+#pragma omp critical (incrementNumMethods)
+            {
+                numMethodsFound++;
+                methodCandidatesStream << relAddr << std::endl;
+            }
         }
     }
 

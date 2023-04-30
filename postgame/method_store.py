@@ -13,13 +13,13 @@ class MethodStore:
         result._methodNames = copy(self._methodNames)
         return result
 
-    def findOrInsertMethod(self, address: int) -> Method:
+    def findOrInsertMethod(self, address: int, foundDynamically: bool = True) -> Method:
         '''
         Attempts to find the method in the global methods map. If the function fails
         to find a method, one will be inserted.
         '''
         if address not in self._methods:
-            self._methods[address] = Method(address)
+            self._methods[address] = Method(address, foundDynamically=foundDynamically)
         return self._methods[address]
 
     def getMethod(self, address: int) -> Optional[Method]:

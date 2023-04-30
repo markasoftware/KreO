@@ -11,8 +11,6 @@ fpath = pathlib.Path(__file__).parent.absolute()
 
 sys.path.append(os.path.join(fpath, '..'))
 
-from parseconfig import config
-
 kConstructorType = 'ctor'
 kDestructorType = 'dtor'
 kBaseAddr = 0x400000
@@ -21,9 +19,10 @@ class MethodInfo:
     '''
     Object that contains an address and type associated with a particular method.
     '''
-    def __init__(self, address: int, type: str):
+    def __init__(self, address: int, type: str, name: str):
         self.address = address
         self.type = type
+        self.name = name
 
     def __str__(self):
         return f'(ea: {hex(self.address)}, {self.type})'
@@ -151,9 +150,9 @@ def LoadAndRecordGtMethodStats(gt_methods_instrumented_set: Set[int],
             gt_methods += 1
 
     with open(gt_method_stats_fname, 'w') as gt_method_info:
-        gt_coverage_all_methods = float(len(gt_methods_instrumented_set)) / float(gt_methods)
-        gt_coverage_ctor = float(ctor_instrumented) / float(len(ctor_set))
-        gt_coverage_dtor = float(dtor_instrumented) / float(len(dtor_set))
+        gt_coverage_all_methods = float(len(gt_methods_instrumented_set)) / float(gt_methods) if gt_methods != 0 else 0
+        gt_coverage_ctor = float(ctor_instrumented) / float(len(ctor_set)) if len(ctor_set) != 0 else 0.0
+        gt_coverage_dtor = float(dtor_instrumented) / float(len(dtor_set)) if len(dtor_set) != 0 else 0.0
 
         gt_method_info.write('all method coverage: {:.2}, ctor coverage: {:.2}, dtor coverage: {:.2}'
             .format(gt_coverage_all_methods, gt_coverage_ctor, gt_coverage_dtor))
@@ -182,7 +181,8 @@ def LoadClassInfoListFromJson(json_str: str) -> List[ClassInfo]:
         for method in methods.values():
             method_ea = int(method['ea'], 16)
             type = method['type']
-            method_set.add(MethodInfo(method_ea, type))
+            name = method['name']
+            method_set.add(MethodInfo(method_ea, type, name))
 
         # Extract class members (parent classes)
         for member in members.values():
@@ -267,8 +267,11 @@ def PrecisionAndRecallMethods(ground_truth: List[ClassInfo],
 
     Methods are equal if their address is equal.
     '''
-    ground_truth_methods: Set[int] = GetMethodSetOfGivenType(ground_truth, None)
-    generated_data_methods: Set[int] = GetMethodSetOfGivenType(generated_data, None)
+    ground_truth_methods: Set[MethodInfo] = GetMethodSetOfGivenType(ground_truth, None)
+    ground_truth_methods = set(map(lambda x: x.address, ground_truth_methods))
+
+    generated_data_methods: Set[MethodInfo] = GetMethodSetOfGivenType(generated_data, None)
+    generated_data_methods = set(map(lambda x: x.address, generated_data_methods))
 
     true_positives = IntersectionSize(generated_data_methods, ground_truth_methods)
 
@@ -284,7 +287,9 @@ def PrecisionAndRecallSpecificType(ground_truth: List[ClassInfo],
     returning the precision and recall.
     '''
     ground_truth_type = GetMethodSetOfGivenType(ground_truth, t)
+    ground_truth_type = set(map(lambda x: x.address, ground_truth_type))
     generated_data_type = GetMethodSetOfGivenType(generated_data, t)
+    generated_data_type = set(map(lambda x: x.address, generated_data_type))
 
     true_positives = IntersectionSize(generated_data_type, ground_truth_type)
 
@@ -387,7 +392,8 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
         precision += result.precision * result.ground_truth_class_size
         recall += result.recall * result.ground_truth_class_size
         total_methods += result.ground_truth_class_size
-    return (precision / (float(total_methods)), recall / float(total_methods))
+    return (precision / (float(total_methods))) if total_methods != 0 else 0, \
+           (recall / float(total_methods)) if total_methods != 0 else 0
 
 def get_gen_gt_cls_pair(gen_cls_mangled_name: str,
                         matched_classes: Set[Tuple[ClassInfo, ClassInfo]]) -> Tuple[ClassInfo, ClassInfo]:
@@ -562,7 +568,9 @@ def MatchGenToGtClasses(ground_truth: List[ClassInfo],
             if gt_cls in gt_classes_referenced:
                 continue
 
-            s = IntersectionSize(gen_cls.method_set, gt_cls.method_set)
+            gen_cls_method_set = set(map(lambda x: x.address, gen_cls.method_set))
+            gt_cls_method_set = set(map(lambda x: x.address, gt_cls.method_set))
+            s = IntersectionSize(gen_cls_method_set, gt_cls_method_set)
             if s != 0:
                 if s not in gen_gt_intersection_sizes:
                     gen_gt_intersection_sizes[s] = list()
@@ -577,19 +585,17 @@ def MatchGenToGtClasses(ground_truth: List[ClassInfo],
 
     return matched_classes
 
-def main():
-    gt_class_info_list = LoadClassInfoListFromJson(config['gtResultsJson'])
+def run_evaluation(gt_class_info, gen_class_info, results_path, results_instrumented_path, gt_methods_instrumented_path):
+    gt_class_info_list = LoadClassInfoListFromJson(gt_class_info)
 
-    gen_class_info_list = LoadClassInfoListFromJson(config['resultsJson'])
+    gen_class_info_list = LoadClassInfoListFromJson(gen_class_info)
 
-    gt_methods_instrumented = get_gt_methods_instrumented_set(config['gtMethodsInstrumentedPath'])
+    if gt_methods_instrumented_path is not None:
+        gt_methods_instrumented = get_gt_methods_instrumented_set(gt_methods_instrumented_path)
 
-    LoadAndRecordGtMethodStats(gt_methods_instrumented,
-                               gt_class_info_list,
-                               config['gtMethodsInstrumentedPath'] + '.stats')
-
-    results_path = config['resultsPath']
-    results_instrumented_path = config['resultsInstrumentedPath']
+        LoadAndRecordGtMethodStats(gt_methods_instrumented,
+                                gt_class_info_list,
+                                gt_methods_instrumented_path + '.stats')
 
     def RunAllTests(gt_class_info_list: List[ClassInfo], file: TextIOWrapper):
         '''
@@ -614,10 +620,18 @@ def main():
     with open(results_path, 'w') as gt_out:
         RunAllTests(gt_class_info_list, gt_out)
 
-    gt_class_info_instrumented_list = GetGtClassInfoInstrumentedList(gt_methods_instrumented, gt_class_info_list)
+    if gt_methods_instrumented_path is not None:
+        gt_class_info_instrumented_list = GetGtClassInfoInstrumentedList(gt_methods_instrumented, gt_class_info_list)
 
-    with open(results_instrumented_path, 'w') as gt_out_instrumented:
-        RunAllTests(gt_class_info_instrumented_list, gt_out_instrumented)
+        with open(results_instrumented_path, 'w') as gt_out_instrumented:
+            RunAllTests(gt_class_info_instrumented_list, gt_out_instrumented)
+
+def main():
+    from parseconfig import config
+
+    run_evaluation(config['gtResultsJson'], config['resultsJson'],
+                   config['resultsPath'], config['resultsInstrumentedPath'],
+                    config['gtMethodsInstrumentedPath'])
 
 if __name__ == '__main__':
     main()

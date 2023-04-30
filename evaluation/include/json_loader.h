@@ -17,13 +17,10 @@ class JsonLoader {
     // Read file into buffer
     auto f_size = file.tellg();
     file.seekg(0, std::ios::beg);
-    std::vector<char> buf(f_size);
+    std::vector<char> buf(static_cast<size_t>(f_size) + 1);
     file.read(buf.data(), buf.size());
 
     file.close();
-
-    boost::json::error_code ec;
-    boost::json::stream_parser parser;
 
     return boost::json::parse(buf.data());
   }

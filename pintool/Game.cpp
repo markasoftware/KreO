@@ -163,12 +163,20 @@ vector<ObjectTrace> finishedObjectTraces;
 /// procedures.
 ADDRINT totalObjectTraces = 0;
 
+/// Manages access to threadToShadowStackMap and the stackEntryCount.
+::PIN_LOCK shadowStackLock;
+
 /// Our own stack that we use to allow us to perform proper call return
 /// matching. This is required because optimization may happen that results in
-/// some calls not having matching returns.
-vector<ShadowStackEntry> shadowStack;
+/// some calls not having matching returns. A shadow stack exists for each
+/// thread.
+map<Tid, vector<ShadowStackEntry>> threadToShadowStackMap;
 
 /// number of times each return address appears in the method stack.
+/// We don't need a stackEntryCount for each thread since each thread will
+/// Contain a unique set of addresses in their appropriate stack entry. Access
+/// should still be regulated by the shadowStackLock since unordered_map operations
+/// are not atomic.
 unordered_map<ADDRINT, int> stackEntryCount;
 
 /// Lock that manages access to heap allocated regions.
@@ -326,7 +334,7 @@ void ParsePregame() {
 /// @note it must be an iterator that has a valid non-null object-trace.
 /// @note The iterator is not removed from the activeObjectTraces. The user is
 /// responsible for erasing the iterator.
-void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
+void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it, bool potentiallyWriteTraces) {
   assert(GetTid() == activeObjectTracesLock._owner);
 
   ObjectTrace objectTrace = it->second;
@@ -366,7 +374,7 @@ void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
       } else {
         finishedObjectTraces.push_back(objectTrace);
 
-        if (finishedObjectTraces.size() > FINISHED_OBJECT_TRACES_MAX_SIZE) {
+        if (finishedObjectTraces.size() > FINISHED_OBJECT_TRACES_MAX_SIZE && potentiallyWriteTraces) {
           ::PIN_ReleaseLock(&finishedObjectTracesLock);
           WriteFinishedObjectTraces();
         } else {
@@ -385,12 +393,12 @@ void EndObjectTraceIt(decltype(activeObjectTraces)::iterator& it) {
 // ============================================================================
 /// @brief Ends object trace with object pointer address of objPtr. If objPtr
 /// doesn't exist (isn't in activeObjectTraces), does nothing.
-void EndObjectTrace(ADDRINT objPtr) {
+void EndObjectTrace(ADDRINT objPtr, bool potentiallyWriteTraces) {
   assert(GetTid() == activeObjectTracesLock._owner);
-  
+
   auto it = activeObjectTraces.find(objPtr);
   if (it != activeObjectTraces.end()) {
-    EndObjectTraceIt(it);
+    EndObjectTraceIt(it, potentiallyWriteTraces);
     activeObjectTraces.erase(it);
   }
 }
@@ -400,7 +408,7 @@ void EndObjectTrace(ADDRINT objPtr) {
 /// given region, that is, within the set of values [regionStart, regionEnd).
 /// It is required that regionStart <= regionEnd.
 /// The global activeObjectTraces object will be modified by this function.
-void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
+void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd, bool potentiallyWriteTraces) {
   // lower_bound means that the argument is the lower bound and that the
   // returned iterator points to an element greater than or equal to the
   // argument. And, as you'd expect, upper_bound points /after/ the position
@@ -412,7 +420,7 @@ void EndObjectTracesInRegion(ADDRINT regionStart, ADDRINT regionEnd) {
   auto firstTrace = activeObjectTraces.lower_bound(regionStart);
   auto it = firstTrace;
   for (; it != activeObjectTraces.end() && it->first < regionEnd; it++) {
-    EndObjectTraceIt(it);
+    EndObjectTraceIt(it, potentiallyWriteTraces);
   }
   activeObjectTraces.erase(firstTrace, it);
 }
@@ -498,7 +506,7 @@ void FreeBeforeCallback(ADDRINT freedRegionStart) {
     ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
 
     ::PIN_GetLock(&activeObjectTracesLock, tid);
-    EndObjectTracesInRegion(freedRegionStart, freedRegionEnd);
+    EndObjectTracesInRegion(freedRegionStart, freedRegionEnd, true);
     ::PIN_ReleaseLock(&activeObjectTracesLock);
   }
 }
@@ -514,7 +522,9 @@ void OnDeleteInstrumented(ADDRINT deletedObject) {
   LOG(ss.str());
 #endif
 
-  ::PIN_GetLock(&heapAllocatedRegionsLock, GetTid());
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&heapAllocatedRegionsLock, tid);
 
   // Delete called, to verify delete is valid search for it in
   // heapAllocatedRegions
@@ -529,7 +539,9 @@ void OnDeleteInstrumented(ADDRINT deletedObject) {
 
     ::PIN_ReleaseLock(&heapAllocatedRegionsLock);
 
-    EndObjectTrace(deletedObject);
+    ::PIN_GetLock(&activeObjectTracesLock, tid);
+    EndObjectTrace(deletedObject, true);
+    ::PIN_ReleaseLock(&activeObjectTracesLock);
   }
 }
 
@@ -591,7 +603,7 @@ void StackIncreaseCallback(ADDRINT stackPtr) {
 
   // End traces in the deallocated region.
   ::PIN_GetLock(&activeObjectTracesLock, tid);
-  EndObjectTracesInRegion(lastStackPtr, stackPtr);
+  EndObjectTracesInRegion(lastStackPtr, stackPtr, true);
   ::PIN_ReleaseLock(&activeObjectTracesLock);
 }
 
@@ -602,23 +614,17 @@ void StackIncreaseCallback(ADDRINT stackPtr) {
 /// additional stack pointer observers can verify that the stack is in fact
 /// increasing).
 bool IsPossibleStackIncrease(INS ins) {
+  OPCODE insOpcode = LEVEL_CORE::INS_Opcode(ins);
+
   // There /is/ one instruction which modifies the stack pointer which we
   // intentionally exclude here -- `ret`. While it moves the stack pointer up by
   // one, it shouldn't matter unless you are jumping to an object pointer -- and
   // in that case, we have larger problems!
 
-/// Identifying operation codes for various instructions that we exclude.
-#define RET_NEAR 740
-#define CALL_NEAR 75
-#define POP 616
-#define PUSH 671
-
-  OPCODE insOpcode = LEVEL_CORE::INS_Opcode(ins);
-
-  // Note: checking insOpcode == PUSH and insOpcode == CALL_NEAR are not
-  // required but are done to avoid as many calls to stack checking.
-  if (insOpcode == RET_NEAR || insOpcode == CALL_NEAR || insOpcode == POP ||
-      insOpcode == PUSH || LEVEL_CORE::INS_IsSub(ins)) {
+  // Also note: It is important that we exclude ret and call instructions
+  // because of how the InstrumentInstruction function uses this function.
+  if (LEVEL_CORE::INS_IsRet(ins) || LEVEL_CORE::INS_IsSub(ins) ||
+      LEVEL_CORE::INS_IsCall(ins)) {
     return false;
   }
 
@@ -714,7 +720,16 @@ void InsertObjectTraceEntry(ADDRINT objPtr, const ObjectTraceEntry& entry) {
 /// stackEntryCount if the counter is 0 to preserve memory.
 /// @note The shadow stack must not be empty when this function is called.
 ShadowStackEntry ShadowStackRemoveAndReturnTop() {
-  assert(shadowStack.size() > 0);
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&shadowStackLock, tid);
+
+  auto shadowStackIt = threadToShadowStackMap.find(tid);
+
+  assert(shadowStackIt != threadToShadowStackMap.end() &&
+         shadowStackIt->second.size() > 0);
+
+  vector<ShadowStackEntry> &shadowStack = shadowStackIt->second;
 
   ShadowStackEntry stackTop = shadowStack.back();
 
@@ -731,6 +746,8 @@ ShadowStackEntry ShadowStackRemoveAndReturnTop() {
     stackEntryCount.erase(stackEntryIt);
   }
 
+  ::PIN_ReleaseLock(&shadowStackLock);
+
   return stackTop;
 }
 
@@ -740,14 +757,25 @@ ShadowStackEntry ShadowStackRemoveAndReturnTop() {
 /// @note If shadow stack empty, return ignored.
 /// @param actualRetAddr Actual (observed) return address.
 bool IgnoreReturn(ADDRINT actualRetAddr) {
-  if (shadowStack.empty()) {
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&shadowStackLock, tid);
+
+  auto shadowStackIt = threadToShadowStackMap.find(tid);
+
+  if (shadowStackIt == threadToShadowStackMap.end() ||
+      shadowStackIt->second.empty()) {
+    ::PIN_ReleaseLock(&shadowStackLock);
+
     return true;
   }
 
-  ShadowStackEntry stackTop = shadowStack.back();
+  ShadowStackEntry stackTop = shadowStackIt->second.back();
 
   // Return address matches top of stack
   if (actualRetAddr == stackTop.returnAddr) {
+    ::PIN_ReleaseLock(&shadowStackLock);
+
     return false;
   }
 
@@ -760,12 +788,16 @@ bool IgnoreReturn(ADDRINT actualRetAddr) {
     // Pop unmatched frames
     while (actualRetAddr != stackTop.returnAddr) {
       ShadowStackRemoveAndReturnTop();
-      stackTop = shadowStack.back();
+      stackTop = shadowStackIt->second.back();
     }
+
+    ::PIN_ReleaseLock(&shadowStackLock);
 
     assert(actualRetAddr == stackTop.returnAddr);
     return false;
   } else {
+    ::PIN_ReleaseLock(&shadowStackLock);
+
     return true;
   }
 }
@@ -817,8 +849,16 @@ void MethodCandidateCallback(ADDRINT procAddr, ADDRINT stackPtr,
     LOG(ss.str());
 #endif
   } else {
-    shadowStack.push_back(
+    ::PIN_GetLock(&shadowStackLock, tid);
+
+    if (threadToShadowStackMap.count(tid) == 0) {
+      threadToShadowStackMap[tid] = vector<ShadowStackEntry>();
+    }
+    
+    threadToShadowStackMap[tid].push_back(
         ShadowStackEntry(objPtr, threadToLastRetAddrMap[tid], procAddr));
+
+    ::PIN_ReleaseLock(&shadowStackLock);
 
     stackEntryCount[threadToLastRetAddrMap[tid]]++;
 
@@ -910,6 +950,8 @@ void InstrumentInstruction(INS ins, void*) {
     gtMethodsInstrumented.insert(insRelAddr);
   }
 
+  bool insHandled = false;
+
   // The following types of instructions should be mutually exclusive.
   if (IsPossibleStackIncrease(ins)) {
     IPOINT where = INS_HasFallThrough(ins) ? IPOINT_AFTER : IPOINT_TAKEN_BRANCH;
@@ -932,7 +974,14 @@ void InstrumentInstruction(INS ins, void*) {
                        IARG_REG_VALUE,
                        REG_STACK_PTR,
                        IARG_END);
-  } else if (INS_IsRet(ins)) {  // TODO: do we need to handle farret?
+
+    insHandled = true;
+  }
+  
+  if (INS_IsRet(ins)) {  // TODO: do we need to handle farret?
+    assert(!insHandled);
+    insHandled = true;
+  
     // docs say `ret` implies control flow, but just want to be sure, since this
     // a precondition for IARG_BRANCH_TARGET_ADDR but idk if that does an
     // internal assert.
@@ -942,7 +991,12 @@ void InstrumentInstruction(INS ins, void*) {
                    reinterpret_cast<AFUNPTR>(RetCallback),
                    ::IARG_BRANCH_TARGET_ADDR,
                    ::IARG_END);
-  } else if (INS_IsCall(ins)) {
+  }
+
+  if (INS_IsCall(ins)) {
+    assert(!insHandled);
+    insHandled = true;
+
     INS_InsertCall(ins,
                    IPOINT_BEFORE,
                    reinterpret_cast<AFUNPTR>(CallCallback),
@@ -1058,7 +1112,7 @@ void Fini(INT32 code, void*) {
   // End all in-progress traces, then print all to disk.
   auto lastObjectTraceIt = activeObjectTraces.rbegin();
   if (lastObjectTraceIt != activeObjectTraces.rend()) {
-    EndObjectTracesInRegion(0, lastObjectTraceIt->first);
+    EndObjectTracesInRegion(0, lastObjectTraceIt->first, false);
   }
 
   ::PIN_ReleaseLock(&activeObjectTracesLock);
@@ -1127,6 +1181,7 @@ int main(int argc, char** argv) {
   ::PIN_InitLock(&threadToLastRetAddrLock);
   ::PIN_InitLock(&finishedObjectTracesLock);
   ::PIN_InitLock(&tidToMallocSizeLock);
+  ::PIN_InitLock(&shadowStackLock);
 
   IMG_AddInstrumentFunction(InstrumentImage, NULL);
   IMG_AddUnloadFunction(InstrumentUnloadImage, NULL);

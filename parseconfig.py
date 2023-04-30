@@ -36,6 +36,8 @@ if not 'baseDirectory' in config:
     config['baseDirectory'] = 'out'
 if not 'heuristicFingerprintImprovement' in config:
     config['heuristicFingerprintImprovement'] = True
+if not 'gtResultsJson' in config:
+    config['gtResultsJson'] = 'gt-results.json'
 
 config_path = pathlib.Path(config_fname).parent.absolute()
 
@@ -57,7 +59,7 @@ config['baseOffsetPath'] = PathRelBase('base-address')
 config['staticTracesPath'] = PathRelBase('static-traces')
 config['objectTracesPath'] = PathRelBase('object-traces')
 config['resultsJson'] = PathRelBase('results.json')
-config['gtResultsJson'] = PathRelBase('gt-results.json')
+config['gtResultsJson'] = PathRelBase(config['gtResultsJson'])
 config['pdbFile'] = PathRelBase(config['pdbFile'])
 config['dumpFile'] = PathRelBase('project.dump')
 config['binaryPath'] = PathRelBase(config['binaryPath'])
