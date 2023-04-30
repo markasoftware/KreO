@@ -20,8 +20,6 @@ from evaluation.evaluation import LoadClassInfoListFromJson, ClassInfo, MethodIn
 gtClassInfo = LoadClassInfoListFromJson(config['gtResultsJson'])
 resultsClassInfo = LoadClassInfoListFromJson(config['resultsJson'])
 
-# Compile list of methods, constructors, destructors
-
 def GetAllMethods(clsInfoList: List[ClassInfo]) -> Set[MethodInfo]:
     methods: Set[MethodInfo] = set()
     for cls in clsInfoList:
