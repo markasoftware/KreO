@@ -98,5 +98,4 @@ the configuration JSON file:
 
     "enableAliasAnalysis": false,
     "enableCallingConventionAnalysis": false,
-    "enableSymbolProcedureDetection": false,
     "heuristicFingerprintImprovement": false,
