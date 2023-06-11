@@ -40,19 +40,18 @@ ROSE_LINK_RPATHS = $(shell LD_LIBRARY_PATH=/usr/local/lib $(ROSE_HOME)/bin/rose-
 
 MOSTLYCLEANFILES =
 
+CXXFLAGS := $(ROSE_CXXFLAGS) -fopenmp $(CXXFLAGS)
+
 ##############################################################################
 # Assuming your source code is "pregame.cpp" to build an executable named "pregame".
-
-run: all
-	LD_LIBRARY_PATH=/usr/local/lib ./pregame --partition-split-thunks --method-candidates-path ${METHOD_CANDIDATES} --static-traces-path ${STATIC_TRACES} ${BINARY} 
 
 all: pregame
 
 pregame.o: pregame.cpp custom-dataflow-engine.h
-	$(ROSE_CXX) $(ROSE_CPPFLAGS) $(ROSE_CXXFLAGS) -o $@ -c $<
+	$(ROSE_CXX) $(ROSE_CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
 
 pregame: pregame.o
-	$(ROSE_CXX) $(ROSE_CXXFLAGS) -o $@ $^ $(ROSE_LDFLAGS) $(ROSE_LINK_RPATHS) -Wl,-rpath=$(ROSE_HOME)/lib
+	$(ROSE_CXX) $(CXXFLAGS) -o $@ $^ $(ROSE_LDFLAGS) $(ROSE_LINK_RPATHS) -Wl,-rpath=$(ROSE_HOME)/lib
 
 MOSTLYCLEANFILES += pregame pregame.o
 

@@ -1,5 +1,6 @@
 import os
 import pathlib
+import subprocess
 from parseconfig import config
 
 scriptpath = pathlib.Path(__file__).parent.absolute()
@@ -20,4 +21,6 @@ if 'debugFunction' in config:
 
 args += ['--', config['binaryPath']]
 
-os.execvp(executable_path, args)
+process = subprocess.Popen(args)
+
+process.wait()

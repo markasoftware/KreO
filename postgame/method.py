@@ -1,7 +1,7 @@
 from typing import Callable, Optional
 
 class Method:
-    def __init__(self, address: int, name: Optional[str] = None):
+    def __init__(self, address: int, foundDynamically: bool=True, name: Optional[str]=None):
         self.address = address
         self.type = ''
         # How many times the method has been seen in different parts of a trace:
@@ -13,6 +13,8 @@ class Method:
         self.isInitializer = False
         self.isFinalizer = False
         self.name = name
+
+        self.foundDynamically = foundDynamically
 
     def resetMethodStatistics(self):
         self.seenInHead = int(0)
@@ -59,5 +61,5 @@ class Method:
 
     def __str__(self) -> str:
         return ('' if self.name == None else (self.name + ' ')) +\
-               hex(self.address) +\
+               str(self.address) +\
                ('' if self.type == '' else ' ' + self.type)

@@ -7,3 +7,6 @@ oop/
 __pycache__
 out/*
 pintool.log
+
+resources/*
+xmltest.cpp

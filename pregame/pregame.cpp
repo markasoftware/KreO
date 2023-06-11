@@ -1,6 +1,7 @@
 #include <rose.h>
 
 #include <Rose/BinaryAnalysis/InstructionSemantics/PartialSymbolicSemantics.h>
+#include <Rose/BinaryAnalysis/Partitioner2/BasicBlock.h>
 #include <Rose/BinaryAnalysis/Partitioner2/DataFlow.h>
 #include <Rose/BinaryAnalysis/Partitioner2/Partitioner.h>
 #include <Rose/BinaryAnalysis/Partitioner2/Function.h>
@@ -121,17 +122,40 @@ namespace Kreo {
 
         // transfer functions
     public:
-        virtual Base::SValuePtr readRegister(RegisterDescriptor reg, const Base::SValuePtr &dflt) override {
-            Base::SValuePtr retval = PartialSymbolic::RiscOperators::readRegister(reg, dflt);
-            PartialSymbolic::RegisterState::promote(currentState()->registerState())->updateReadProperties(reg);
-            return retval;
-        }
+        // virtual Base::SValuePtr readRegister(RegisterDescriptor reg, const Base::SValuePtr &dflt) override {
+        //     Base::SValuePtr retval = PartialSymbolic::RiscOperators::readRegister(reg, dflt);
+        //     PartialSymbolic::RegisterState::promote(currentState()->registerState())->updateReadProperties(reg);
+        //     return retval;
+        // }
 
-        virtual void writeRegister(RegisterDescriptor reg, const Base::SValuePtr &a) override {
-            PartialSymbolic::RiscOperators::writeRegister(reg, a);
-            PartialSymbolic::RegisterState::promote(currentState()->registerState())
-                ->updateWriteProperties(reg, InstructionSemantics::BaseSemantics::IO_WRITE);
-        }
+        // virtual void writeRegister(RegisterDescriptor reg, const Base::SValuePtr &a) override {
+        //     PartialSymbolic::RiscOperators::writeRegister(reg, a);
+        //     std::cerr << "Write to register: " << reg.toString() << " value " << a->toString() << std::endl;
+        // PartialSymbolic::RegisterState::promote(currentState()->registerState())
+        //     ->updateWriteProperties(reg, InstructionSemantics::BaseSemantics::IO_WRITE);
+        // }
+
+        // virtual void writeMemory(RegisterDescriptor segreg,
+        //                          const Base::SValuePtr &addr,
+        //                          const Base::SValuePtr &value,
+        //                          const Base::SValuePtr &condition) override {
+        //     std::cerr << "Write memory: segreg is ";
+        //     if (segreg.isEmpty()) {
+        //         std::cerr << "empty";
+        //     } else {
+        //         Base::SValuePtr segregValue = readRegister(segreg, undefined_(segreg.nBits()));
+        //         segregValue->print(std::cerr, formatter);
+        //         Base::SValuePtr adjustedVa = add(addr, signExtend(segregValue, addr->nBits()));
+        //         std::cerr << ", adjusted addr is ";
+        //         adjustedVa->print(std::cerr, formatter);
+        //     }
+        //     std::cerr << ", addr is ";
+        //     addr->print(std::cerr, formatter);
+        //     std::cerr << " with value ";
+        //     value->print(std::cerr, formatter);
+        //     std::cerr << std::endl;
+        //     PartialSymbolic::RiscOperators::writeMemory(segreg, addr, value, condition);
+        // }
 
         virtual Base::SValuePtr fpFromInteger(const Base::SValuePtr &intValue, SgAsmFloatType *fpType) override {
             // TODO there are probably some situations where we could say that the value is preserved, but a floating point isn't going to be an object pointer anyway.
@@ -143,8 +167,10 @@ namespace Kreo {
     public:
         Base::SValue::Ptr objPtr;
         std::vector<P2::Function::Ptr> fns;
+        rose_addr_t baseOffset;
 
-        StaticObjectTrace(const Base::SValue::Ptr &objPtr) : objPtr(objPtr) { }
+        StaticObjectTrace(const Base::SValue::Ptr &objPtr, rose_addr_t baseOffset)
+            : objPtr(objPtr), baseOffset(baseOffset) { }
     };
 
     std::ostream &operator<<(std::ostream &os, const StaticObjectTrace &trace) {
@@ -154,16 +180,18 @@ namespace Kreo {
         }
         for (auto fn : trace.fns) {
             if (fn) {
-                os << fn->address();
+                rose_addr_t relAddr = fn->address() - trace.baseOffset;
+                os << relAddr;
                 if (!fn->name().empty()) {
                     os << " " << fn->name();
                 }
-                os << std::endl;
+                os << '\n';
             } else {
                 // TODO: figure out why this function might be null (indeterminate faked_call??)
                 // os << "(unknown)" << std::endl;
             }
         }
+        os << "END_TRACE" << std::endl;
         return os;
     }
 
@@ -266,27 +294,35 @@ namespace Kreo {
             return os;
     }
 
-    AnalyzeProcedureResult analyzeProcedure(const P2::Partitioner &partitioner,
+    void initializeCalleeSavedLocations(Base::State::Ptr state, Base::RiscOperatorsPtr ops, const CallingConventionGuess &cc) {
+        // just read ecx/rdi to put it into registerstate
+        state->registerState()->readRegister(
+            cc.thisArgumentRegister,
+            ops->undefined_(cc.thisArgumentRegister.nBits()),
+            ops.get()
+            );
+    }
+
+    AnalyzeProcedureResult analyzeProcedure(const P2::PartitionerPtr &partitioner,
                                             const Disassembler::BasePtr &disassembler,
-                                            const P2::Function::Ptr &proc) {
-        bool debugFunction = proc->address() == Kreo::settings.debugFunctionAddr;
+                                            const P2::Function::Ptr &proc,
+                                            rose_addr_t baseOffset) {
+        rose_addr_t absAddr = proc->address();
+        rose_addr_t relAddr = absAddr - baseOffset;
+        bool debugFunction = relAddr == Kreo::settings.debugFunctionAddr;
         if (proc->isThunk()) { // usually dosen't call methods or anything
             return AnalyzeProcedureResult();
         }
         // some of this is modeled off of the dataflow analysis in Rose/BinaryAnalysis/CallingConvention.C
 
         const CallingConventionGuess cc = guessCallingConvention(disassembler);
-        DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner.cfg(), partitioner.findPlaceholder(proc->address()));
+        DfCfg dfCfg = P2::DataFlow::buildDfCfg(partitioner, partitioner->cfg(), partitioner->findPlaceholder(absAddr));
         if (debugFunction) {
             std::string dfCfgDotFileName = "dfcfg-" + proc->name() + ".dot";
             std::cerr << "Printing dot to " << dfCfgDotFileName << std::endl;
             std::ofstream dfCfgDotFile(dfCfgDotFileName);
             P2::DataFlow::dumpDfCfg(dfCfgDotFile, dfCfg);
         }
-        // uncomment to see the DfCfg graphs:
-        // std::cout << std::endl;
-        // dumpDfCfg(std::cout, dfCfg);
-        // std::cout << std::endl;
 
         ///// PREPROCESS GRAPH /////
 
@@ -344,9 +380,13 @@ namespace Kreo {
         
         ///// RUN DATAFLOW /////
 
-        const RegisterDictionary::Ptr regDict = partitioner.instructionProvider().registerDictionary();
-        Base::RiscOperatorsPtr riscOperators = RiscOperators::instanceFromState(stateFromRegisters(regDict));
-        Base::DispatcherPtr cpu = partitioner.newDispatcher(riscOperators);
+        const RegisterDictionary::Ptr regDict = partitioner->instructionProvider().registerDictionary();
+        Base::State::Ptr state = stateFromRegisters(regDict);
+        Base::RiscOperatorsPtr riscOperators = RiscOperators::instanceFromState(state);
+        Base::DispatcherPtr cpu = partitioner->newDispatcher(riscOperators);
+        // It appears that creating the dispatcher automatically initializes the state associated with regDict, setting the all-important DS register to zero. It's important to pass this same state into insertStartingVertex below; if you create a new one with stateFromRegisters as I did before, the new state won't be initialized and DS won't be set to zero, causing lots of tractable expressions to be reset to terminals in the static analysis.
+        initializeCalleeSavedLocations(state, riscOperators, cc); // ensures that ecx/rdi is initialized before analysis begins, because they do have a value before function call (at least in the conventions we're interested in). Lots of room for improvement here, ask mark, I have a document with a more detailed todo about this and doing it for other callee-saved locations more robustly.
+        // cpu->initializeState(state);
         P2::DataFlow::TransferFunction transferFn(cpu);
         transferFn.defaultCallingConvention(cc.defaultCallingConvention);
         P2::DataFlow::MergeFunction mergeFn(cpu);
@@ -355,7 +395,7 @@ namespace Kreo {
         dfEngine.name("kreo-static-tracer");
 
         // dfEngine.reset(State::Ptr()); // TODO what does this do, and why is it CalingConvention.C?
-        dfEngine.insertStartingVertex(startVertexId, stateFromRegisters(regDict));
+        dfEngine.insertStartingVertex(startVertexId, state);
         dfEngine.worklist(topoSortedVertexIds);
         dfEngine.maxIterations(dfCfg.nVertices()+5); // since we broke loops, should only go once, so this is bascially an assertion.
         try {
@@ -371,11 +411,6 @@ namespace Kreo {
             std::cerr << "Generic BaseSemantics::Exception. what(): " << e.what() << std::endl;
             return AnalyzeProcedureResult();
         }
-        // catch (const DataFlow::NotConverging &e) {
-        //     // TODO: If we re-implement dataflow manually we can avoid this error!
-        //     std::cerr << "Data flow analysis didn't converge! " << e.what() << std::endl;
-        //     return AnalyzeProcedureResult();
-        // }
 
         ///// ANALYZE DATAFLOW RESULTS FOR STATIC TRACES /////
 
@@ -383,7 +418,6 @@ namespace Kreo {
         // argument into the same trace. While it's possible to find the topo order and
         // build the traces simultaneously, I'll do the topo sort first and then separately
         // loop through just to make the code a bit clearer.
-
 
         // Build traces
         std::vector<StaticObjectTrace> traces;
@@ -393,20 +427,19 @@ namespace Kreo {
             if (debugFunction) {
                 std::cerr << "==VERTEX " << vertex->id() << "==" << std::endl
                           << "numIncomingEdges = " << vertex->nInEdges() << std::endl
-                          << "first argument register @ vertex " << vertex->id() << ": ";
+                          << "memory state @ vertex " << vertex->id() << ": " << std::endl;
                 auto registerState = dfEngine.getInitialState(vertex->id())->registerState();
-                if (true || PartialSymbolic::RegisterState::promote(registerState)->is_wholly_stored(cc.thisArgumentRegister)) {
-                    registerState->print(std::cerr);
+                registerState->print(std::cerr);
                     // registerState->peekRegister(
                     //     cc.thisArgumentRegister,
                     //     riscOperators->undefined_(cc.thisArgumentRegister.nBits()),
                     //     riscOperators.get()
                     //     )
                     //     ->print(std::cerr, formatter);
-                    std::cerr << std::endl;
-                } else {
-                    std::cerr << "(register not stored)" << std::endl;
-                }
+                std::cerr << std::endl
+                          << "Memory state: " << std::endl;
+                dfEngine.getInitialState(vertex->id())->memoryState()->print(std::cerr);
+                std::cerr << std::endl << std::endl;
             }
 
             // Determine whether the current vertex is a call to a function we're interested in, or the start of the graph, which is basically the call of `proc`.
@@ -439,7 +472,7 @@ namespace Kreo {
                 }
             }
             if (matchingTrace == NULL) {
-                traces.push_back(StaticObjectTrace(firstArg));
+                traces.push_back(StaticObjectTrace(firstArg, baseOffset));
                 matchingTrace = &traces.back();
             }
             matchingTrace->fns.push_back(vertexProc);
@@ -508,7 +541,7 @@ int main(int argc, char *argv[]) {
     engine->settings().partitioner.findingImportFunctions = false; // this is just stuff from other files, right?
     engine->settings().partitioner.findingExportFunctions = Kreo::settings.enableSymbolProcedureDetection;
     engine->settings().partitioner.findingSymbolFunctions = Kreo::settings.enableSymbolProcedureDetection;
-    P2::Partitioner partitioner = engine->partition(specimen); // Create and run partitioner
+    P2::PartitionerPtr partitioner = engine->partition(specimen); // Create and run partitioner
 
     engine->runPartitionerFinal(partitioner);
 
@@ -519,10 +552,10 @@ int main(int argc, char *argv[]) {
     MemoryMap::Ptr memoryMap = engine->memoryMap();
     // std::cerr << "Dumping memory map" << std::endl;
     // memoryMap->dump(std::cerr);
-    size_t baseOffset = memoryMap->nodes().begin()->key().least();
+    rose_addr_t baseOffset = memoryMap->nodes().begin()->key().least();
     std::cerr << "Detected minimum address as " << baseOffset << std::endl;
     std::ofstream(Kreo::settings.baseOffsetPath) << baseOffset << std::endl;
-    Kreo::settings.debugFunctionAddr += baseOffset;
+    Kreo::settings.debugFunctionAddr;
 
     std::ofstream methodCandidatesStream(Kreo::settings.methodCandidatesPath);
 
@@ -533,25 +566,32 @@ int main(int argc, char *argv[]) {
 
     int numMethodsFound = 0;
     int i = 0;
-    for (const P2::Function::Ptr &proc : partitioner.functions()) {
-        std::cerr << "Analyze function 0x" << std::hex << proc->address() << ", which is "
-                  << std::dec << i++ << " out of " << partitioner.functions().size() << std::endl;
+#pragma omp parallel for
+    for (const P2::Function::Ptr &proc : partitioner->functions()) {
+        const size_t relAddr = proc->address() - baseOffset;
+// #pragma omp critical (printStderr)
+        {
+            std::cerr << "Analyze function " << std::dec << relAddr << ", which is "
+                      << i++ << " out of " << partitioner->functions().size() << std::endl;
+        }
         // there's already a conditional for chunks in the static analysis part, but if static analysis is disabled that won't be reached.
         // We're essentially checking two conditions: 1., before static analysis, that it's not a thunk, and 2., after static analysis, that it uses the this pointer.
         if (proc->isThunk()) {
             continue;
         }
 
-        const size_t relativeProcAddr = proc->address() - baseOffset;
         bool usesThisPointer = true; // assume it uses this pointer, possible set to false if static analysis is enabled and finds that the register is not in fact used.
 
         if (Kreo::settings.enableAliasAnalysis || Kreo::settings.enableCallingConventionAnalysis) {
-            auto analysisResult = Kreo::analyzeProcedure(partitioner, disassembler, proc);
+            auto analysisResult = Kreo::analyzeProcedure(partitioner, disassembler, proc, baseOffset);
 
             if (Kreo::settings.enableAliasAnalysis) {
-                staticTracesStream << "# Analysis from procedure " << proc->name() << " @ " << relativeProcAddr
+#pragma omp critical (printStaticTrace)
+                {
+                staticTracesStream << "# Analysis from procedure " << proc->name() << " @ " << relAddr
                                    << " (" << analysisResult.traces.size() << " many traces):" << std::endl
                                    << analysisResult;
+                }
             }
 
             if (Kreo::settings.enableCallingConventionAnalysis) {
@@ -560,12 +600,15 @@ int main(int argc, char *argv[]) {
         }
 
         if (usesThisPointer) {
-            numMethodsFound++;
-            methodCandidatesStream << relativeProcAddr << std::endl;
+#pragma omp critical (incrementNumMethods)
+            {
+                numMethodsFound++;
+                methodCandidatesStream << relAddr << std::endl;
+            }
         }
     }
 
     std::cerr << "Final statistics:\n"
-              << "    Detected " << numMethodsFound << " methods from " << partitioner.functions().size() << " total procedures."
+              << "    Detected " << numMethodsFound << " methods from " << partitioner->functions().size() << " total procedures."
               << std::endl;
 }
