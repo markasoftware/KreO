@@ -577,7 +577,7 @@ def MatchGenToGtClasses(ground_truth: List[ClassInfo],
                 gen_gt_intersection_sizes[s].append(gt_cls)
 
         # Get largest method set intersection.
-        intersection_sizes = list(sorted(gen_gt_intersection_sizes.keys()))
+        intersection_sizes = list(sorted(gen_gt_intersection_sizes.keys(), reverse=True))
         if intersection_sizes != []:
             gt_cls = gen_gt_intersection_sizes[intersection_sizes[0]][0]
             gt_classes_referenced.add(gt_cls)

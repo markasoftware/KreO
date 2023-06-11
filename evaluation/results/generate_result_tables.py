@@ -169,6 +169,9 @@ def main():
 
     for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in')):
         for file in files:
+            if file == '.gitignore':
+                continue
+
             filepath = os.path.join(directory, file)
             splitfilename = file.split('-')
             oss_project = splitfilename[0]
@@ -206,6 +209,9 @@ def main():
     instrumented_results = {}    
     for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in-instrumented')):
         for file in files:
+            if file == '.gitignore':
+                continue
+
             filepath = os.path.join(directory, file)
             
             with open(filepath, 'r') as f:
