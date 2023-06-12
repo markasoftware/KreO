@@ -1,3 +1,0 @@
-BasedOnStyle: Google
-AllowAllConstructorInitializersOnNextLine: false
-BinPackArguments: false

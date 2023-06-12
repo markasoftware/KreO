@@ -1,0 +1,13 @@
+{
+    "isa": "x86",
+
+    "binaryPath": "../libbmp/libbmp.exe",
+    "pdbFile": "../libbmp/libbmp.pdb",
+
+    "resultsPath": "../../evaluation/results/in/libbmp-kreo",
+    "resultsInstrumentedPath": "tmp",
+
+    "baseDirectory": "kreo-libbmp",
+
+    "heuristicFingerprintImprovement": false
+}

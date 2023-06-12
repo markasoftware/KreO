@@ -1,0 +1,15 @@
+{
+    "isa": "x86",
+
+    "binaryPath": "../tinyxml2/tinyxml2.exe",
+    "pdbFile": "../tinyxml2/tinyxml2.pdb",
+
+    "resultsPath": "../../evaluation/results/in/tinyxml2-lego",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented/tinyxml2",
+
+    "baseDirectory": "lego-tinyxml2",
+
+    "enableAliasAnalysis": false,
+    "enableCallingConventionAnalysis": false,
+    "heuristicFingerprintImprovement": false
+}

@@ -1,0 +1,11 @@
+{
+    "isa": "x86",
+
+    "binaryPath": "../tinyxml2/tinyxml2.exe",
+    "pdbFile": "../tinyxml2/tinyxml2.pdb",
+
+    "resultsPath": "../../evaluation/results/in/tinyxml2-kreo",
+    "resultsInstrumentedPath": "tmp",
+
+    "baseDirectory": "kreo-tinyxml2"
+}
