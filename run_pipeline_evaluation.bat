@@ -17,7 +17,7 @@ if %argCount% NEQ 1 (
 set arguments=%1
 
 echo generating dump from pdb
-python3.10 evaluation\generate_dump.py %arguments%
+python evaluation\generate_dump.py %arguments%
 
 if %errorlevel% NEQ 0 (
   echo Previous command execution failed.
@@ -35,7 +35,7 @@ if %errorlevel% NEQ 0 (
 )
 
 echo extracting gt methods from json file
-python3.10 evaluation\extract_gt_methods.py %arguments%
+python evaluation\extract_gt_methods.py %arguments%
 
 if %errorlevel% NEQ 0 (
   echo Previous command execution failed.
@@ -44,7 +44,7 @@ if %errorlevel% NEQ 0 (
 )
 
 echo running dynamic analysis
-python3.10 game.py %arguments%
+python game.py %arguments%
 
 if %errorlevel% NEQ 0 (
   echo Previous command execution failed.
@@ -53,7 +53,7 @@ if %errorlevel% NEQ 0 (
 )
 
 echo running postgame
-python3.10 postgame\postgame.py %arguments%
+python postgame\postgame.py %arguments%
 
 if %errorlevel% NEQ 0 (
   echo Previous command execution failed.
@@ -61,6 +61,6 @@ if %errorlevel% NEQ 0 (
 )
 
 echo analyzing reuslts 
-python3.10 evaluation\evaluation.py %arguments%
+python evaluation\evaluation.py %arguments%
 
 @echo on

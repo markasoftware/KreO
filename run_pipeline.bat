@@ -17,7 +17,7 @@ if %argCount% NEQ 1 (
 set arguments=%1
 
 echo running dynamic analysis
-python3.10 game.py %arguments%
+python game.py %arguments%
 
 if %errorlevel% NEQ 0 (
   echo "Previous command execution failed."
@@ -26,7 +26,7 @@ if %errorlevel% NEQ 0 (
 )
 
 echo running postgame
-python3.10 postgame\postgame.py %arguments%
+python postgame\postgame.py %arguments%
 
 if %errorlevel% NEQ 0 (
   echo "Previous command execution failed."

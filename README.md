@@ -160,3 +160,7 @@ in the `data` directory.
 The shell script `data/run_all_pregame.sh` must be run on Linux first (from the
 project's base directory). Then, the batch script `data/run_all.bat` will run
 all the Windows-side evaluation scripts for all evaluated projects.
+
+After running Lego and KreO on all projects, run the
+`data/run_all_evaluation.bat` (from the project's base directory), then run
+`evaluation/results/generate_result_tables.py`
