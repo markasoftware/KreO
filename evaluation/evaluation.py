@@ -196,30 +196,6 @@ def LoadClassInfoListFromJson(json_str: str) -> List[ClassInfo]:
 
 # Helper methods provided for ease of readability.
 
-def ComputePrecision(true_positives: int, false_positives: int) -> float:
-    '''
-    Calculate and return precision.
-    '''
-    if true_positives + false_positives == 0:
-        return 0.0
-    return float(true_positives) / float(true_positives + false_positives)
-
-def ComputeRecall(true_positives: int, false_negatives: int) -> float:
-    '''
-    Calculate and return recall.
-    '''
-    if true_positives + false_negatives == 0:
-        return 0.0
-    return float(true_positives) / float(true_positives + false_negatives)
-
-def ComputeF1(precision: float, recall: float) -> float:
-    '''
-    Calculate and return the F-1 score (combination of precision and recall).
-    '''
-    if precision + recall == 0.0:
-        return 0.0
-    return (2.0 * precision * recall) / (precision + recall)
-
 def FalseNegatives(gt: List[any], true_positives: int) -> int:
     return len(gt) - true_positives
 
@@ -239,7 +215,7 @@ def NonemptyClasses(classes: List[ClassInfo]) -> List[ClassInfo]:
     return [x for x in classes if len(x.method_set) != 0]
 
 def PrecisionAndRecallClasses(ground_truth: List[ClassInfo],
-                              generated_data: List[ClassInfo]) -> Tuple[float, float]:
+                              generated_data: List[ClassInfo]) -> Tuple[int, int, int]:
     '''
     Computes and returns the precision and recall, comparing the ground
     truth and generated classes.
@@ -257,7 +233,7 @@ def PrecisionAndRecallClasses(ground_truth: List[ClassInfo],
     false_negatives = FalseNegatives(ground_truth_excluding_empty, true_positives)
     false_positives = FalsePositives(generated_data_excluding_empty, true_positives)
 
-    return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
+    return true_positives, false_positives, false_negatives
 
 def PrecisionAndRecallMethods(ground_truth: List[ClassInfo],
                               generated_data: List[ClassInfo]) -> Tuple[float, float]:
@@ -278,7 +254,7 @@ def PrecisionAndRecallMethods(ground_truth: List[ClassInfo],
     false_negatives = FalseNegatives(ground_truth_methods, true_positives)
     false_positives = FalsePositives(generated_data_methods, true_positives)
 
-    return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
+    return true_positives, false_positives, false_negatives
 
 def PrecisionAndRecallSpecificType(ground_truth: List[ClassInfo],
                                    generated_data: List[ClassInfo], t: str) -> Tuple[float, float]:
@@ -296,7 +272,7 @@ def PrecisionAndRecallSpecificType(ground_truth: List[ClassInfo],
     false_negatives = FalseNegatives(ground_truth_type, true_positives)
     false_positives = FalsePositives(generated_data_type, true_positives)
 
-    return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
+    return true_positives, false_positives, false_negatives
 
 def PrecisionAndRecallConstructors(ground_truth: List[ClassInfo],
                                    generated_data: List[ClassInfo]) -> Tuple[float, float]:
@@ -307,7 +283,7 @@ def PrecisionAndRecallDestructors(ground_truth: List[ClassInfo],
     return PrecisionAndRecallSpecificType(ground_truth, generated_data, kDestructorType)
 
 def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
-                                                  generated_data: List[ClassInfo]) -> Tuple[float, float]:
+                                                  generated_data: List[ClassInfo]) -> Tuple[int, int, int]:
     '''
     Computes the precision and recall, where for each generated class, compare
     the method set to all ground truth method sets. Compute the F-1 score for
@@ -323,28 +299,45 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
         '''
         Structure containing results associated with a particular generated class.
         '''
-        def __init__(self, precision: float, recall: float, ground_truth_class_size: int):
-            self.precision = precision
-            self.recall = recall
-            self.ground_truth_class_size = ground_truth_class_size
+        def __init__(self, true_positives: int, false_positives: int, false_negatives: int):
+            self.true_positives = true_positives
+            self.false_positives = false_positives
+            self.false_negatives = false_negatives
 
         def __str__(self):
-            return 'p: {:.2f} r: {:.2f} size: {}'.format(self.precision, self.recall, self.ground_truth_class_size)
+            return 'tp: {} fp: {} fn: {}'.format(self.true_positives, self.false_positives, self.false_negatives)
 
     class PrecisionRecallF1:
         '''
         A fancy tuple containing precision, recall, f1 score, and ground truth ClassInfo.
         '''
-        def __init__(self, p: float, r: float, f: float, gt_class: ClassInfo):
-            self.precision = p
-            self.recall = r
-            self.f1 = f
+        def __init__(self, true_positives: int, false_positives: int, false_negatives: int, gt_class: ClassInfo):
+            self.true_positives = true_positives
+            self.false_positives = false_positives
+            self.false_negatives = false_negatives
             self.gt_class = gt_class
+
+        def get_precision(self):
+            if self.true_positives + self.false_positives == 0:
+                return 0
+            return self.true_positives / (self.true_positives + self.false_positives)
+        
+        def get_recall(self):
+            if self.true_positives + self.false_negatives == 0:
+                return 0
+            return self.true_positives / (self.true_positives + self.false_negatives)
+
+        def get_f1(self):
+            p = self.get_precision()
+            r = self.get_recall()
+            if p + r == 0:
+                return 0
+            return (2.0 * p * r) / (p + r)
 
         def __str__(self):
             gt_cls_name = self.gt_class.mangled_name if self.gt_class is not None else None
             return 'p: {:.2f} r: {:.2f} f1: {:.2f} gt cls: {}'.format(
-                self.precision, self.recall, self.f1, gt_cls_name)
+                self.get_precision(), self.get_recall(), self.get_f1(), gt_cls_name)
 
     results: List[EvaluationResults] = list()
 
@@ -371,29 +364,25 @@ def PrecisionAndRecallMethodsAssignedCorrectClass(ground_truth: List[ClassInfo],
             false_negatives = FalseNegatives(generated_class.method_set, true_positives)
             false_positives = FalsePositives(gt_class.method_set, true_positives)
 
-            precision = ComputePrecision(true_positives, false_positives)
-            recall = ComputeRecall(true_positives, false_negatives)
-            f1 = ComputeF1(precision, recall)
+            precision_recall_f1_scores.add(PrecisionRecallF1(true_positives, false_positives, false_negatives, gt_class))
 
-            precision_recall_f1_scores.add(PrecisionRecallF1(precision, recall, f1, gt_class))
-
-        highest_f1_it = max(precision_recall_f1_scores, key=lambda x: x.f1)
+        highest_f1_it = max(precision_recall_f1_scores, key=lambda x: x.get_f1())
 
         results.append(EvaluationResults(
-            highest_f1_it.precision,
-            highest_f1_it.recall,
-            len(highest_f1_it.gt_class.method_set) if highest_f1_it.gt_class is not None else 0))
+            highest_f1_it.true_positives,
+            highest_f1_it.false_positives,
+            highest_f1_it.false_negatives))
 
-    # Compute overall precision and recall.
-    precision = 0
-    recall = 0
-    total_methods = 0
+    # Compute overall true positives, false positives, and false negatives.
+    true_positives = 0
+    false_positives = 0
+    false_negatives = 0
+
     for result in results:
-        precision += result.precision * result.ground_truth_class_size
-        recall += result.recall * result.ground_truth_class_size
-        total_methods += result.ground_truth_class_size
-    return (precision / (float(total_methods))) if total_methods != 0 else 0, \
-           (recall / float(total_methods)) if total_methods != 0 else 0
+        true_positives += result.true_positives
+        false_positives += result.false_positives
+        false_negatives += result.false_negatives
+    return true_positives, false_positives, false_negatives
 
 def get_gen_gt_cls_pair(gen_cls_mangled_name: str,
                         matched_classes: Set[Tuple[ClassInfo, ClassInfo]]) -> Tuple[ClassInfo, ClassInfo]:
@@ -403,7 +392,7 @@ def get_gen_gt_cls_pair(gen_cls_mangled_name: str,
     return None
 
 def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo],
-                                          generated_data: List[ClassInfo]) -> Tuple[float, float]:
+                                          generated_data: List[ClassInfo]) -> Tuple[int, int, int]:
     '''
     Computes the precision and recall, comparing class ancestors in the class
     hierarchy tree. If an ancestor exists in the generated class hierarchy and
@@ -486,10 +475,10 @@ def PrecisionAndRecallClassGraphAncestors(ground_truth: List[ClassInfo],
     false_negatives = gt_size - true_positives
     false_positives = gen_size - true_positives
 
-    return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
+    return true_positives, false_positives, false_negatives
 
 def PrecisionAndRecallClassGraphEdges(ground_truth: List[ClassInfo],
-                                      generated_data: List[ClassInfo]) -> Tuple[float, float]:
+                                      generated_data: List[ClassInfo]) -> Tuple[int, int]:
     '''
     Similar to PrecisionAndRecallClassGraphAncestors, except instead of
     comparing ancestors in the class graph, directly compare edges in the graph.
@@ -538,7 +527,7 @@ def PrecisionAndRecallClassGraphEdges(ground_truth: List[ClassInfo],
     false_negatives = gt_size - true_positives
     false_positives = gen_size - true_positives
 
-    return (ComputePrecision(true_positives, false_positives), ComputeRecall(true_positives, false_negatives))
+    return true_positives, false_positives, false_negatives
 
 def MatchGenToGtClasses(ground_truth: List[ClassInfo],
                         generated_data: List[ClassInfo]) -> Set[Tuple[ClassInfo, ClassInfo]]:
@@ -604,10 +593,9 @@ def run_evaluation(gt_class_info, gen_class_info, results_path, results_instrume
         file.write('evaluation criteria\tprecision\trecall\tf-score\n')
 
         def RunTest(name: str,
-                    test: Callable[[List[ClassInfo], List[ClassInfo]], Tuple[float, float]]):
-            precision, recall = test(gt_class_info_list, gen_class_info_list)
-            f_score = ComputeF1(precision, recall)
-            file.write('{}&{:.2f}&{:.2f}&{:.2f}\n'.format(name, precision, recall, f_score))
+                    test: Callable[[List[ClassInfo], List[ClassInfo]], Tuple[int, int, int]]):
+            true_positives, false_positives, false_negatives = test(gt_class_info_list, gen_class_info_list)
+            file.write('{}&{}&{}&{}\n'.format(name, true_positives, false_positives, false_negatives))
 
         RunTest('Methods Assigned to Correct Class', PrecisionAndRecallMethodsAssignedCorrectClass)
         RunTest('Individual Classes', PrecisionAndRecallClasses)

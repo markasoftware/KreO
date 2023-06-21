@@ -1,47 +1,95 @@
 import os
 
+from typing import List, Tuple, Dict
+from collections import defaultdict
+
 SCRIPT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
-def convert_nested_str_list_to_float(l):
-    def tuple_to_float(t):
-        new_t = []
-        for x in t:
-            new_t.append(float(x))
-        return new_t
-    return list(map(lambda x: tuple_to_float(x), l))
+class PRF:
+    def __init__(self, p: float, r: float, f: float):
+        self.p = p
+        self.r = r
+        self.f = f
 
-def get_prf_average(l):
-    def avg(l):
-        return sum(l) / len(l)
+class RawData:
+    def __init__(self, tp: str='0', fp: str='0', fn: str='0'):
+        self.tp = int(tp)
+        self.fp = int(fp)
+        self.fn = int(fn)
 
-    l = convert_nested_str_list_to_float(l)
-    p = avg(list(map(lambda x: x[0], l)))
-    r = avg(list(map(lambda x: x[1], l)))
-    f = avg(list(map(lambda x: x[2], l)))
-    return [p, r, f]
+    def ComputePrecision(self) -> float:
+        '''
+        Calculate and return precision.
+        '''
+        if self.tp + self.fp == 0:
+            return 0.0
+        return float(self.tp) / float(self.tp + self.fp)
 
-def get_max_prf(result):
-    values = convert_nested_str_list_to_float(list(result.values()))
-    maxes = [max(list(map(lambda x: x[i], values))) for i in range(3)]
-    return maxes
+    def ComputeRecall(self) -> float:
+        '''
+        Calculate and return recall.
+        '''
+        if self.tp + self.fn == 0:
+            return 0.0
+        return float(self.tp) / float(self.tp + self.fn)
 
-def get_prf_str(prf, max_prf=None):
-    def get_highlighted_str_value_if_max(value, max_value):
+    def ComputeF(self):
+        '''
+        Calculate and return the F-1 score (combination of precision and recall).
+        '''
+        p = self.ComputePrecision()
+        r = self.ComputeRecall()
+        if p + r == 0.0:
+            return 0.0
+        return (2.0 * p * r) / (p + r)
+
+    def __str__(self):
+        return f'tp: {self.tp} fp: {self.fp} fn: {self.fn}'
+
+def ParseLine(line: str) -> Tuple[str, RawData]:
+    line = line.split('&')
+    return line[0], RawData(line[1], line[2], line[3])
+
+def SumRawData(data: List[RawData]) -> RawData:
+    '''
+    Get average RawData given data, a list of RawData
+    '''
+    avg = RawData()
+    avg.tp = sum(list(map(lambda x: x.tp, data)))
+    avg.fp = sum(list(map(lambda x: x.fp, data)))
+    avg.fn = sum(list(map(lambda x: x.fn, data)))
+    return avg
+
+def GetMaxPrf(data: List[RawData]) -> PRF:
+    '''
+    Given a list of RawData, find the max precision, recall, and F-score and return it.
+    '''
+    max_prf = PRF(0, 0, 0)
+    for x in data:
+        max_prf.p = max(max_prf.p, x.ComputePrecision())
+        max_prf.r = max(max_prf.r, x.ComputeRecall())
+        max_prf.f = max(max_prf.f, x.ComputeF())
+    return max_prf
+
+def GetPrfStr(data: RawData, max_prf: PRF=None):
+    '''
+    Given RawData, return LaTeX string representation of the data, string
+    contains precision, recall, F-Score. Elements bolded if they are equal
+    to the max_prf.
+    '''
+    if max_prf == None:
+        max_prf = PRF(-1, -1, -1)
+    
+    def get_str_val(value, max_value):
         if abs(value - max_value) < 0.005:
             return '\\textbf{{{0:0.2f}}}'.format(value)
         return '{0:0.2f}'.format(value)
 
-    out = ''
+    return f'{get_str_val(data.ComputePrecision(), max_prf.p)} & {get_str_val(data.ComputeRecall(), max_prf.r)} & {get_str_val(data.ComputeF(), max_prf.f)}'
 
-    if max_prf is None:
-        for value in prf:
-            out += get_highlighted_str_value_if_max(float(value), -1) + ' & '
-    else:
-        for value, max in zip(prf, max_prf):
-            out += get_highlighted_str_value_if_max(float(value), max) + ' & '
-    return out[0:-3]
-
-def gen_table_instrumented(instrumented_results):
+def GetTableInstrumented(instrumented_results: Dict[str, Dict[str, RawData]]):
+    '''Generates table given instrumented results'''
+    
     TABLE_START = '''
 {\\footnotesize
 \\begin{table*}
@@ -49,20 +97,13 @@ def gen_table_instrumented(instrumented_results):
   \label{tab:lego-cgt}
   \\begin{tabular}{l|ccc|ccc|ccc|ccc|ccc|ccc|ccc}
     \\toprule
-    Program & \multicolumn{3}{c|}{\\begin{tabular}{@{}c@{}}Class Graph\\\\Edges\end{tabular}} & \multicolumn{3}{c|}{\\begin{tabular}{@{}c@{}}Class Graph\\\\Ancestors\end{tabular}} & \multicolumn{3}{c|}{Individual Classes} & \multicolumn{3}{c|}{Constructors} & \multicolumn{3}{c|}{Destructors} & \multicolumn{3}{c|}{Methods} & \multicolumn{3}{c}{\\begin{tabular}{@{}c@{}}Methods Assigned\\\\to Correct Class\end{tabular}}\\\\
-    & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F \\\\
+    Evaluation Category & \multicolumn{3}{c|}{\\begin{tabular}{@{}c@{}}Class Graph\\\\Edges\end{tabular}} & \multicolumn{3}{c|}{\\begin{tabular}{@{}c@{}}Class Graph\\\\Ancestors\end{tabular}} & \multicolumn{3}{c|}{Individual Classes} & \multicolumn{3}{c|}{Constructors} & \multicolumn{3}{c|}{Destructors} & \multicolumn{3}{c|}{Methods} & \multicolumn{3}{c}{\\begin{tabular}{@{}c@{}}Methods Assigned\\\\to Correct Class\end{tabular}}\\\\
+    Program & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F \\\\
     \midrule
 '''
 
     out = ''
-    sums = {}
-    sums['Class Graph Edges'] = []
-    sums['Class Graph Ancestors'] = []
-    sums['Individual Classes'] = []
-    sums['Constructors'] = []
-    sums['Destructors'] = []
-    sums['Methods'] = []
-    sums['Methods Assigned to Correct Class'] = []
+    sums: Dict[str, List[RawData]] = defaultdict(list)
 
     for project, result in sorted(instrumented_results.items(), key=lambda x: x[0].lower()):
         class_graph_edges = result['Class Graph Edges']
@@ -74,13 +115,13 @@ def gen_table_instrumented(instrumented_results):
         methods_assigned_to_correct_class = result['Methods Assigned to Correct Class']
 
         out += f'    {project} & '
-        out += get_prf_str(class_graph_edges) + ' & '
-        out += get_prf_str(class_graph_ancestors) + ' & '
-        out += get_prf_str(individual_classes) + ' & '
-        out += get_prf_str(constructors) + ' & '
-        out += get_prf_str(destructors) + ' & '
-        out += get_prf_str(methods) + ' & '
-        out += get_prf_str(methods_assigned_to_correct_class)
+        out += GetPrfStr(class_graph_edges) + ' & '
+        out += GetPrfStr(class_graph_ancestors) + ' & '
+        out += GetPrfStr(individual_classes) + ' & '
+        out += GetPrfStr(constructors) + ' & '
+        out += GetPrfStr(destructors) + ' & '
+        out += GetPrfStr(methods) + ' & '
+        out += GetPrfStr(methods_assigned_to_correct_class)
         out += '\\\\\n'
 
         sums['Class Graph Edges'].append(result['Class Graph Edges'])
@@ -92,17 +133,17 @@ def gen_table_instrumented(instrumented_results):
         sums['Methods Assigned to Correct Class'].append(result['Methods Assigned to Correct Class'])
 
     out += '    \\midrule\n'
-    out += 'Average & '
-    out += get_prf_str(get_prf_average(sums['Class Graph Edges'])) + ' & '
-    out += get_prf_str(get_prf_average(sums['Class Graph Ancestors'])) + ' & '
-    out += get_prf_str(get_prf_average(sums['Individual Classes'])) + ' & '
-    out += get_prf_str(get_prf_average(sums['Constructors'])) + ' & '
-    out += get_prf_str(get_prf_average(sums['Destructors'])) + ' & '
-    out += get_prf_str(get_prf_average(sums['Methods'])) + ' & '
-    out += get_prf_str(get_prf_average(sums['Methods Assigned to Correct Class']))
-    out += '\\\\\n'
+    out += '    Average & '
+    out += GetPrfStr(SumRawData(sums['Class Graph Edges'])) + ' & '
+    out += GetPrfStr(SumRawData(sums['Class Graph Ancestors'])) + ' & '
+    out += GetPrfStr(SumRawData(sums['Individual Classes'])) + ' & '
+    out += GetPrfStr(SumRawData(sums['Constructors'])) + ' & '
+    out += GetPrfStr(SumRawData(sums['Destructors'])) + ' & '
+    out += GetPrfStr(SumRawData(sums['Methods'])) + ' & '
+    out += GetPrfStr(SumRawData(sums['Methods Assigned to Correct Class']))
+    out += r'\\n'
 
-    TABLE_END = '''    \\bottomrule
+    TABLE_END = r'''    \bottomrule
   \end{tabular}
 \end{table*}
 }
@@ -110,62 +151,109 @@ def gen_table_instrumented(instrumented_results):
 
     return TABLE_START + out + TABLE_END
 
-def gen_table(caption, results):
-    label = '-'.join(caption.split(' '))
-    def get_table_start(label, table_type, floating=False):
+def GetFullTable(caption: str, results: Dict[str, Dict[str, RawData]]):
+    '''Generate table with all results (not averaged).
+    results maps evaluated project to a dict that maps the analysis tool to the results'''
+
+    def GetTableStart(floating=False):
+        nonlocal caption
+
+        label = '-'.join(caption.split(' '))
         floating_str = '[H]' if floating else ''
         return f'''
-\\begin{{{table_type}}}{floating_str}
-    \caption{{Evaluation of Various Projects, {caption}}}
+\\begin{{table}}{floating_str}
+  \centering
+  \caption{{Evaluation of Various Projects, {caption}}}
   \label{{tab:{label}}}
   \\begin{{tabular}}{{l|ccc|ccc|ccc}}
     \\toprule
     Program & \multicolumn{{3}}{{c|}}{{Lego}} & \multicolumn{{3}}{{c|}}{{\projname}} & \multicolumn{3}{{c}}{{OOAnalyzer}}\\\\
-    & Precision & Recall & F-Score & Precision & Recall & F-Score & Precision & Recall & F-Score\\\\
+    Project & Precision & Recall & F-Score & Precision & Recall & F-Score & Precision & Recall & F-Score\\\\
     \midrule
 '''
 
-    def get_table_end(table_type):
-        return f'''\\bottomrule
-\end{{tabular}}
-\end{{{table_type}}}'''
+    TABLE_END = r'''    \bottomrule
+  \end{tabular}
+\end{table}'''
 
-    out_graph = {}
-    out_graph['lego'] = list()
-    out_graph['kreo'] = list()
-    out_graph['ooa'] = list()
+    result_list: Dict[str, List[RawData]] = defaultdict(list)
 
     out = ''
-    for project, result in sorted(results.items(), key=lambda x: x[0].lower()):
+    # sort by evaluated project name
+    for evaluated_project, result in sorted(results.items(), key=lambda x: x[0].lower()):
         assert 'lego' in result
         assert 'kreo' in result
         assert 'ooa' in result
 
-        max_prf = get_max_prf(result)
+        lego_result = result['lego']
+        kreo_result = result['kreo']
+        ooa_result = result['ooa']
 
-        out += f'{project} & {get_prf_str(result["lego"], max_prf)} & {get_prf_str(result["kreo"], max_prf)} & {get_prf_str(result["ooa"], max_prf)} \\\\\n'
+        max_prf = GetMaxPrf(result.values())
 
-        out_graph['lego'].append(result['lego'])
-        out_graph['kreo'].append(result['kreo'])
-        out_graph['ooa'].append(result['ooa'])
+        out += f'    {evaluated_project} & {GetPrfStr(lego_result, max_prf)} & {GetPrfStr(kreo_result, max_prf)} & {GetPrfStr(ooa_result, max_prf)} \\\\\n'
 
-    out += '\\midrule\n'
+        result_list['lego'].append(lego_result)
+        result_list['kreo'].append(kreo_result)
+        result_list['ooa'].append(ooa_result)
+
+    out += '    \\midrule\n'
 
     result_avg = {
-        'lego': get_prf_average(out_graph['lego']),
-        'kreo': get_prf_average(out_graph['kreo']),
-        'ooa': get_prf_average(out_graph['ooa'])
+        'lego': SumRawData(result_list['lego']),
+        'kreo': SumRawData(result_list['kreo']),
+        'ooa': SumRawData(result_list['ooa'])
     }
-    max_prf_avg = get_max_prf(result_avg)
 
-    out_avg = f'Average & {get_prf_str(result_avg["lego"], max_prf_avg)} & {get_prf_str(result_avg["kreo"], max_prf_avg)} & {get_prf_str(result_avg["ooa"], max_prf_avg)} \\\\\n'
+    max_prf_avg = GetMaxPrf(result_avg.values())
+
+    out_avg = f'    Average & {GetPrfStr(result_avg["lego"], max_prf_avg)} & {GetPrfStr(result_avg["kreo"], max_prf_avg)} & {GetPrfStr(result_avg["ooa"], max_prf_avg)} \\\\\n'
 
     out += out_avg
 
-    return ((get_table_start(label, 'table*') + out_avg + get_table_end('table*')), (get_table_start(label + '-2', 'table', True) + out + get_table_end('table')))
+    return GetTableStart(True) + out + TABLE_END
+
+def GetAverageTable(results: Dict[str, Dict[str, Dict[str, RawData]]]):
+    '''Generate table with all results, averaged'''
+
+    out = ''
+    # Maps evaluation type to dict that maps analysis tool to a list of RawData
+    sums: Dict[str, Dict[str, List[RawData]]] = defaultdict(lambda: defaultdict(list))
+
+    for evaluation_type in results:
+        for evaluated_project in results[evaluation_type]:
+            for analysis_tool in results[evaluation_type][evaluated_project]:
+                data = results[evaluation_type][evaluated_project][analysis_tool]
+                sums[evaluation_type][analysis_tool].append(data)
+
+    for evaluation_type, result in sums.items():
+        # Get average from result for each analysis tool
+        result = dict(list(map(lambda x: (x[0], SumRawData(x[1])), result.items())))
+        max_prf = GetMaxPrf(result.values())
+        out += f'    {evaluation_type} & {GetPrfStr(result["lego"], max_prf)} & {GetPrfStr(result["kreo"], max_prf)} & {GetPrfStr(result["ooa"], max_prf)} \\\\\n'
+
+    TABLE_START = r'''\begin{table*}
+  \centering
+  \caption{Evaluation of Various Projects, Average Results}
+  \label{tab:averaged_results}
+  \begin{tabular}{l|ccc|ccc|ccc}
+    \toprule
+    Program & \multicolumn{3}{c|}{Lego} & \multicolumn{3}{c|}{\projname} & \multicolumn{3}{c}{OOAnalyzer}\\
+    Evaluation Category & Precision & Recall & F-Score & Precision & Recall & F-Score & Precision & Recall & F-Score\\
+    \midrule
+'''
+
+    TABLE_END = r'''    \bottomrule
+  \end{tabular}
+\end{table*}'''
+
+    return TABLE_START + out + TABLE_END
 
 def main():
-    results = {}
+    # Maps evaluation type to a dict. The inner dict maps evaluated project
+    # name to another dict that maps evaluated project to another dict that
+    # maps analysis tool to raw data
+    results: Dict[str, Dict[str, Dict[str, RawData]]] = defaultdict(lambda: defaultdict(dict))
 
     for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in')):
         for file in files:
@@ -174,21 +262,16 @@ def main():
 
             filepath = os.path.join(directory, file)
             splitfilename = file.split('-')
-            oss_project = splitfilename[0]
-            tool = splitfilename[1]
+            evaluated_project = splitfilename[0]
+            analysis_tool = splitfilename[1]
 
             with open(filepath, 'r') as f:
                 data = f.read().splitlines()
                 data = data[1:]
-                data = [d.split('&') for d in data]
-                data = {d[0]: d[1:] for d in data}
+                data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
 
-                def map_to_results(name):
-                    if name not in results:
-                        results[name] = {}
-                    if oss_project not in results[name]:
-                        results[name][oss_project] = {}
-                    results[name][oss_project][tool] = data[name]
+                def map_to_results(evaluation_type: str):
+                    results[evaluation_type][evaluated_project][analysis_tool] = data[evaluation_type]
 
                 map_to_results('Class Graph Edges')
                 map_to_results('Class Graph Ancestors')
@@ -198,39 +281,13 @@ def main():
                 map_to_results('Methods')
                 map_to_results('Methods Assigned to Correct Class')
 
-    class_graph_edges_avg, class_graph_edges = gen_table('Class Graph Edges', results['Class Graph Edges'])
-    class_graph_ancestors_avg, class_graph_ancestors = gen_table('Class Graph Ancestors', results['Class Graph Ancestors'])
-    individual_classes_avg, individual_classes = gen_table('Individual Classes', results['Individual Classes'])
-    constructors_avg, constructors = gen_table('Constructors', results['Constructors'])
-    destructors_avg, destructors = gen_table('Destructors', results['Destructors'])
-    methods_avg, methods = gen_table('Methods', results['Methods'])
-    methods_assigned_to_correct_class_avg, methods_assigned_to_correct_class = gen_table('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class'])
-
-    instrumented_results = {}    
-    for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in-instrumented')):
-        for file in files:
-            if file == '.gitignore':
-                continue
-
-            filepath = os.path.join(directory, file)
-            
-            with open(filepath, 'r') as f:
-                data = f.read().splitlines()
-                data = data[1:]
-                data = [d.split('&') for d in data]
-                data = {d[0]: d[1:] for d in data}
-                instrumented_results[file] = data
-
-    instrumented = gen_table_instrumented(instrumented_results)
-
-    with open('summarized-results.tex', 'w') as f:
-        f.write(class_graph_edges_avg + '\n')
-        f.write(class_graph_ancestors_avg + '\n')
-        f.write(individual_classes_avg + '\n')
-        f.write(constructors_avg + '\n')
-        f.write(destructors_avg + '\n')
-        f.write(methods_avg + '\n')
-        f.write(methods_assigned_to_correct_class_avg + '\n')
+    class_graph_edges = GetFullTable('Class Graph Edges', results['Class Graph Edges'])
+    class_graph_ancestors = GetFullTable('Class Graph Ancestors', results['Class Graph Ancestors'])
+    individual_classes = GetFullTable('Individual Classes', results['Individual Classes'])
+    constructors = GetFullTable('Constructors', results['Constructors'])
+    destructors = GetFullTable('Destructors', results['Destructors'])
+    methods = GetFullTable('Methods', results['Methods'])
+    methods_assigned_to_correct_class = GetFullTable('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class'])
 
     with open('full-results.tex', 'w') as f:
         f.write(class_graph_edges + '\n')
@@ -240,6 +297,27 @@ def main():
         f.write(destructors + '\n')
         f.write(methods + '\n')
         f.write(methods_assigned_to_correct_class + '\n')
+
+    averaged = GetAverageTable(results)
+
+    with open('summarized-results.tex', 'w') as f:
+        f.write(averaged)
+
+    instrumented_results: Dict[str, Dict[str, RawData]] = {}    
+    for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in-instrumented')):
+        for evaluated_project in files:
+            if evaluated_project == '.gitignore':
+                continue
+
+            filepath = os.path.join(directory, evaluated_project)
+            
+            with open(filepath, 'r') as f:
+                data = f.read().splitlines()
+                data = data[1:]
+                data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
+                instrumented_results[evaluated_project] = data
+
+    instrumented = GetTableInstrumented(instrumented_results)
 
     with open('instrumented-results.tex', 'w') as f:
         f.write(instrumented)
