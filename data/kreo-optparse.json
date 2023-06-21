@@ -5,7 +5,7 @@
     "pdbFile": "../optparse/optparse.pdb",
 
     "resultsPath": "../../evaluation/results/in/optparse-kreo",
-    "resultsInstrumentedPath": "tmp",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-kreo/optparse",
 
     "baseDirectory": "kreo-optparse"
 }

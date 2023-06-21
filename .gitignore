@@ -5,7 +5,6 @@ pin.log
 *\#*
 oop/
 __pycache__
-out/*
 pintool.log
 .vscode
 

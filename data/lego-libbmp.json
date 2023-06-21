@@ -5,7 +5,7 @@
     "pdbFile": "../libbmp/libbmp.pdb",
 
     "resultsPath": "../../evaluation/results/in/libbmp-lego",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented/libbmp",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego/libbmp",
 
     "baseDirectory": "lego-libbmp",
 

@@ -5,7 +5,7 @@
     "pdbFile": "../tinyxml2/tinyxml2.pdb",
 
     "resultsPath": "../../evaluation/results/in/tinyxml2-lego",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented/tinyxml2",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego/tinyxml2",
 
     "baseDirectory": "lego-tinyxml2",
 

@@ -1,5 +1,6 @@
 in/*
 in-instrumented/*
 full-results.tex
-instrumented-results.tex
+lego-instrumented-results.tex
+lego+-instrumented-results.tex
 summarized-results.tex

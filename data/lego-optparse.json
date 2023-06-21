@@ -5,7 +5,7 @@
     "pdbFile": "../optparse/optparse.pdb",
 
     "resultsPath": "../../evaluation/results/in/optparse-lego",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented/optparse",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego/optparse",
 
     "baseDirectory": "lego-optparse",
 

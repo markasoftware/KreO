@@ -5,7 +5,7 @@
     "pdbFile": "../libbmp/libbmp.pdb",
 
     "resultsPath": "../../evaluation/results/in/libbmp-kreo",
-    "resultsInstrumentedPath": "tmp",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-kreo/libbmp",
 
     "baseDirectory": "kreo-libbmp",
 

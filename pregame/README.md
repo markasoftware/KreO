@@ -17,5 +17,4 @@ Rose in a location where libraries are default discovered.
 
 ## Running
 
-Build via running `make all`. Run `make BINARY=/path/to/binary` to discover
-function candidates for `/path/to/binary`
+Build via running `make all`. Run the pregame via `pregame.py` in the base directory.

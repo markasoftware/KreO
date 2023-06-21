@@ -87,20 +87,43 @@ def GetPrfStr(data: RawData, max_prf: PRF=None):
 
     return f'{get_str_val(data.ComputePrecision(), max_prf.p)} & {get_str_val(data.ComputeRecall(), max_prf.r)} & {get_str_val(data.ComputeF(), max_prf.f)}'
 
-def GetTableInstrumented(instrumented_results: Dict[str, Dict[str, RawData]]):
+def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str, RawData]]):
     '''Generates table given instrumented results'''
-    
-    TABLE_START = '''
-{\\footnotesize
-\\begin{table*}
-  \caption{Evaluation of Lego on the Covered Ground Truth (P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.''}
-  \label{tab:lego-cgt}
-  \\begin{tabular}{l|ccc|ccc|ccc|ccc|ccc|ccc|ccc}
-    \\toprule
-    Evaluation Category & \multicolumn{3}{c|}{\\begin{tabular}{@{}c@{}}Class Graph\\\\Edges\end{tabular}} & \multicolumn{3}{c|}{\\begin{tabular}{@{}c@{}}Class Graph\\\\Ancestors\end{tabular}} & \multicolumn{3}{c|}{Individual Classes} & \multicolumn{3}{c|}{Constructors} & \multicolumn{3}{c|}{Destructors} & \multicolumn{3}{c|}{Methods} & \multicolumn{3}{c}{\\begin{tabular}{@{}c@{}}Methods Assigned\\\\to Correct Class\end{tabular}}\\\\
-    Program & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F & P & R & F \\\\
-    \midrule
-'''
+
+    def GetTableStart():
+        nonlocal analysis_tool
+
+        start = r'''
+\begin{{table*}}
+  \caption{{Evaluation of {analysis_tool} on the Covered Ground Truth (P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.''}}
+  \label{{tab:lego-cgt}}
+  \begin{{tabular}}{{l|ccc|ccc|ccc|ccc|ccc|ccc|ccc}}
+    \toprule
+    Evaluation Category'''
+        program = 'Program'
+        
+        def AddEvaluationCategory(name):
+            nonlocal start
+            nonlocal program
+            start += r' & \multicolumn{3}{c|}{\begin{tabular}{@{}c@{}}'
+            start += name
+            start += r'\end{tabular}}'
+
+            program += '& P & R & F '
+
+        AddEvaluationCategory(r'Class Graph\\Edges')
+        AddEvaluationCategory('Class Graph\\Ancestors')
+        AddEvaluationCategory(r'Individual Classes}')
+        AddEvaluationCategory(r'Constructors')
+        AddEvaluationCategory(r'Destructors')
+        AddEvaluationCategory(r'Methods')
+        AddEvaluationCategory(r'Methods Assigned\\to Correct Class')
+
+        program += r'\\'
+
+        start += '\n' + program
+
+        return start
 
     out = ''
     sums: Dict[str, List[RawData]] = defaultdict(list)
@@ -141,15 +164,14 @@ def GetTableInstrumented(instrumented_results: Dict[str, Dict[str, RawData]]):
     out += GetPrfStr(SumRawData(sums['Destructors'])) + ' & '
     out += GetPrfStr(SumRawData(sums['Methods'])) + ' & '
     out += GetPrfStr(SumRawData(sums['Methods Assigned to Correct Class']))
-    out += r'\\n'
+    out += '\n'
 
     TABLE_END = r'''    \bottomrule
   \end{tabular}
 \end{table*}
-}
 '''
 
-    return TABLE_START + out + TABLE_END
+    return GetTableStart() + out + TABLE_END
 
 def GetFullTable(caption: str, results: Dict[str, Dict[str, RawData]]):
     '''Generate table with all results (not averaged).
@@ -281,46 +303,44 @@ def main():
                 map_to_results('Methods')
                 map_to_results('Methods Assigned to Correct Class')
 
-    class_graph_edges = GetFullTable('Class Graph Edges', results['Class Graph Edges'])
-    class_graph_ancestors = GetFullTable('Class Graph Ancestors', results['Class Graph Ancestors'])
-    individual_classes = GetFullTable('Individual Classes', results['Individual Classes'])
-    constructors = GetFullTable('Constructors', results['Constructors'])
-    destructors = GetFullTable('Destructors', results['Destructors'])
-    methods = GetFullTable('Methods', results['Methods'])
-    methods_assigned_to_correct_class = GetFullTable('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class'])
-
     with open('full-results.tex', 'w') as f:
-        f.write(class_graph_edges + '\n')
-        f.write(class_graph_ancestors + '\n')
-        f.write(individual_classes + '\n')
-        f.write(constructors + '\n')
-        f.write(destructors + '\n')
-        f.write(methods + '\n')
-        f.write(methods_assigned_to_correct_class + '\n')
-
-    averaged = GetAverageTable(results)
+        f.write(GetFullTable('Class Graph Edges', results['Class Graph Edges']) + '\n')
+        f.write(GetFullTable('Class Graph Ancestors', results['Class Graph Ancestors']) + '\n')
+        f.write(GetFullTable('Individual Classes', results['Individual Classes']) + '\n')
+        f.write(GetFullTable('Constructors', results['Constructors']) + '\n')
+        f.write(GetFullTable('Destructors', results['Destructors']) + '\n')
+        f.write(GetFullTable('Methods', results['Methods']) + '\n')
+        f.write(GetFullTable('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class']) + '\n')
 
     with open('summarized-results.tex', 'w') as f:
-        f.write(averaged)
+        f.write(GetAverageTable(results))
 
-    instrumented_results: Dict[str, Dict[str, RawData]] = {}    
-    for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in-instrumented')):
-        for evaluated_project in files:
-            if evaluated_project == '.gitignore':
-                continue
+    def GetInstrumentedResults(instrumented_results_fpath):
+        instrumented_results: Dict[str, Dict[str, RawData]] = {}
+        
+        for directory, _, files in os.walk(instrumented_results_fpath):
+            for evaluated_project in files:
+                if evaluated_project == '.gitignore':
+                    continue
 
-            filepath = os.path.join(directory, evaluated_project)
-            
-            with open(filepath, 'r') as f:
-                data = f.read().splitlines()
-                data = data[1:]
-                data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
-                instrumented_results[evaluated_project] = data
+                filepath = os.path.join(directory, evaluated_project)
 
-    instrumented = GetTableInstrumented(instrumented_results)
+                with open(filepath, 'r') as f:
+                    data = f.read().splitlines()
+                    data = data[1:]
+                    data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
+                    instrumented_results[evaluated_project] = data
+        
+        return instrumented_results
 
-    with open('instrumented-results.tex', 'w') as f:
-        f.write(instrumented)
+    with open('lego-instrumented-results.tex', 'w') as f:
+        f.write(GetTableInstrumented('lego', GetInstrumentedResults('in-instrumented-lego')))
+
+    with open('lego+-instrumented-results.tex', 'w') as f:
+        f.write(GetTableInstrumented('lego+', GetInstrumentedResults('in-instrumented-lego+')))
+
+    with open('kreo-instrumented-results.tex', 'w') as f:
+        f.write(GetTableInstrumented('kreo', GetInstrumentedResults('in-instrumented-kreo')))
 
 if __name__ == '__main__':
     main()

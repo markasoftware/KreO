@@ -5,7 +5,7 @@
     "pdbFile": "../ser4cpp/ser4cpp_tests.pdb",
 
     "resultsPath": "../../evaluation/results/in/ser4cpp-lego",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented/ser4cpp",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego/ser4cpp",
 
     "baseDirectory": "lego-ser4cpp",
 
