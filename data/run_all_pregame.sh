@@ -1,7 +1,6 @@
 set -e
 
 BASEDIR=$(dirname "$0")
-
 cd ${BASEDIR}/..
 
 python3.8 pregame.py data/lego-libbmp.json
