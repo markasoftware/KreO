@@ -60,6 +60,9 @@ def SumRawData(data: List[RawData]) -> RawData:
     avg.fn = sum(list(map(lambda x: x.fn, data)))
     return avg
 
+def RawDataToPRF(data: RawData) -> PRF:
+    return PRF(data.ComputePrecision(), data.ComputeRecall(), data.ComputeF())
+
 def GetMaxPrf(data: List[RawData]) -> PRF:
     '''
     Given a list of RawData, find the max precision, recall, and F-score and return it.
@@ -271,6 +274,55 @@ def GetAverageTable(results: Dict[str, Dict[str, Dict[str, RawData]]]):
 
     return TABLE_START + out + TABLE_END
 
+def GetOverallResults(results: Dict[str, Dict[str, Dict[str, RawData]]]) -> str:
+    '''
+    Averages PRF for all evaluation metrics for each tool
+    '''
+    # maps tool to list of PRF scores for that tool
+    overall: Dict[str, List[PRF]] = defaultdict(list)
+
+    for evaluation_type in results:
+        # Maps analysis tool to list of raw data, each data point belonging to a different project
+        evaluation_sum: Dict[str, List[RawData]] = defaultdict(list)
+
+        for project_name in results[evaluation_type]:
+            for analysis_tool in results[evaluation_type][project_name]:
+                data = results[evaluation_type][project_name][analysis_tool]
+                evaluation_sum[analysis_tool].append(data)
+        
+        evaluation_sum_new: Dict[str, RawData] = dict([(x, SumRawData(evaluation_sum[x])) for x in evaluation_sum])
+        for x in evaluation_sum_new:
+            overall[x].append(evaluation_sum_new[x])
+
+    def AveragePRF(l: List[PRF]) -> PRF:
+        p = sum(list(map(lambda x: x.p, l)))
+        r = sum(list(map(lambda x: x.r, l)))
+        f = sum(list(map(lambda x: x.f, l)))
+        return PRF(p, r, f)
+
+    overall_avg: Dict[str, PRF] = dict([(x, AveragePRF(evaluation_type[x])) for x in evaluation_type])
+
+    out = ''
+
+    for analysis_tool, avg_prf in overall_avg.items():
+        out += f'{analysis_tool} & {avg_prf.p} & {avg_prf.r} & {avg_prf.f}\\\\'
+
+    TABLE_START = r'''\begin{table*}
+  \centering
+  \caption{Evaluation of Various Projects, Overall Results}
+  \label{tab:averaged_results}
+  \begin{tabular}{l|ccc|ccc|ccc}
+    \toprule
+    Analysis Tool & \multicolumn{3}{c|}{Precision} & \multicolumn{3}{c|}{Recall} & \multicolumn{3}{c}{F-Score}\\
+    \midrule
+'''
+
+    TABLE_END = r'''    \bottomrule
+  \end{tabular}
+\end{table*}'''
+
+    return TABLE_START + out + TABLE_END
+
 def main():
     # Maps evaluation type to a dict. The inner dict maps evaluated project
     # name to another dict that maps evaluated project to another dict that
@@ -341,6 +393,9 @@ def main():
 
     with open('kreo-instrumented-results.tex', 'w') as f:
         f.write(GetTableInstrumented('kreo', GetInstrumentedResults('in-instrumented-kreo')))
+
+    with open('overall-results.tex', 'w') as f:
+        f.write(GetOverallResults(results))
 
 if __name__ == '__main__':
     main()

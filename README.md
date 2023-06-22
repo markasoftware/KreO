@@ -45,11 +45,11 @@ Pin is required for dynamic analysis.
 
 1. Download a recent Pin version from [Intel's
    website](https://www.intel.com/content/www/us/en/developer/articles/tool/pin-a-binary-instrumentation-tool-downloads.html).
-   Most of our testing was on Pin 3.25.
+   Most of our testing was on Pin 3.25. Make sure you download pin for MSVC.
 1. Install [Cygwin](https://www.cygwin.com). When selecting packages to install,
    make sure to add `make` in addition to the default selections.
-1. Install a recent version of Microsoft Visual Studio, which should include
-   MSVC.
+1. Install a recent version of [Microsoft Visual Studio with
+   C++](https://visualstudio.microsoft.com/vs/features/cplusplus/)
 1. Open up the "x86 Native Tools Command Prompt for VS" to build for 32-bit.
 1. Add the Cygwin binary directory to your path. Usually something like `set
    PATH=%PATH%;C:\cygwin64\bin`. Make sure to use MSVC linker instead of GNU
@@ -61,15 +61,25 @@ Pin is required for dynamic analysis.
 #### Evaluation (optional)
 
 If you wish to evaluate KreO, you must build the evaluation tools. cmake must be
-installed (it should be installed when you install Cygwin) In the `evaluation`
-directory, run:
+installed. You *must* use cmake installed with MSVC and not cywin. If `which
+cmake` returns `/usr/bin/cmake.exe` or similar, you should specify the MSVC
+cmake using it's full path (something like `"C:\Program Files\Microsoft Visual
+Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"`).
 
-```mkdir build && cd build cmake ..```
+Install the latset boost version. Note that you should run [additional
+steps](https://stackoverflow.com/a/72696051) in Visual Studio after
+downloading/unzipping Boost to ensure libraries are built. After installing,
+ensure the environment variable `BOOST_ROOT` is set to the root of your Boost
+installation.
+
+In the `evaluation` directory, run:
+
+```mkdir build && cd build && cmake ..```
 
 Next, open the `build` directory in explorer and open the
 `analyze_pdb_dump.vcxproj` file with Microsoft Visual Studio. Build the project
-in Visual Studio (in debug mode). When building, ensure the file
-`build\Debug\analyze_pdb_dump.exe` exists.
+in Visual Studio (<kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>B</kbd>). When building,
+ensure the file `build\Debug\analyze_pdb_dump.exe` exists.
 
 ### Linux
 
@@ -142,6 +152,12 @@ the configuration JSON file:
     "enableCallingConventionAnalysis": false,
     "heuristicFingerprintImprovement": false,
 
+If you want to run Lego+ (lego with improvements that don't include static
+analysis), the following flags must be specified:
+
+    "enableAliasAnalysis": false,
+    "enableCallingConventionAnalysis": false,
+
 ### Generating LaTeX results
 
 After running the evaluation pipeline, all results should be in the
@@ -162,6 +178,10 @@ the paper associated with KreO. This includes all the JSON configuration files
 required for the projects evaluated as well as the executables and PDB files so
 you don't have to deal with building the projects yourself. All relevant data is
 in the `data` directory.
+
+Note that you must download and place the `resources` directory from
+[tinyxml2](https://github.com/leethomason/tinyxml2/tree/master) in the project's
+base directory, as well as `xmltest.cpp`.
 
 The shell script `data/run_all_pregame.sh` must be run on Linux first (from the
 project's base directory). Then, the batch script `data/run_all.bat` will run
