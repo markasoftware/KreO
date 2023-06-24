@@ -1,0 +1,15 @@
+{
+    "isa": "x86",
+
+    "binaryPath": "../libbmp/libbmp.exe",
+    "pdbFile": "../libbmp/libbmp.pdb",
+
+    "resultsPath": "../../evaluation/results/in/libbmp-lego",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego/libbmp",
+
+    "baseDirectory": "lego-libbmp",
+
+    "enableAliasAnalysis": false,
+    "enableCallingConventionAnalysis": false,
+    "heuristicFingerprintImprovement": false
+}

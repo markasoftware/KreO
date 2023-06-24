@@ -1,0 +1,14 @@
+{
+    "isa": "x86",
+
+    "binaryPath": "../optparse/optparse.exe",
+    "pdbFile": "../optparse/optparse.pdb",
+
+    "resultsPath": "../../evaluation/results/in/optparse-lego+",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego+/optparse",
+
+    "baseDirectory": "lego+-optparse",
+
+    "enableAliasAnalysis": false,
+    "enableCallingConventionAnalysis": false
+}

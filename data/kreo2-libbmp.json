@@ -1,0 +1,13 @@
+{
+    "isa": "x86",
+
+    "binaryPath": "../libbmp/libbmp.exe",
+    "pdbFile": "../libbmp/libbmp.pdb",
+
+    "resultsPath": "res",
+    "resultsInstrumentedPath": "tmp",
+
+    "baseDirectory": "kreo2-libbmp",
+
+    "enableAliasAnalysis": false
+}

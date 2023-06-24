@@ -722,8 +722,6 @@ void InsertObjectTraceEntry(ADDRINT objPtr, const ObjectTraceEntry& entry) {
 ShadowStackEntry ShadowStackRemoveAndReturnTop() {
   Tid tid = GetTid();
 
-  ::PIN_GetLock(&shadowStackLock, tid);
-
   auto shadowStackIt = threadToShadowStackMap.find(tid);
 
   assert(shadowStackIt != threadToShadowStackMap.end() &&
@@ -746,8 +744,6 @@ ShadowStackEntry ShadowStackRemoveAndReturnTop() {
     stackEntryCount.erase(stackEntryIt);
   }
 
-  ::PIN_ReleaseLock(&shadowStackLock);
-
   return stackTop;
 }
 
@@ -759,14 +755,10 @@ ShadowStackEntry ShadowStackRemoveAndReturnTop() {
 bool IgnoreReturn(ADDRINT actualRetAddr) {
   Tid tid = GetTid();
 
-  ::PIN_GetLock(&shadowStackLock, tid);
-
   auto shadowStackIt = threadToShadowStackMap.find(tid);
 
   if (shadowStackIt == threadToShadowStackMap.end() ||
       shadowStackIt->second.empty()) {
-    ::PIN_ReleaseLock(&shadowStackLock);
-
     return true;
   }
 
@@ -774,8 +766,6 @@ bool IgnoreReturn(ADDRINT actualRetAddr) {
 
   // Return address matches top of stack
   if (actualRetAddr == stackTop.returnAddr) {
-    ::PIN_ReleaseLock(&shadowStackLock);
-
     return false;
   }
 
@@ -791,13 +781,9 @@ bool IgnoreReturn(ADDRINT actualRetAddr) {
       stackTop = shadowStackIt->second.back();
     }
 
-    ::PIN_ReleaseLock(&shadowStackLock);
-
     assert(actualRetAddr == stackTop.returnAddr);
     return false;
   } else {
-    ::PIN_ReleaseLock(&shadowStackLock);
-
     return true;
   }
 }
@@ -884,8 +870,13 @@ void RetCallback(ADDRINT returnAddr) {
   // in the stack, then maybe there was some manual push-jump stuff going on, so
   // we ignore it.
 
+  Tid tid = GetTid();
+
+  ::PIN_GetLock(&shadowStackLock, tid);
+
   if (!IgnoreReturn(returnAddr)) {
     ShadowStackEntry stackTop = ShadowStackRemoveAndReturnTop();
+    ::PIN_ReleaseLock(&shadowStackLock);
 
     ::PIN_GetLock(&activeObjectTracesLock, GetTid());
 
@@ -900,6 +891,8 @@ void RetCallback(ADDRINT returnAddr) {
     }
 
     ::PIN_ReleaseLock(&activeObjectTracesLock);
+  } else {
+    ::PIN_ReleaseLock(&shadowStackLock);
   }
 }
 
@@ -945,7 +938,8 @@ void InstrumentInstruction(INS ins, void*) {
   }
 
   // If a procedure is being called that belongs to the ground truth, add it
-  // to the gtMethodsInstrumented set.
+  // to the gtMethodsInstrumented set. Note that this is only for evaluation
+  // purposes.
   if (gtMethodAddrs.count(insRelAddr) == 1) {
     gtMethodsInstrumented.insert(insRelAddr);
   }

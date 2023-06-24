@@ -1,0 +1,15 @@
+{
+    "isa": "x86",
+
+    "binaryPath": "../ser4cpp/ser4cpp_tests.exe",
+    "pdbFile": "../ser4cpp/ser4cpp_tests.pdb",
+
+    "resultsPath": "../../evaluation/results/in/ser4cpp-lego",
+    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego/ser4cpp",
+
+    "baseDirectory": "lego-ser4cpp",
+
+    "enableAliasAnalysis": false,
+    "enableCallingConventionAnalysis": false,
+    "heuristicFingerprintImprovement": false
+}
