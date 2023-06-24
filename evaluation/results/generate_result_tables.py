@@ -11,6 +11,9 @@ class PRF:
         self.r = r
         self.f = f
 
+    def __str__(self):
+        return f'{self.p} {self.r} {self.f}'
+
 class RawData:
     def __init__(self, tp: str='0', fp: str='0', fn: str='0'):
         self.tp = int(tp)
@@ -82,7 +85,7 @@ def GetPrfStr(data: RawData, max_prf: PRF=None):
     '''
     if max_prf == None:
         max_prf = PRF(-1, -1, -1)
-    
+
     def get_str_val(value, max_value):
         if abs(value - max_value) < 0.005:
             return '\\textbf{{{0:0.2f}}}'.format(value)
@@ -104,7 +107,7 @@ def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str
     \toprule
     Evaluation Category'''
         program = 'Program'
-        
+
         def AddEvaluationCategory(name):
             nonlocal start
             nonlocal program
@@ -289,31 +292,36 @@ def GetOverallResults(results: Dict[str, Dict[str, Dict[str, RawData]]]) -> str:
             for analysis_tool in results[evaluation_type][project_name]:
                 data = results[evaluation_type][project_name][analysis_tool]
                 evaluation_sum[analysis_tool].append(data)
-        
+
         evaluation_sum_new: Dict[str, RawData] = dict([(x, SumRawData(evaluation_sum[x])) for x in evaluation_sum])
         for x in evaluation_sum_new:
             overall[x].append(evaluation_sum_new[x])
 
-    def AveragePRF(l: List[PRF]) -> PRF:
-        p = sum(list(map(lambda x: x.p, l)))
-        r = sum(list(map(lambda x: x.r, l)))
-        f = sum(list(map(lambda x: x.f, l)))
-        return PRF(p, r, f)
+    def AveragePRF(l: List[RawData]) -> PRF:
+        p = sum(list(map(lambda x: x.ComputePrecision(), l)))
+        r = sum(list(map(lambda x: x.ComputeRecall(), l)))
+        f = sum(list(map(lambda x: x.ComputeF(), l)))
+        return PRF(p / len(l), r / len(l), f / len(l))
 
-    overall_avg: Dict[str, PRF] = dict([(x, AveragePRF(evaluation_type[x])) for x in evaluation_type])
+    overall_avg: Dict[str, PRF] = dict([(x, AveragePRF(overall[x])) for x in overall])
 
     out = ''
 
-    for analysis_tool, avg_prf in overall_avg.items():
-        out += f'{analysis_tool} & {avg_prf.p} & {avg_prf.r} & {avg_prf.f}\\\\'
+    def GenAvgStr(tool_key: str, tool_name: str):
+        nonlocal overall_avg
+        avg_prf = overall_avg[tool_key]
+        return f'    {tool_name} & {avg_prf.p} & {avg_prf.r} & {avg_prf.f}\\\\\n'
+
+    for tool_key, tool_name in zip(['lego', 'lego+', 'kreo', 'ooa'], ['Lego', 'Lego+', 'KreO', 'OOAnalyzer']):
+        out += GenAvgStr(tool_key, tool_name)
 
     TABLE_START = r'''\begin{table*}
   \centering
   \caption{Evaluation of Various Projects, Overall Results}
   \label{tab:averaged_results}
-  \begin{tabular}{l|ccc|ccc|ccc}
+  \begin{tabular}{l|c|c|c}
     \toprule
-    Analysis Tool & \multicolumn{3}{c|}{Precision} & \multicolumn{3}{c|}{Recall} & \multicolumn{3}{c}{F-Score}\\
+    Analysis Tool & Precision & Recall & F-Score\\
     \midrule
 '''
 
@@ -369,7 +377,7 @@ def main():
 
     def GetInstrumentedResults(instrumented_results_fpath):
         instrumented_results: Dict[str, Dict[str, RawData]] = {}
-        
+
         for directory, _, files in os.walk(instrumented_results_fpath):
             for evaluated_project in files:
                 if evaluated_project == '.gitignore':
@@ -382,7 +390,7 @@ def main():
                     data = data[1:]
                     data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
                     instrumented_results[evaluated_project] = data
-        
+
         return instrumented_results
 
     with open('lego-instrumented-results.tex', 'w') as f:

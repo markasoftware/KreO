@@ -1,17 +1,4 @@
-python evaluation\evaluation.py data\lego-libbmp.json
-python evaluation\evaluation.py data\lego-optparse.json
-python evaluation\evaluation.py data\lego-ser4cpp.json
-python evaluation\evaluation.py data\lego-tinyxml2.json
-
-python evaluation\evaluation.py data\lego+-libbmp.json
-python evaluation\evaluation.py data\lego+-optparse.json
-python evaluation\evaluation.py data\lego+-ser4cpp.json
-python evaluation\evaluation.py data\lego+-tinyxml2.json
-
-python evaluation\evaluation.py data\kreo-libbmp.json
-python evaluation\evaluation.py data\kreo-optparse.json
-python evaluation\evaluation.py data\kreo-ser4cpp.json
-python evaluation\evaluation.py data\kreo-tinyxml2.json
+@REM Runs evaluation on OOAnalyzer generated results (located in evaluation/results_json_ooa)
 
 python evaluation\independent_evaluation.py -gt-results-json data\kreo-libbmp\gt-results.json -results-json evaluation\results_json_ooa\ooa-libbmp-results.json -results-path evaluation\results\in\libbmp-ooa
 python evaluation\independent_evaluation.py -gt-results-json data\kreo-optparse\gt-results.json -results-json evaluation\results_json_ooa\ooa-optparse-results.json -results-path evaluation\results\in\optparse-ooa
