@@ -99,14 +99,14 @@ def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str
     def GetTableStart():
         nonlocal analysis_tool
 
-        start = r'''
-\begin{{table*}}
-  \caption{{Evaluation of {analysis_tool} on the Covered Ground Truth (P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.''}}
-  \label{{tab:lego-cgt}}
-  \begin{{tabular}}{{l|ccc|ccc|ccc|ccc|ccc|ccc|ccc}}
-    \toprule
+        start = f'''
+\\begin{{table*}}
+  \caption{{Evaluation of {analysis_tool} on the Covered Ground Truth (P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.'')}}
+  \label{{tab:{analysis_tool}-cgt}}
+  \\begin{{tabular}}{{l|ccc|ccc|ccc|ccc|ccc|ccc|ccc}}
+    \\toprule
     Evaluation Category'''
-        program = 'Program'
+        program = '    Program '
 
         def AddEvaluationCategory(name):
             nonlocal start
@@ -118,8 +118,8 @@ def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str
             program += '& P & R & F '
 
         AddEvaluationCategory(r'Class Graph\\Edges')
-        AddEvaluationCategory('Class Graph\\Ancestors')
-        AddEvaluationCategory(r'Individual Classes}')
+        AddEvaluationCategory(r'Class Graph\\Ancestors')
+        AddEvaluationCategory(r'Individual Classes')
         AddEvaluationCategory(r'Constructors')
         AddEvaluationCategory(r'Destructors')
         AddEvaluationCategory(r'Methods')
@@ -127,7 +127,7 @@ def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str
 
         program += r'\\'
 
-        start += '\n' + program
+        start += '\\\\\n' + program + '\n    \midrule\n'
 
         return start
 
@@ -170,7 +170,7 @@ def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str
     out += GetPrfStr(SumRawData(sums['Destructors'])) + ' & '
     out += GetPrfStr(SumRawData(sums['Methods'])) + ' & '
     out += GetPrfStr(SumRawData(sums['Methods Assigned to Correct Class']))
-    out += '\n'
+    out += '\\\\\n'
 
     TABLE_END = r'''    \bottomrule
   \end{tabular}
@@ -317,8 +317,8 @@ def GetOverallResults(results: Dict[str, Dict[str, Dict[str, RawData]]]) -> str:
 
     TABLE_START = r'''\begin{table*}
   \centering
-  \caption{Evaluation of Various Projects, Overall Results}
-  \label{tab:averaged_results}
+  \caption{Evaluation of Various Projects, Summarized Results}
+  \label{tab:summarized_results}
   \begin{tabular}{l|c|c|c}
     \toprule
     Analysis Tool & Precision & Recall & F-Score\\

@@ -3,5 +3,6 @@ in-instrumented/*
 full-results.tex
 lego-instrumented-results.tex
 lego+-instrumented-results.tex
+kreo-instrumented-results.tex
 summarized-results.tex
 overall-results.tex
