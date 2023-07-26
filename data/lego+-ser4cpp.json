@@ -9,6 +9,5 @@
 
     "baseDirectory": "lego+-ser4cpp",
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false
+    "enableAliasAnalysis": false
 }

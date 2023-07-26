@@ -9,6 +9,5 @@
 
     "baseDirectory": "lego+-optparse",
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false
+    "enableAliasAnalysis": false
 }

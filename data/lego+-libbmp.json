@@ -9,6 +9,5 @@
 
     "baseDirectory": "lego+-libbmp",
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false
+    "enableAliasAnalysis": false
 }
