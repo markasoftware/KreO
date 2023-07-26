@@ -11,14 +11,15 @@ from typing import List
 
 fpath = pathlib.Path(__file__).parent.absolute()
 
-sys.path.append(os.path.join(fpath, '..'))
+sys.path.append(os.path.join(fpath, '..', '..'))
 
 from evaluation.evaluation import MethodInfo
 
-def generateJsonSingleClass(methodList: List[MethodInfo], jsonFname):
+def generateJsonSingleClass(method_list: List[MethodInfo], json_fname: str):
     methods = dict()
+
     # If there are no methods associated with the trie node there might not be any methods in the set
-    for method in methodList:
+    for method in method_list:
         methods[hex(method.address)] = {
             'demangled_name': hex(method.address),
             'ea': hex(method.address),
@@ -45,5 +46,5 @@ def generateJsonSingleClass(methodList: List[MethodInfo], jsonFname):
         'version': '',
     }
 
-    jsonFile = open(jsonFname, 'w')
-    jsonFile.write(json.JSONEncoder(indent=True).encode(final_json))
+    json_file = open(json_fname, 'w')
+    json_file.write(json.JSONEncoder(indent=True).encode(final_json))

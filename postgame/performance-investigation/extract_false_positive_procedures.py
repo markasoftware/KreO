@@ -1,6 +1,7 @@
 '''
-Extract procedures that are in the ground truth but not in the results json
-(false negatives).
+Extract procedures that are in the results json but not in the ground truth json
+(false positives). Useful in identifying which procedures are found by the tool
+but not in the ground truth.
 '''
 
 import pathlib
@@ -12,12 +13,15 @@ from generate_json_single_class import generateJsonSingleClass
 
 fpath = pathlib.Path(__file__).parent.absolute()
 
-sys.path.append(os.path.join(fpath, '..'))
+sys.path.append(os.path.join(fpath, '..', '..'))
 
-from parseconfig import config
+from parseconfig import parseconfig_argparse
 from evaluation.evaluation import LoadClassInfoListFromJson, ClassInfo, MethodInfo
 
+config = parseconfig_argparse()
+
 gtClassInfo = LoadClassInfoListFromJson(config['gtResultsJson'])
+print(config['gtResultsJson'])
 resultsClassInfo = LoadClassInfoListFromJson(config['resultsJson'])
 
 def GetAllMethods(clsInfoList: List[ClassInfo]) -> Set[MethodInfo]:
@@ -28,11 +32,11 @@ def GetAllMethods(clsInfoList: List[ClassInfo]) -> Set[MethodInfo]:
     return methods
 
 gtMethods = GetAllMethods(gtClassInfo)
+gtAddrs = set(map(lambda x: x.address, gtMethods))
 
 resultsMethods = GetAllMethods(resultsClassInfo)
-resultsAddrs = set(map(lambda x: x.address, resultsMethods))
 
-falseNegativeMethods = [meth for meth in gtMethods if meth.address not in resultsAddrs]
+falsePositiveMethods = [meth for meth in resultsMethods if meth.address not in gtAddrs]
 
-fname = os.path.splitext(config['resultsJson'])[0] + '_falseneg.json'
-generateJsonSingleClass(falseNegativeMethods, fname)
+fname = os.path.splitext(config['resultsJson'])[0] + '_falsepos.json'
+generateJsonSingleClass(falsePositiveMethods, fname)

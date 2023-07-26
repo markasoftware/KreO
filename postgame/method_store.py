@@ -5,21 +5,19 @@ from method import Method
 class MethodStore:
     def __init__(self):
         self._methods: Dict[int, Method] = dict()  # map from address to method
-        self._methodNames: Dict[Method, str] = dict()  # map from method to method name
 
     def __copy__(self):
         result = MethodStore()
         result._methods = copy(self._methods)
-        result._methodNames = copy(self._methodNames)
         return result
 
-    def findOrInsertMethod(self, address: int, foundDynamically: bool = True) -> Method:
+    def findOrInsertMethod(self, address: int, found_dynamically: bool = True) -> Method:
         '''
         Attempts to find the method in the global methods map. If the function fails
         to find a method, one will be inserted.
         '''
         if address not in self._methods:
-            self._methods[address] = Method(address, foundDynamically=foundDynamically)
+            self._methods[address] = Method(address, found_dynamically=found_dynamically)
         return self._methods[address]
 
     def getMethod(self, address: int) -> Optional[Method]:
@@ -35,7 +33,6 @@ class MethodStore:
         Merge the other store into this one, modifying self in-place.
         '''
         self._methods.update(other._methods)
-        self._methodNames.update(other._methodNames)
 
     def resetAllMethodStatistics(self):
         for method in self._methods.values():

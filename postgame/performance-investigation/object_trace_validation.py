@@ -7,14 +7,20 @@ An object trace is valid if:
 
 import sys
 import subprocess
-from method_store import MethodStore
+import pathlib
+import os
 from typing import List, Set
 
+fpath = pathlib.Path(__file__).parent.absolute()
+
+sys.path.append(os.path.join(fpath, '..'))
+sys.path.append(os.path.join(fpath, '..', '..'))
+
+from method_store import MethodStore
 from object_trace import ObjectTrace, TraceEntry
+from parseconfig import parseconfig_argparse
 
-sys.path.append('../')
-
-from parseconfig import config
+config = parseconfig_argparse()
 
 def loadTraces():
     traces: Set[ObjectTrace] = set()

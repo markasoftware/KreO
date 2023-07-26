@@ -1,31 +1,32 @@
-from typing import Callable, Optional
+from typing import Optional
 
 class Method:
-    def __init__(self, address: int, foundDynamically: bool=True, name: Optional[str]=None):
+    def __init__(self, address: int, found_dynamically: bool=True, name: Optional[str]=None):
         self.address = address
         self.type = ''
-        # How many times the method has been seen in different parts of a trace:
+
+        # How many times the method has been seen in different parts of a trace
         self.resetMethodStatistics()
 
-        self.destructorTailToTorsoRatioMax = 4
-        self.constructorHeadToTorsoRatioMax = 4
-
-        self.isInitializer = False
-        self.isFinalizer = False
+        self.is_initializer = False
+        self.is_finalizer = False
         self.name = name
 
-        self.foundDynamically = foundDynamically
+        self.found_dynamically = found_dynamically
+
+        self._dtor_tail_to_torso_ratio_max = 4
+        self._ctor_head_to_torso_ratio_max = 4
 
     def resetMethodStatistics(self):
-        self.seenInHead = int(0)
-        self.seenInFingerprint = int(0)
-        self.seenInTorso = int(0)
-
-    def isInFingerprint(self) -> bool:
-        return self.seenInFingerprint > 0
+        self.seen_in_head = int(0)
+        self.seen_in_tail = int(0)
+        self.seen_in_torso = int(0)
 
     def isInHead(self) -> bool:
-        return self.seenInHead > 0
+        return self.seen_in_head > 0
+
+    def isInTail(self) -> bool:
+        return self.seen_in_tail > 0
 
     def isProbablyConstructor(self) -> bool:
         '''
@@ -37,21 +38,19 @@ class Method:
         either.
         '''
         return self.isInHead() and \
-               not self.isInFingerprint() and \
-               self.constructorHeadToTorsoRatioMax * self.seenInTorso <= self.seenInHead
+               not self.isInTail() and \
+               self._ctor_head_to_torso_ratio_max * self.seen_in_torso <= self.seen_in_head
 
     def isProbablyDestructor(self) -> bool:
         '''
         @see isProbablyConstructor. The same idea here but for destructors.
         '''
-        return self.isInFingerprint() and \
+        return self.isInTail() and \
                not self.isInHead() and \
-               self.destructorTailToTorsoRatioMax * self.seenInTorso <= self.seenInFingerprint
+               self._dtor_tail_to_torso_ratio_max * self.seen_in_torso <= self.seen_in_tail
 
     def updateType(self) -> None:
         # TODO other types may be viable options (virtual methods for example), but for now we don't care about them
-        assert not (self.isProbablyConstructor() and self.isProbablyDestructor())
-
         if self.isProbablyDestructor():
             self.type = 'dtor'
         elif self.isProbablyConstructor():
@@ -60,6 +59,4 @@ class Method:
             self.type = 'meth'
 
     def __str__(self) -> str:
-        return ('' if self.name == None else (self.name + ' ')) +\
-               str(self.address) +\
-               ('' if self.type == '' else ' ' + self.type)
+        return hex(self.address)[2:]
