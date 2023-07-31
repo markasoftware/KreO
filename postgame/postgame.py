@@ -241,6 +241,10 @@ class Postgame:
         # ensure each method is associated with exactly one class by swimming
         # methods to higher trie nodes.
         for method, cls_set in self._method_to_kreo_class_map.items():
+            if len(cls_set) == 1:
+                # Don't have to reorganize if the method already belongs to exactly one class.
+                continue
+
             lca = self.trieLCA(cls_set)
 
             if lca:
@@ -249,23 +253,56 @@ class Postgame:
             else:
                 # LCA doesn't exist, have to add class to trie
 
+                '''
+                Remove from trie all classes that are being moved and update each
+                class's tail, then reinsert into trie.
+
+                This includes superclasses of the classes in question. In particular,
+                consider the following trie before re-organization:
+
+                root
+                 / \
+                /   \
+                a   b
+                |   | \
+                c   d  e
+
+                If d nd c share the same method, the LCA is the root and we must create
+                a new node. While this is not necessarily accurate, resolve this issue
+                by placing c and d along with all the classes belonging to the same branch
+                of the tree under the newly created node:
+                
+                root
+                  |
+                 new
+                 / \
+                /   \
+                a   b
+                |   | \
+                c   d  e
+                '''
+                new_cls_tail = [method]
+
+                classes_to_update: List[Tuple[str, KreoClass]] = list()
+                for cls in cls_set:
+                    base_cls_tail = KreoClass.tailStr([cls.tail[0]])
+                    classes_to_update += self._trie.items(prefix=base_cls_tail)
+
+                for key, cls in classes_to_update:
+                    self._trie.pop(key)
+                    cls.tail = new_cls_tail + cls.tail
+                    self._trie[KreoClass.tailStr(cls.tail)] = cls
+
                 # Create class that will be inserted into the trie. This
                 # class must have a new tail that is the method
                 # that will be assigned to the class that the two
                 # classes share.
-                new_cls_fingerprint = [method]
-                new_cls = KreoClass(new_cls_fingerprint)
+                new_cls = KreoClass(new_cls_tail)
 
-                self._trie[KreoClass.tailStr(new_cls_fingerprint)] = new_cls
+                self._trie[KreoClass.tailStr(new_cls_tail)] = new_cls
 
                 # Move method to new class in methodToKreoClassMap
                 self._method_to_kreo_class_map[method] = set([new_cls])
-
-                # Remove from trie all classes that are being moved and update each class's tail, then reinsert into trie
-                for cls in cls_set:
-                    self._trie.pop(KreoClass.tailStr(cls.tail))
-                    cls.tail = new_cls.tail + cls.tail
-                    self._trie[KreoClass.tailStr(cls.tail)] = cls
 
         # Each method is now associated with exactly one class
         for cls_set in self._method_to_kreo_class_map.values():
@@ -276,10 +313,9 @@ class Postgame:
         # possibility that a parent object was never constructed but a child was. In
         # this case we know the destructor belongs to the parent but it currently
         # belongs to the child.
-        for key in self._trie:
-            # Find tail[-1] in methodToKreoClassMap and replace the reference
+        for key, node in self._trie.items():
+            # Find tail[-1] in _method_to_kreo_class_map and replace the reference
             # with this class
-            node = self._trie[key]
             destructor = node.tail[-1]
             if destructor in self._method_to_kreo_class_map:
                 cls_set = set([node])
