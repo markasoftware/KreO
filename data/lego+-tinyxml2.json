@@ -9,5 +9,6 @@
 
     "baseDirectory": "lego+-tinyxml2",
 
-    "enableAliasAnalysis": false
+    "enableAliasAnalysis": false,
+    "enableCallingConventionAnalysis": false
 }
