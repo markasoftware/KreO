@@ -284,14 +284,19 @@ class Postgame:
                 new_cls_tail = [method]
 
                 classes_to_update: List[Tuple[str, KreoClass]] = list()
+                tail_strs: Set[str] = set()
                 for cls in cls_set:
                     base_cls_tail = KreoClass.tailStr([cls.tail[0]])
-                    classes_to_update += self._trie.items(prefix=base_cls_tail)
+                    if base_cls_tail not in tail_strs:
+                        tail_strs.add(base_cls_tail)
+                        classes_to_update += self._trie.items(prefix=base_cls_tail)
 
                 for key, cls in classes_to_update:
-                    self._trie.pop(key)
-                    cls.tail = new_cls_tail + cls.tail
-                    self._trie[KreoClass.tailStr(cls.tail)] = cls
+                    assert self._trie.has_key(key)
+                    if self._trie.has_key(key):
+                        self._trie.pop(key)
+                        cls.tail = new_cls_tail + cls.tail
+                        self._trie[KreoClass.tailStr(cls.tail)] = cls
 
                 # Create class that will be inserted into the trie. This
                 # class must have a new tail that is the method
