@@ -6,7 +6,7 @@ from collections import defaultdict
 SCRIPT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
 PRF_DESCRIPTOR = '''(P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.'')'''
-ANALYSIS_TOOL_NAMES = ['Lego', 'Lego+', '\projname', 'OOAnalyzer']
+ANALYSIS_TOOL_NAMES = ['Lego', 'Lego+', 'KreO', 'OOAnalyzer']
 ANALYSIS_TOOL_KEYS = ['lego', 'lego+', 'kreo', 'ooa']
 
 assert len(ANALYSIS_TOOL_NAMES) == len(ANALYSIS_TOOL_KEYS)

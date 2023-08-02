@@ -12,7 +12,9 @@ fpath = pathlib.Path(__file__).parent.absolute()
 
 sys.path.append(os.path.join(fpath, '..'))
 
-from parseconfig import config
+from parseconfig import parseconfig_argparse
+
+config = parseconfig_argparse()
 
 cvdump_exe = os.path.join(fpath, 'cvdump.exe')
 
