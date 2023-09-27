@@ -11,18 +11,22 @@ We want to know the following:
 import pathlib
 import os
 import sys
-import parse_object_trace
 
-from method_store import MethodStore
-from object_trace import ObjectTrace
 from typing import List, Tuple, Set, Dict
 
 fpath = pathlib.Path(__file__).parent.absolute()
 
 sys.path.append(os.path.join(fpath, '..'))
+sys.path.append(os.path.join(fpath, '..', '..'))
 
-from parseconfig import config
+import parse_object_trace
+
+from method_store import MethodStore
+from object_trace import ObjectTrace
+from parseconfig import parseconfig_argparse
 from evaluation.evaluation import LoadClassInfoListFromJson, ClassInfo
+
+config = parseconfig_argparse()
 
 TP_HEAD = 0
 FP_HEAD = 1

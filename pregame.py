@@ -1,7 +1,9 @@
 import os
 import pathlib
 import subprocess
-from parseconfig import config
+from parseconfig import parseconfig_argparse
+
+config = parseconfig_argparse()
 
 scriptpath = pathlib.Path(__file__).parent.absolute()
 

@@ -2,7 +2,9 @@ import sys
 import os
 import subprocess
 import pathlib
-from parseconfig import config
+from parseconfig import parseconfig_argparse
+
+config = parseconfig_argparse()
 
 if 'PIN_ROOT' in config:
    pin_root = config['PIN_ROOT']

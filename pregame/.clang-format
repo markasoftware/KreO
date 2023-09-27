@@ -1,0 +1,4 @@
+BasedOnStyle: Google
+AllowAllConstructorInitializersOnNextLine: false
+BinPackArguments: false
+ColumnLimit: 120

@@ -5,6 +5,12 @@ from collections import defaultdict
 
 SCRIPT_PATH = os.path.split(os.path.realpath(__file__))[0]
 
+PRF_DESCRIPTOR = '''(P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.'')'''
+ANALYSIS_TOOL_NAMES = ['Lego', 'Lego+', 'KreO', 'OOAnalyzer']
+ANALYSIS_TOOL_KEYS = ['lego', 'lego+', 'kreo', 'ooa']
+
+assert len(ANALYSIS_TOOL_NAMES) == len(ANALYSIS_TOOL_KEYS)
+
 class PRF:
     def __init__(self, p: float, r: float, f: float):
         self.p = p
@@ -99,23 +105,21 @@ def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str
     def GetTableStart():
         nonlocal analysis_tool
 
-        start = f'''
-\\begin{{table*}}
-  \caption{{Evaluation of {analysis_tool} on the Covered Ground Truth (P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.'')}}
-  \label{{tab:{analysis_tool}-cgt}}
-  \\begin{{tabular}}{{l|ccc|ccc|ccc|ccc|ccc|ccc|ccc}}
-    \\toprule
-    Evaluation Category'''
-        program = '    Program '
+        program = ''
+        evaluation_category = ''
+        tabular = ''
 
-        def AddEvaluationCategory(name):
-            nonlocal start
+        def AddEvaluationCategory(name, last=False):
+            nonlocal evaluation_category
             nonlocal program
-            start += r' & \multicolumn{3}{c|}{\begin{tabular}{@{}c@{}}'
-            start += name
-            start += r'\end{tabular}}'
+            nonlocal tabular
+
+            evaluation_category += r' & \multicolumn{3}{|c}{\begin{tabular}{@{}c@{}}'
+            evaluation_category += name
+            evaluation_category += r'\end{tabular}}'
 
             program += '& P & R & F '
+            tabular += '|ccc'
 
         AddEvaluationCategory(r'Class Graph\\Edges')
         AddEvaluationCategory(r'Class Graph\\Ancestors')
@@ -125,9 +129,17 @@ def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str
         AddEvaluationCategory(r'Methods')
         AddEvaluationCategory(r'Methods Assigned\\to Correct Class')
 
-        program += r'\\'
-
-        start += '\\\\\n' + program + '\n    \midrule\n'
+        start = f'''
+\\begin{{table*}}
+  \caption{{Evaluation of {analysis_tool} on the Covered Ground Truth {PRF_DESCRIPTOR}}}
+  \label{{tab:{analysis_tool}-cgt}}
+  \\tiny
+  \\begin{{tabular}}{{l{tabular}}}
+    \\toprule
+    Evaluation Category{evaluation_category} \\\\
+    Program {program}\\\\
+    \\midrule
+'''
 
         return start
 
@@ -188,15 +200,32 @@ def GetFullTable(caption: str, results: Dict[str, Dict[str, RawData]]):
 
         label = '-'.join(caption.split(' '))
         floating_str = '[H]' if floating else ''
+
+        tools = ''
+        project = ''
+        tabular = ''
+
+        def AddEvaluationTool(tool: str):
+            nonlocal tools
+            nonlocal project
+            nonlocal tabular
+
+            tools += f' & \multicolumn{{3}}{{|c}}{{{tool}}}'
+            project += ' & P & R & F'
+            tabular += '|ccc'
+
+        for tool in ANALYSIS_TOOL_NAMES:
+            AddEvaluationTool(tool)
+        
         return f'''
 \\begin{{table}}{floating_str}
   \centering
   \caption{{Evaluation of Various Projects, {caption}}}
   \label{{tab:{label}}}
-  \\begin{{tabular}}{{l|ccc|ccc|ccc}}
+  \\begin{{tabular}}{{l{tabular}}}
     \\toprule
-    Program & \multicolumn{{3}}{{c|}}{{Lego}} & \multicolumn{{3}}{{c|}}{{\projname}} & \multicolumn{3}{{c}}{{OOAnalyzer}}\\\\
-    Project & Precision & Recall & F-Score & Precision & Recall & F-Score & Precision & Recall & F-Score\\\\
+    Program{tools}\\\\
+    Project{project}\\\\
     \midrule
 '''
 
@@ -209,33 +238,26 @@ def GetFullTable(caption: str, results: Dict[str, Dict[str, RawData]]):
     out = ''
     # sort by evaluated project name
     for evaluated_project, result in sorted(results.items(), key=lambda x: x[0].lower()):
-        assert 'lego' in result
-        assert 'kreo' in result
-        assert 'ooa' in result
-
-        lego_result = result['lego']
-        kreo_result = result['kreo']
-        ooa_result = result['ooa']
-
         max_prf = GetMaxPrf(result.values())
 
-        out += f'    {evaluated_project} & {GetPrfStr(lego_result, max_prf)} & {GetPrfStr(kreo_result, max_prf)} & {GetPrfStr(ooa_result, max_prf)} \\\\\n'
-
-        result_list['lego'].append(lego_result)
-        result_list['kreo'].append(kreo_result)
-        result_list['ooa'].append(ooa_result)
-
+        out += f'    {evaluated_project}'
+        for tool_key in ANALYSIS_TOOL_KEYS:
+            out += f' & {GetPrfStr(result[tool_key], max_prf)}'
+            result_list[tool_key].append(result[tool_key])
+        out += '\\\\\n'
     out += '    \\midrule\n'
 
-    result_avg = {
-        'lego': SumRawData(result_list['lego']),
-        'kreo': SumRawData(result_list['kreo']),
-        'ooa': SumRawData(result_list['ooa'])
-    }
+    result_avg: Dict[str, RawData] = dict()
+
+    for tool in ANALYSIS_TOOL_KEYS:
+        result_avg[tool] = SumRawData(result_list[tool])
 
     max_prf_avg = GetMaxPrf(result_avg.values())
 
-    out_avg = f'    Average & {GetPrfStr(result_avg["lego"], max_prf_avg)} & {GetPrfStr(result_avg["kreo"], max_prf_avg)} & {GetPrfStr(result_avg["ooa"], max_prf_avg)} \\\\\n'
+    out_avg = '    Average'
+    for tool in ANALYSIS_TOOL_KEYS:
+        out_avg += f' & {GetPrfStr(result_avg[tool], max_prf_avg)}'
+    out_avg += '\\\\\n'
 
     out += out_avg
 
@@ -258,16 +280,32 @@ def GetAverageTable(results: Dict[str, Dict[str, Dict[str, RawData]]]):
         # Get average from result for each analysis tool
         result = dict(list(map(lambda x: (x[0], SumRawData(x[1])), result.items())))
         max_prf = GetMaxPrf(result.values())
-        out += f'    {evaluation_type} & {GetPrfStr(result["lego"], max_prf)} & {GetPrfStr(result["kreo"], max_prf)} & {GetPrfStr(result["ooa"], max_prf)} \\\\\n'
 
-    TABLE_START = r'''\begin{table*}
-  \centering
-  \caption{Evaluation of Various Projects, Average Results}
-  \label{tab:averaged_results}
-  \begin{tabular}{l|ccc|ccc|ccc}
-    \toprule
-    Program & \multicolumn{3}{c|}{Lego} & \multicolumn{3}{c|}{\projname} & \multicolumn{3}{c}{OOAnalyzer}\\
-    Evaluation Category & Precision & Recall & F-Score & Precision & Recall & F-Score & Precision & Recall & F-Score\\
+        out += f'    {evaluation_type}'
+        for tool in ANALYSIS_TOOL_KEYS:
+            out += f'& {GetPrfStr(result[tool], max_prf)}'
+        out += '\\\\\n'
+
+    def GetTableStart():
+        tabular = ''
+        program = ''
+        evaluation_category = ''
+        for idx, tool in zip(range(len(ANALYSIS_TOOL_NAMES)), ANALYSIS_TOOL_NAMES):
+            tabular += '|ccc'
+            if idx + 1 == len(ANALYSIS_TOOL_NAMES):
+                program += f' & \multicolumn{{3}}{{c}}{{{tool}}}'
+            else:
+                program += f' & \multicolumn{{3}}{{c|}}{{{tool}}}'
+            evaluation_category += ' & P & R & F'
+
+        return f'''\\begin{{table*}}
+\centering
+\caption{{Evaluation of Various Projects, Average Results {PRF_DESCRIPTOR}}}
+\label{{tab:averaged_results}}
+\\begin{{tabular}}{{l{tabular}}}
+    \\toprule
+    Program{program}\\\\
+    Evaluation Category{evaluation_category}\\\\
     \midrule
 '''
 
@@ -275,7 +313,7 @@ def GetAverageTable(results: Dict[str, Dict[str, Dict[str, RawData]]]):
   \end{tabular}
 \end{table*}'''
 
-    return TABLE_START + out + TABLE_END
+    return GetTableStart() + out + TABLE_END
 
 def GetOverallResults(results: Dict[str, Dict[str, Dict[str, RawData]]]) -> str:
     '''
@@ -310,9 +348,9 @@ def GetOverallResults(results: Dict[str, Dict[str, Dict[str, RawData]]]) -> str:
     def GenAvgStr(tool_key: str, tool_name: str):
         nonlocal overall_avg
         avg_prf = overall_avg[tool_key]
-        return f'    {tool_name} & {avg_prf.p} & {avg_prf.r} & {avg_prf.f}\\\\\n'
+        return f'    {tool_name} & {avg_prf.p:0.2f} & {avg_prf.r:0.2f} & {avg_prf.f:0.2f}\\\\\n'
 
-    for tool_key, tool_name in zip(['lego', 'lego+', 'kreo', 'ooa'], ['Lego', 'Lego+', 'KreO', 'OOAnalyzer']):
+    for tool_key, tool_name in zip(ANALYSIS_TOOL_KEYS, ANALYSIS_TOOL_NAMES):
         out += GenAvgStr(tool_key, tool_name)
 
     TABLE_START = r'''\begin{table*}
@@ -349,7 +387,6 @@ def main():
 
             with open(filepath, 'r') as f:
                 data = f.read().splitlines()
-                data = data[1:]
                 data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
 
                 def map_to_results(evaluation_type: str):
@@ -363,7 +400,7 @@ def main():
                 map_to_results('Methods')
                 map_to_results('Methods Assigned to Correct Class')
 
-    with open('full-results.tex', 'w') as f:
+    with open(os.path.join(SCRIPT_PATH, 'full-results.tex'), 'w') as f:
         f.write(GetFullTable('Class Graph Edges', results['Class Graph Edges']) + '\n')
         f.write(GetFullTable('Class Graph Ancestors', results['Class Graph Ancestors']) + '\n')
         f.write(GetFullTable('Individual Classes', results['Individual Classes']) + '\n')
@@ -372,7 +409,7 @@ def main():
         f.write(GetFullTable('Methods', results['Methods']) + '\n')
         f.write(GetFullTable('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class']) + '\n')
 
-    with open('summarized-results.tex', 'w') as f:
+    with open(os.path.join(SCRIPT_PATH, 'average-results.tex'), 'w') as f:
         f.write(GetAverageTable(results))
 
     def GetInstrumentedResults(instrumented_results_fpath):
@@ -387,22 +424,21 @@ def main():
 
                 with open(filepath, 'r') as f:
                     data = f.read().splitlines()
-                    data = data[1:]
                     data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
                     instrumented_results[evaluated_project] = data
 
         return instrumented_results
 
-    with open('lego-instrumented-results.tex', 'w') as f:
+    with open(os.path.join(SCRIPT_PATH, 'lego-instrumented-results.tex'), 'w') as f:
         f.write(GetTableInstrumented('lego', GetInstrumentedResults('in-instrumented-lego')))
 
-    with open('lego+-instrumented-results.tex', 'w') as f:
+    with open(os.path.join(SCRIPT_PATH, 'lego+-instrumented-results.tex'), 'w') as f:
         f.write(GetTableInstrumented('lego+', GetInstrumentedResults('in-instrumented-lego+')))
 
-    with open('kreo-instrumented-results.tex', 'w') as f:
+    with open(os.path.join(SCRIPT_PATH, 'kreo-instrumented-results.tex'), 'w') as f:
         f.write(GetTableInstrumented('kreo', GetInstrumentedResults('in-instrumented-kreo')))
 
-    with open('overall-results.tex', 'w') as f:
+    with open(os.path.join(SCRIPT_PATH, 'overall-results.tex'), 'w') as f:
         f.write(GetOverallResults(results))
 
 if __name__ == '__main__':

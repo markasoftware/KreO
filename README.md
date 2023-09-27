@@ -151,12 +151,12 @@ the configuration JSON file:
     "enableAliasAnalysis": false,
     "enableCallingConventionAnalysis": false,
     "heuristicFingerprintImprovement": false,
+    "eliminateObjectTracesWithMatchingInitializerAndFinalizerMethod": false
 
 If you want to run Lego+ (lego with improvements that don't include static
 analysis), the following flags must be specified:
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false,
+    "enableAliasAnalysis": false
 
 ### Generating LaTeX results
 

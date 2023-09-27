@@ -47,7 +47,7 @@ CXXFLAGS := $(ROSE_CXXFLAGS) -fopenmp $(CXXFLAGS)
 
 all: pregame
 
-pregame.o: pregame.cpp custom-dataflow-engine.h
+pregame.o: pregame.cpp custom_dataflow_engine.h
 	$(ROSE_CXX) $(ROSE_CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
 
 pregame: pregame.o

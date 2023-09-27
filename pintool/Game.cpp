@@ -280,7 +280,11 @@ void WriteFinishedObjectTraces() {
   for (const ObjectTrace trace : finishedObjectTraces) {
     assert(trace != nullptr);
     for (const ObjectTraceEntry& entry : *trace) {
-      os << entry.procedure << " " << entry.isCall << endl;
+      os << hex << entry.procedure;
+      if (entry.isCall) {
+        os << " 1";
+      }
+      os << endl;
     }
     os << endl;
     delete trace;
@@ -306,13 +310,13 @@ void ParsePregame() {
   }
 
   ADDRINT methodCandidate{};
-  while (methodCandidatesStream >> methodCandidate >> ws) {
+  while (methodCandidatesStream >> hex >> methodCandidate >> ws) {
     methodCandidateAddrs.insert(methodCandidate);
   }
 
   ifstream gtMethodsStream(gtMethodsPath.Value());
   ADDRINT gtMethod{};
-  while (gtMethodsStream >> gtMethod >> ws) {
+  while (gtMethodsStream >> hex >> gtMethod >> ws) {
     gtMethodAddrs.insert(gtMethod);
   }
 
@@ -1111,7 +1115,7 @@ void Fini(INT32 code, void*) {
 
   ::PIN_ReleaseLock(&activeObjectTracesLock);
 
-  cout << "Blacklisted methods removed. Writing object-traces to a file..." << endl;
+  cout << "Blacklisted methods removed. Writing object-traces to a file, need to write " << finishedObjectTraces.size() << " object-traces..." << endl;
   WriteFinishedObjectTraces();
   cout << "Wrote approximately " << totalObjectTraces << " object-traces" << endl;
 
@@ -1120,7 +1124,9 @@ void Fini(INT32 code, void*) {
   string objectTracesPathStr = objectTracesPath.Value().c_str();
   os.open(std::string(objectTracesPathStr + "-name-map").c_str());
   for (const auto& it : procedureSymbolNames) {
-    os << it.first << " " << it.second << endl;
+    if (methodCandidateAddrs.find(it.first) != methodCandidateAddrs.end()) {
+      os << hex << it.first << " " << it.second << endl;
+    }
   }
 
   string gtMethodsInstrumentedStr = gtMethodsInstrumentedPath.Value().c_str();
@@ -1128,14 +1134,14 @@ void Fini(INT32 code, void*) {
   os.open(gtMethodsInstrumentedStr.c_str());
 
   for (ADDRINT addr : gtMethodsInstrumented) {
-    os << addr << endl;
+    os << hex << addr << endl;
   }
 
   string blacklistedMethodsStr = blacklistedMethodsPath.Value().c_str();
   os.close();
   os.open(blacklistedMethodsStr.c_str());
   for (ADDRINT proc : blacklistedProcedures) {
-    os << proc << endl;
+    os << hex << proc << endl;
   }
 
   cout << "Done! Exiting normally." << endl;
@@ -1184,6 +1190,7 @@ int main(int argc, char** argv) {
   PIN_AddThreadFiniFunction(OnThreadFini, NULL);
   PIN_AddFiniFunction(Fini, NULL);
 
+  // TODO consider implementing if we run into memory problems
   // PIN_AddOutOfMemoryFunction
 
   // Start program, never returns

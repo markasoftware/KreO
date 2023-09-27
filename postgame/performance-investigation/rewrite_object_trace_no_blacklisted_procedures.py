@@ -12,10 +12,12 @@ import parse_object_trace
 
 fpath = pathlib.Path(__file__).parent.absolute()
 
-sys.path.append(os.path.join(fpath, '..'))
+sys.path.append(os.path.join(fpath, '..', '..'))
 
-from parseconfig import config
+from parseconfig import parseconfig_argparse
 from method_store import MethodStore
+
+config = parseconfig_argparse()
 
 def main():
     method_store = MethodStore()
