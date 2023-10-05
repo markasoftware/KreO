@@ -44,7 +44,7 @@ if %errorlevel% NEQ 0 (
 )
 
 echo running dynamic analysis
-python game.py %arguments%
+python cli.py %arguments% postgame
 
 if %errorlevel% NEQ 0 (
   echo Previous command execution failed.
@@ -53,7 +53,7 @@ if %errorlevel% NEQ 0 (
 )
 
 echo running postgame
-python postgame\postgame.py %arguments%
+python cli.py %arguments% postgame
 
 if %errorlevel% NEQ 0 (
   echo Previous command execution failed.

@@ -1,14 +1,14 @@
 {
     "isa": "x86",
 
-    "binaryPath": "../tinyxml2/tinyxml2.exe",
-    "pdbFile": "../tinyxml2/tinyxml2.pdb",
+    "binary_path": "../tinyxml2/tinyxml2.exe",
+    "pdb_file": "../tinyxml2/tinyxml2.pdb",
 
-    "resultsPath": "../../evaluation/results/in/tinyxml2-lego+",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego+/tinyxml2",
+    "results_path": "../../evaluation/results/in/tinyxml2-lego+",
+    "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/tinyxml2",
 
-    "baseDirectory": "lego+-tinyxml2",
+    "base_directory": "lego+-tinyxml2",
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false
+    "enable_static_alias_analysis": false,
+    "enable_calling_convention_analysis": false
 }

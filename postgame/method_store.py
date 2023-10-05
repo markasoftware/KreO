@@ -1,6 +1,10 @@
-from typing import Dict, Optional
 from copy import copy
-from method import Method
+from typing import Dict, Optional
+
+from typing_extensions import Self
+
+from postgame.method import Method
+
 
 class MethodStore:
     def __init__(self):
@@ -11,13 +15,20 @@ class MethodStore:
         result._methods = copy(self._methods)
         return result
 
-    def findOrInsertMethod(self, address: int, found_dynamically: bool = True) -> Method:
-        '''
+    def find_or_insert_method(
+        self,
+        address: int,
+        found_dynamically: bool = True,
+    ) -> Method:
+        """
         Attempts to find the method in the global methods map. If the function fails
         to find a method, one will be inserted.
-        '''
+        """
         if address not in self._methods:
-            self._methods[address] = Method(address, found_dynamically=found_dynamically)
+            self._methods[address] = Method(
+                address,
+                found_dynamically=found_dynamically,
+            )
         return self._methods[address]
 
     def getMethod(self, address: int) -> Optional[Method]:
@@ -25,15 +36,16 @@ class MethodStore:
 
     def insertMethodName(self, address: int, name: str):
         meth = self.getMethod(address)
-        if meth != None:
+        if meth is not None:
             meth.name = name
 
-    def update(self, other): # can't (without extra effort) put type annotation on other because the class name isn't visible yet. https://twitter.com/stylewarning/status/1571585280217579521
-        '''
+    def update(self, other: Self):
+        """
         Merge the other store into this one, modifying self in-place.
-        '''
+        """
         self._methods.update(other._methods)
 
-    def resetAllMethodStatistics(self):
+    def reset_all_method_statistics(self):
         for method in self._methods.values():
+            method.resetMethodStatistics()
             method.resetMethodStatistics()

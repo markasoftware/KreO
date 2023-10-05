@@ -1,15 +1,15 @@
 {
     "isa": "x86",
 
-    "binaryPath": "../optparse/optparse.exe",
-    "pdbFile": "../optparse/optparse.pdb",
+    "binary_path": "../optparse/optparse.exe",
+    "pdb_file": "../optparse/optparse.pdb",
 
-    "resultsPath": "../../evaluation/results/in/optparse-lego",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego/optparse",
+    "results_path": "../../evaluation/results/in/optparse-lego",
+    "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/optparse",
 
-    "baseDirectory": "lego-optparse",
+    "base_directory": "lego-optparse",
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false,
-    "heuristicFingerprintImprovement": false
+    "enable_static_alias_analysis": false,
+    "enable_calling_convention_analysis": false,
+    "heuristic_fingerprint_improvement": false
 }

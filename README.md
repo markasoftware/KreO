@@ -137,7 +137,7 @@ argument, the path to the JSON file that contains user specified parameters.
 Also make sure `PIN_ROOT` is set as described in the setup above.
 
 The final output is a JSON file containing OO features in a structured format
-and is located in the `baseDirectory` specified in the JSON configuration file.
+and is located in the `base_directory` specified in the JSON configuration file.
 
 ### Running Lego re-implementation vs. KreO
 
@@ -148,15 +148,15 @@ re-implementation. All features will be enabled such that KreO is running by
 default. If you want to run Lego only, the following flags must be specified in
 the configuration JSON file:
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false,
-    "heuristicFingerprintImprovement": false,
-    "eliminateObjectTracesWithMatchingInitializerAndFinalizerMethod": false
+    "enable_static_alias_analysis": false,
+    "enable_calling_convention_analysis": false,
+    "heuristic_fingerprint_improvement": false,
+    "eliminate_object_traces_with_matching_initializer_and_finalizer_method": false
 
 If you want to run Lego+ (lego with improvements that don't include static
 analysis), the following flags must be specified:
 
-    "enableAliasAnalysis": false
+    "enable_static_alias_analysis": false
 
 ### Generating LaTeX results
 

@@ -1,14 +1,14 @@
 {
     "isa": "x86",
 
-    "binaryPath": "../ser4cpp/ser4cpp_tests.exe",
-    "pdbFile": "../ser4cpp/ser4cpp_tests.pdb",
+    "binary_path": "../ser4cpp/ser4cpp_tests.exe",
+    "pdb_file": "../ser4cpp/ser4cpp_tests.pdb",
 
-    "resultsPath": "../../evaluation/results/in/ser4cpp-lego+",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego+/ser4cpp",
+    "results_path": "../../evaluation/results/in/ser4cpp-lego+",
+    "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/ser4cpp",
 
-    "baseDirectory": "lego+-ser4cpp",
+    "base_directory": "lego+-ser4cpp",
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false
+    "enable_static_alias_analysis": false,
+    "enable_calling_convention_analysis": false
 }

@@ -1,11 +1,11 @@
 {
     "isa": "x86",
 
-    "binaryPath": "../ser4cpp/ser4cpp_tests.exe",
-    "pdbFile": "../ser4cpp/ser4cpp_tests.pdb",
+    "binary_path": "../ser4cpp/ser4cpp_tests.exe",
+    "pdb_file": "../ser4cpp/ser4cpp_tests.pdb",
 
-    "resultsPath": "../../evaluation/results/in/ser4cpp-kreo",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-kreo/ser4cpp",
+    "results_path": "../../evaluation/results/in/ser4cpp-kreo",
+    "results_instrumented_path": "../../evaluation/results/in-instrumented-kreo/ser4cpp",
 
-    "baseDirectory": "kreo-ser4cpp"
+    "base_directory": "kreo-ser4cpp"
 }

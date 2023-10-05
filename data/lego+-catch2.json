@@ -1,14 +1,14 @@
 {
     "isa": "x86",
 
-    "binaryPath": "../catch2/ser4cpp_tests.exe",
-    "pdbFile": "../catch2/ser4cpp_tests.pdb",
+    "binary_path": "../catch2/ser4cpp_tests.exe",
+    "pdb_file": "../catch2/ser4cpp_tests.pdb",
 
-    "resultsPath": "../../evaluation/results/in/catch2-lego+",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-lego+/catch2",
+    "results_path": "../../evaluation/results/in/catch2-lego+",
+    "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/catch2",
 
-    "baseDirectory": "lego+-catch2",
+    "base_directory": "lego+-catch2",
 
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false
+    "enable_static_alias_analysis": false,
+    "enable_calling_convention_analysis": false
 }

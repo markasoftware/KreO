@@ -1,34 +1,43 @@
-'''
+"""
 Extract ground truth methods from the json file specified in
 the configuration file passed in as an argument to this script.
-'''
+"""
 
-import json5
-import sys
+import json
 import os
-import pathlib
+import sys
+from pathlib import Path
 
-fpath = pathlib.Path(__file__).parent.absolute()
+from typer import Typer
 
-sys.path.append(os.path.join(fpath, '..'))
+SCRIPT_PATH = Path(__file__).parent.absolute()
 
-from parseconfig import parseconfig_argparse
+sys.path.append(str(SCRIPT_PATH / ".."))
 
-config = parseconfig_argparse()
+from parseconfig import parseconfig  # noqa: E402
 
-baseAddr = int(open(config['baseOffsetPath'], 'r').readline(), 16)
+CLI = Typer()
 
-json_file = config['gtResultsJson']
 
-structures = json5.load(open(json_file, 'r'))['structures']
+@CLI.command()
+def main(config: Path):
+    cfg = parseconfig(config)
 
-method_addrs = set()
+    base_addr = int(cfg.base_offset_path.open().readline(), 16)
 
-for cls in structures.values():
-    for method in cls['methods'].values():
-        ea = method['ea']
-        method_addrs.add(int(ea, 16) - baseAddr)
+    structures = json.load(cfg.gt_results_json.open())["structures"]
 
-with open(config['gtMethodsPath'], 'w') as f:
-    for method in method_addrs:
-        f.write(hex(method)[2:] + '\n')
+    method_addrs: set[int] = set()
+
+    for cls in structures.values():
+        for method in cls["methods"].values():
+            ea = method["ea"]
+            method_addrs.add(int(ea, 16) - base_addr)
+
+    with cfg.gt_methods_path.open("w") as f:
+        for method in method_addrs:
+            f.write(hex(method)[2:] + "\n")
+
+
+if __name__ == "__main__":
+    CLI()

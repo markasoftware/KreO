@@ -1,11 +1,11 @@
 {
     "isa": "x86",
 
-    "binaryPath": "../optparse/optparse.exe",
-    "pdbFile": "../optparse/optparse.pdb",
+    "binary_path": "../optparse/optparse.exe",
+    "pdb_file": "../optparse/optparse.pdb",
 
-    "resultsPath": "../../evaluation/results/in/optparse-kreo",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-kreo/optparse",
+    "results_path": "../../evaluation/results/in/optparse-kreo",
+    "results_instrumented_path": "../../evaluation/results/in-instrumented-kreo/optparse",
 
-    "baseDirectory": "kreo-optparse"
+    "base_directory": "kreo-optparse"
 }

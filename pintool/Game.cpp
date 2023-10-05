@@ -12,8 +12,8 @@
 #include "pin.H"
 
 /// Uncomment these to log messages of various levels
-/// #define LOG_INFO
-/// #define LOG_WARN
+#define LOG_INFO
+#define LOG_WARN
 
 using namespace std;
 
@@ -309,8 +309,11 @@ void ParsePregame() {
     exit(EXIT_FAILURE);
   }
 
+  cout << "###" << methodCandidatesPath.Value() << endl;
+
   ADDRINT methodCandidate{};
   while (methodCandidatesStream >> hex >> methodCandidate >> ws) {
+    cout << methodCandidate << endl;
     methodCandidateAddrs.insert(methodCandidate);
   }
 

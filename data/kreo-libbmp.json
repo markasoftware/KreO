@@ -1,13 +1,13 @@
 {
     "isa": "x86",
 
-    "binaryPath": "../libbmp/libbmp.exe",
-    "pdbFile": "../libbmp/libbmp.pdb",
+    "binary_path": "../libbmp/libbmp.exe",
+    "pdb_file": "../libbmp/libbmp.pdb",
 
-    "resultsPath": "../../evaluation/results/in/libbmp-kreo",
-    "resultsInstrumentedPath": "../../evaluation/results/in-instrumented-kreo/libbmp",
+    "results_path": "../../evaluation/results/in/libbmp-kreo",
+    "results_instrumented_path": "../../evaluation/results/in-instrumented-kreo/libbmp",
 
-    "baseDirectory": "kreo-libbmp",
+    "base_directory": "kreo-libbmp",
 
-    "heuristicFingerprintImprovement": false
+    "heuristic_fingerprint_improvement": false
 }

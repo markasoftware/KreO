@@ -1,41 +1,46 @@
-from typing import List, Callable
-from method import Method
+from typing import Callable, List
+
+from typing_extensions import Self
+
+from postgame.method import Method
+
 
 class StaticTraceEntry:
-    def __init__(self, line: str, findOrInsertMethod: Callable[[int, bool], Method]):
-        assert line[0] != '#', 'Tried to construct StaticTraceEntry from a comment.'
+    def __init__(self, line: str, find_or_insert_method: Callable[[int, bool], Method]):
+        assert line[0] != "#", "Tried to construct StaticTraceEntry from a comment."
         splitLine = line.split()
-        self.method = findOrInsertMethod(int(splitLine[0], 16), False)
+        self.method = find_or_insert_method(int(splitLine[0], 16), False)
         # Name is in there mainly for debugging looking at the trace manually -- don't really need it.
 
     def __str__(self) -> str:
         return str(self.method)
 
-    def __eq__(self, other) -> bool:
+    def __eq__(self, other: Self) -> bool:
         return self.method is other.method
 
     def __hash__(self):
         return hash(str(self))
+
 
 class StaticTrace:
     def __init__(self, traceEntries: List[StaticTraceEntry]):
         self.entries = traceEntries
 
     def __str__(self):
-        return '\n'.join(map(str, self.entries))
+        return "\n".join(map(str, self.entries))
 
     def __hash__(self):
         return hash(self.__str__())
 
-    def __eq__(self, other):
+    def __eq__(self, other: Self):
         return self.entries == other.entries
 
     def split(self):
-        '''
+        """
         Returns a list of updated traces, by splitting after any destructors.
         Uses method.is_finalizer to determine destructors, so ensure that
         method statistics are up-to-date before splitting.
-        '''
+        """
         result: List[StaticTrace] = [StaticTrace([])]  # start with single empty trace
 
         for entry in self.entries:
@@ -50,4 +55,5 @@ class StaticTrace:
         if len(result[-1].entries) == 0:
             result.pop()
 
+        return result
         return result
