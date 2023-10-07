@@ -1,13 +1,22 @@
 from dataclasses import dataclass
-from functools import cache
+from enum import StrEnum, auto
 
 from typing_extensions import Self
 
 from postgame.method import Method
 
 
+class TEType(StrEnum):
+    HEAD = auto()
+    TAIL = auto()
+    BODY = auto()
+
+
 @dataclass
 class TraceEntry:
+    """Data class for trace entry. A method reference and whether or not that method is
+    being called."""
+
     method: Method
     is_call: bool
 
@@ -19,83 +28,116 @@ class TraceEntry:
 
 
 class ObjectTrace:
+    """
+    Class that contains an object trace. An object trace is a list of trace
+    entries.
+    """
+
     def __init__(self, trace_entries: list[TraceEntry]):
         self.trace_entries = trace_entries
 
+        self.__head_calls = 0
+        self.__tail_returns = 0
+
+        self.__head_length = 0
+        self.__tail_length = 0
+
         i = 0
+        te_stack = 0
+        counting_head_calls = True
         for i in range(len(trace_entries)):
-            if not trace_entries[i].is_call:
+            if trace_entries[i].is_call:
+                if counting_head_calls:
+                    self.__head_calls += 1
+                te_stack += 1
+            else:
+                te_stack -= 1
+                counting_head_calls = False
+
+            self.__head_length += 1
+
+            if te_stack <= 0:
                 break
 
-        self.head = self.trace_entries[: i + 1]
-
         i = 0
+        te_stack = 0
+        counting_tail_returns = True
         for i in range(len(trace_entries)):
             if trace_entries[len(trace_entries) - i - 1].is_call:
+                te_stack -= 1
+                counting_tail_returns = False
+            else:
+                if counting_tail_returns:
+                    self.__tail_returns += 1
+                te_stack += 1
+
+            self.__tail_length += 1
+
+            if te_stack <= 0:
                 break
 
-        self.tail = list(reversed(self.trace_entries[: len(trace_entries) - i - 1]))
+    def head(self):
+        return self.trace_entries[: self.__head_calls]
 
-    def analyze_head_tail(self) -> list[Method] | None:
+    def tail(self):
+        return list(
+            reversed(
+                self.trace_entries[len(self.trace_entries) - self.__tail_returns :],
+            )
+        )
+
+    def identify_initializer_finalizer(self):
         """
-        Returns:
-            None if the object trace is invalid.
+        Identify methods that are initializers and finalizers. The method associated
+        with the first trace entry is an initializer and the method associated with the
+        last trace entry is a finalizer.
         """
-        if len(self.head) + len(self.tail) > len(self.trace_entries):
-            # Head and tail overlap.
-            return None
-
-        if len(self.head) < len(self.tail):
-            # Likely extra methods in the tail
-            self.tail = self.tail[: len(self.head)]
-        elif len(self.head) > len(self.tail):
-            # Likely extra methods in the head
-            self.head = self.head[: len(self.tail)]
-
-        # The same number of methods in the head and tail
-        for te in self.head:
-            te.method.is_constructor = True
-        for te in self.tail:
-            te.method.is_destructor = True
-
-    def update_method_statistics(self):
-        """
-        Update call statistics for all methods associated with the trace.
-        Store number of appearances for each method in each part of the trace.
-        """
-
-        # Count the total number of times each method in the trace is seen
-        # anywhere. Note that we will be modifying the global method (each trace
-        # may contain references to the same method)
-        # for entry in self.trace_entries:
-        #     # Only count returns to avoid double counting the number of methods seen
-        #     if entry.is_call:
-        #         if entry.method not in self.head and entry.method not in self.tail:
-        #             entry.method.seen_in_torso += 1
-
-        # for head_method in self.head:
-        #     head_method.seen_in_head += 1
-
-        # # Count the number of methods seen in the tail
-        # for tail_method in self.tail:
-        #     tail_method.seen_in_tail += 1
-
-        if len(self.trace_entries) > 0:
-            if not self.trace_entries[0].is_call:
-                raise RuntimeError("first entry in object trace not a call")
+        if self.trace_entries != []:
             self.trace_entries[0].method.is_initializer = True
-
-            if self.trace_entries[-1].is_call:
-                raise RuntimeError("last entry in object trace not a return")
             self.trace_entries[-1].method.is_finalizer = True
 
-    def methods(self):
+    def update_head_tail(self):
         """
-        Return a list of methods in the trace.
+        Remove trace entries from the head and tail based on the following heuristics:
+
+        - If the head and tail overlap, remove all trace entries from the head and tail.
+        - If there are more trace entries in either the head or tail, remove trace
+          entries from either the head or tail (whichever is larger).
+
+        This is not something that the original Lego paper does, and should not be
+        called when running Lego.
         """
-        return map(
-            lambda entry: entry.method,
-            filter(lambda entry: entry.is_call, self.trace_entries),
+        if self.__tail_length + self.__head_length > len(self.trace_entries):
+            # Head and tail overlap.
+            self.__head_calls = 0
+            self.__tail_returns = 0
+        elif self.__head_calls < self.__tail_returns:
+            # Likely extra methods in the tail
+            self.__tail_returns = self.__head_calls
+        elif self.__head_calls > self.__tail_returns:
+            # Likely extra methods in the head
+            self.__head_calls = self.__tail_returns
+
+    def update_method_statistics(self):
+        for i in range(self.__head_calls):
+            self.trace_entries[i].method.seen_in_head += 1
+
+        for i in range(self.__tail_returns):
+            self.trace_entries[len(self.trace_entries) - i - 1].method.seen_in_tail += 1
+
+        for te in self.trace_entries:
+            if te.is_call:
+                te.method.seen_count += 1
+
+    def methods(self) -> set[Method]:
+        """
+        Return a set of methods in the trace.
+        """
+        return set(
+            map(
+                lambda entry: entry.method,
+                filter(lambda entry: entry.is_call, self.trace_entries),
+            )
         )
 
     def split(self):
@@ -108,19 +150,19 @@ class ObjectTrace:
 
         entries_iter = iter(self.trace_entries)
 
-        def iterateAndInsert() -> TraceEntry | None:
+        def iterate_and_insert() -> TraceEntry | None:
             ce = next(entries_iter, None)
             if ce is not None:
                 cur_trace.append(ce)
             return ce
 
-        cur_entry = iterateAndInsert()
+        cur_entry = iterate_and_insert()
         while cur_entry is not None:
             # If entry is a finalizer and we are returning from it, potentially split
             # trace
             if cur_entry.method.is_finalizer and not cur_entry.is_call:
                 # If next entry is an initializer, split the trace
-                cur_entry = iterateAndInsert()
+                cur_entry = iterate_and_insert()
                 if (
                     cur_entry is not None
                     and cur_entry.method.is_initializer
@@ -130,7 +172,7 @@ class ObjectTrace:
                     cur_trace = [cur_entry]
 
                 # Otherwise don't split the trace
-            cur_entry = iterateAndInsert()
+            cur_entry = iterate_and_insert()
 
         if len(cur_trace) > 0:
             split_traces.append(cur_trace)

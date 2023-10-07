@@ -47,5 +47,5 @@ class MethodStore:
 
     def reset_all_method_statistics(self):
         for method in self._methods.values():
-            method.resetMethodStatistics()
-            method.resetMethodStatistics()
+            method.reset_method_statistics()
+            method.reset_method_statistics()

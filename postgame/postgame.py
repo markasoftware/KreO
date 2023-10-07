@@ -7,7 +7,7 @@ import time
 import uuid
 from collections import defaultdict
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 import pygtrie
 
@@ -64,33 +64,32 @@ class KreoClass:
         return "KreoClass-" + self.uuid[0:5] + "@" + hex(self.tail[-1].address)
 
     @staticmethod
-    def tail_str(tail: list[TraceEntry]) -> str:
-        fstr = [str(f.method) for f in tail]
+    def tail_str(tail: list[Method]) -> str:
+        fstr = [str(m) for m in tail]
         return "/".join(fstr)
 
 
 # =============================================================================
 class TriePrinter:
-    def __init__(self, kreo_class_to_method_set_map, trie):
+    def __init__(
+        self,
+        kreo_class_to_method_set_map: dict[str, set[Method]],
+        trie: pygtrie.Trie,
+    ):
         self._indent = ""
-        self._class_to_method_set = kreo_class_to_method_set_map
-        trie.traverse(self.printTrie)
+        self.__class_to_method_set = kreo_class_to_method_set_map
+        trie.traverse(self.print_trie)
 
-    def printTrie(self, pathConv, path, children, cls=None):
+    def print_trie(self, pathConv, path, children, cls=None):
         if cls is None:
             print(f"{self._indent}n/a")
         else:
             pathC = pathConv(path)
-            lastFingerprintMethod = cls.tail[-1]
-            print(
-                f"{self._indent}{pathC} {lastFingerprintMethod.is_probably_destructor()} {lastFingerprintMethod.seen_in_head} {lastFingerprintMethod.seen_in_tail} {lastFingerprintMethod.seen_in_torso}"
-            )
-            if cls in self._class_to_method_set:
-                for method in self._class_to_method_set[cls]:
-                    method.update_type()
-                    print(
-                        f" {self._indent}* {method} | {method.seen_in_head} {method.seen_in_tail} {method.seen_in_torso}"
-                    )
+            last_fingerprint_method = cls.tail[-1]
+            print(f"{self._indent}{pathC} {last_fingerprint_method.type}")
+            if cls in self.__class_to_method_set:
+                for method in self.__class_to_method_set[cls]:
+                    print(f" {self._indent}* {method} |")
 
         self._indent += "    "
         list(children)
@@ -102,7 +101,7 @@ class Postgame:
     def __init__(self, cfg: Config):
         self.cfg = cfg
 
-        self._traces: set[ObjectTrace] = set()
+        self.__traces: set[ObjectTrace] = set()
         self._static_traces: set[StaticTrace] = set()
         self._method_store = MethodStore()
 
@@ -135,7 +134,7 @@ class Postgame:
         LOGGER.warning("%s (%.2fs)", end_msg, end_time - start_time)
 
     def parse_input(self):
-        self._base_offset, self._traces = parse_object_trace.parse_input(
+        self._base_offset, self.__traces = parse_object_trace.parse_input(
             self.cfg,
             self._method_store,
         )
@@ -178,14 +177,14 @@ class Postgame:
 
     def update_all_method_statistics(self):
         self._method_store.reset_all_method_statistics()
-        for trace in self._traces:
+        for trace in self.__traces:
             trace.update_method_statistics()
 
     def split_dynamic_traces(self):
-        self._traces = set(
+        self.__traces = set(
             [
                 splitted_trace
-                for trace in self._traces
+                for trace in self.__traces
                 for splitted_trace in trace.split()
             ]
         )
@@ -201,11 +200,11 @@ class Postgame:
 
     def eliminate_object_traces_same_init_finalizer(self):
         new_traces: set[ObjectTrace] = set()
-        for trace in self._traces:
+        for trace in self.__traces:
             # TODO
             # if trace.head[0] is not trace.tail[-1]:
             new_traces.add(trace)
-        self._traces = new_traces
+        self.__traces = new_traces
 
     def discover_methods_statically(self):
         """
@@ -244,23 +243,31 @@ class Postgame:
                         )
 
     def remove_nondestructors_from_fingerprints(self):
-        for trace in self._traces:
+        for trace in self.__traces:
             trace.tail = [x for x in trace.tail if x.is_probably_destructor()]
 
         # Remove traces with empty fingerprints
-        self._traces = set(filter(lambda trace: len(trace.tail) > 0, self._traces))
+        self.__traces = set(filter(lambda trace: len(trace.tail) > 0, self.__traces))
 
     def construct_trie(self):
-        for trace in self._traces:
+        for trace in self.__traces:
+            tail = [x.method for x in trace.tail()]
+
             # Insert class and any parents into the trie using the trace's tail
-            for i in range(len(trace.tail)):
-                partial_tail = trace.tail[0 : i + 1]
+            for i in range(len(tail)):
+                partial_tail = tail[0 : i + 1]
                 partial_tail_str = KreoClass.tail_str(partial_tail)
-                if partial_tail_str not in self._trie.keys():
+
+                trie_keys = cast(
+                    "set[str]",
+                    self._trie.keys(),  # pyright: ignore[reportUnknownMemberType]
+                )
+
+                if partial_tail_str not in trie_keys:
                     self._trie[partial_tail_str] = KreoClass(partial_tail)
 
             # Map all methods in the trace to the class in the trie
-            cls = self._trie[KreoClass.tail_str(trace.tail)]
+            cls = cast("KreoClass", self._trie[KreoClass.tail_str(tail)])
             for method in trace.methods():
                 self._method_to_class[method].add(cls)
 
@@ -425,7 +432,6 @@ class Postgame:
             # be any methods in the set
             if cls in self._class_to_method_set:
                 for method in self._class_to_method_set[cls]:
-                    method.update_type()
                     method_addr_str = hex(method.address + self._base_offset)
                     methods[method_addr_str] = ar.Method(
                         demangled_name=method.name if method.name else "",
@@ -454,88 +460,69 @@ class Postgame:
         for line in self.cfg.method_candidates_path.open():
             self._method_candidate_addresses.add(int(line, 16))
 
-    def main(self):
-        ###############################################################################
-        # Step: Read traces and other info from disk                                  #
-        ###############################################################################
-        self.run_step(self.parse_input, "parsing input...", "input parsed")
-        LOGGER.info("Found %i traces", len(self._traces))
+    def identify_initializer_finalizers(self) -> None:
+        for ot in self.__traces:
+            ot.identify_initializer_finalizer()
 
-        ###############################################################################
-        # Step: Record how many times each method was seen in the head and            #
-        # tail                                                                 #
-        ###############################################################################
+    def update_head_tail(self) -> None:
+        for ot in self.__traces:
+            ot.update_head_tail()
+
+    def remove_ots_with_no_tail(self) -> None:
+        self.__traces = set([ot for ot in self.__traces if ot.tail() != []])
+
+    def main(self):
+        self.run_step(self.parse_input, "parsing input...", "input parsed")
+        LOGGER.info("Found %i traces", len(self.__traces))
+
+        self.run_step(
+            self.identify_initializer_finalizers,
+            "identifying initializers and finalizers...",
+            "initializers and finalizers identified",
+        )
+
         self.run_step(
             self.update_all_method_statistics,
             "updating method statistics...",
             "method statistics updated",
         )
 
-        ###############################################################################
-        # Step: Split spurious traces                                                 #
-        ###############################################################################
         self.run_step(self.split_dynamic_traces, "splitting traces...", "traces split")
-        print(f"after splitting there are now {len(self._traces)} traces")
+        LOGGER.info("after splitting there are now %i traces", len(self.__traces))
 
-        ###############################################################################
-        # Step: Update method statistics again now. Splitting traces won't reveal new #
-        # constructors/destructors; however, the number of times methods are seen in  #
-        # the head/body/tail does change.                                             #
-        ###############################################################################
         self.run_step(
-            self.update_all_method_statistics,
-            "updating method statistics again...",
-            "method statistics updated",
+            self.update_head_tail,
+            "updating head and tail...",
+            "head and tail updated",
         )
 
-        if (
-            self.cfg.eliminate_object_traces_with_matching_initializer_and_finalizer_method
-        ):
-            pass
-            ###############################################################################
-            # Step: Remove object-traces where the first trace entry is a call to a       #
-            # method and the last trace entry is a return from that same call             #
-            # note: This could result in not identifying methods that belong to a class   #
-            # that does not have a destructor                                             #
-            ###############################################################################
-            # self.run_step(
-            #     self.eliminate_object_traces_same_init_finalizer,
-            #     "eliminating object-traces with identical initializer and finalizer...",
-            #     "object-traces updated",
-            # )
+        self.run_step(
+            self.remove_ots_with_no_tail,
+            "removing object traces with no tail...",
+            "object traces with no tail removed",
+        )
 
-            ###############################################################################
-            # Step: Update method statistics again now. Splitting traces won't reveal new #
-            # constructors/destructors; however, the number of times methods are seen in  #
-            # the head/body/tail does change.                                             #
-            ###############################################################################
-            # self.run_step(
-            #     self.update_all_method_statistics,
-            #     "updating method statistics again...",
-            #     "method statistics updated",
-            # )
+        # if self.cfg.heuristic_fingerprint_improvement:
+        #     ###############################################################################
+        #     # Step: Remove from fingerprints any methods that are not identified as       #
+        #     # destructors.                                                                #
+        #     ###############################################################################
+        #     self.run_step(
+        #         self.remove_nondestructors_from_fingerprints,
+        #         "removing methods that aren't destructors from fingerprints...",
+        #         "method removed",
+        #     )
 
-        if self.cfg.heuristic_fingerprint_improvement:
-            ###############################################################################
-            # Step: Remove from fingerprints any methods that are not identified as       #
-            # destructors.                                                                #
-            ###############################################################################
-            self.run_step(
-                self.remove_nondestructors_from_fingerprints,
-                "removing methods that aren't destructors from fingerprints...",
-                "method removed",
-            )
-
-            ###############################################################################
-            # Step: Update method statistics again now. Splitting traces won't reveal new #
-            # constructors/destructors; however, the number of times methods are seen in  #
-            # the head/body/tail does change.                                             #
-            ###############################################################################
-            self.run_step(
-                self.update_all_method_statistics,
-                "updating method statistics again...",
-                "method statistics updated",
-            )
+        #     ###############################################################################
+        #     # Step: Update method statistics again now. Splitting traces won't reveal new #
+        #     # constructors/destructors; however, the number of times methods are seen in  #
+        #     # the head/body/tail does change.                                             #
+        #     ###############################################################################
+        #     self.run_step(
+        #         self.update_all_method_statistics,
+        #         "updating method statistics again...",
+        #         "method statistics updated",
+        #     )
 
         ###############################################################################
         # Step: Look at fingerprints to determine hierarchy. Insert entries into trie.#

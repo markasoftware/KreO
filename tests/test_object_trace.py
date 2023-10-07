@@ -1,30 +1,26 @@
-# from postgame.object_trace import TraceEntry
+# from postgame.object_trace import TE
 
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent / ".."))
-sys.path.append(str(Path(__file__).parent / ".." / "postgame"))
-from postgame.method import Method  # noqa: E402
-from postgame.object_trace import ObjectTrace, TraceEntry  # noqa: E402
+from postgame.method import Method
+from postgame.object_trace import ObjectTrace as OT
+from postgame.object_trace import TraceEntry as TE
 
 
 def test_trace_entry_construct():
-    _ = TraceEntry(Method(0x0), False)
+    _ = TE(Method(0x0), False)
 
 
 def test_trace_entry_str():
-    te = TraceEntry(Method(0xFF), False)
+    te = TE(Method(0xFF), False)
     assert "ff" == str(te)
-    te = TraceEntry(Method(0xEE), True)
+    te = TE(Method(0xEE), True)
     assert "ee 1" == str(te)
 
 
 def test_trace_entry_eq():
-    te1 = TraceEntry(Method(0xFF), False)
-    te2 = TraceEntry(Method(0xFF), False)
-    te3 = TraceEntry(Method(0xFF), True)
-    te4 = TraceEntry(Method(0xEE), True)
+    te1 = TE(Method(0xFF), False)
+    te2 = TE(Method(0xFF), False)
+    te3 = TE(Method(0xFF), True)
+    te4 = TE(Method(0xEE), True)
 
     assert te1 == te1
     assert te1 != te2  # methods are different (compare pointers)
@@ -34,47 +30,43 @@ def test_trace_entry_eq():
 
 
 def test_object_trace_construct():
-    _ = ObjectTrace([])
+    _ = OT([])
 
 
-def simple_ot() -> ObjectTrace:
+def simple_ot() -> OT:
     methods = [Method(0), Method(1)]
-    return ObjectTrace(
+    return OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
         ]
     )
 
 
 def test_object_trace_head_tail():
     methods = [Method(0), Method(1)]
-    ot = ObjectTrace(
+    ot = OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
         ]
     )
 
-    head = ot.get_head()
+    head = ot.head()
 
-    assert 4 == len(head)
+    assert 2 == len(head)
     assert methods[0] == head[0].method
     assert methods[1] == head[1].method
-    assert methods[1] == head[2].method
-    assert methods[0] == head[3].method
 
-    tail = ot.get_tail()
+    tail = ot.tail()
 
-    assert 4 == len(tail)
+    assert 2 == len(tail)
     assert methods[0] == tail[0].method
     assert methods[1] == tail[1].method
-    assert methods[1] == tail[2].method
-    assert methods[0] == tail[3].method
 
 
 def test_object_trace_str():
@@ -91,26 +83,26 @@ def test_object_trace_str():
 
 def test_object_trace_eq():
     methods = [Method(0), Method(1)]
-    ot1 = ObjectTrace(
+    ot1 = OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
         ]
     )
-    ot2 = ObjectTrace(
+    ot2 = OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
         ]
     )
-    ot3 = ObjectTrace(
+    ot3 = OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[0], False),
+            TE(methods[0], True),
+            TE(methods[0], False),
         ]
     )
 
@@ -118,57 +110,45 @@ def test_object_trace_eq():
     assert ot1 != ot3
 
 
-def test_update_method_stats_basic():
+def test_identify_initializer_finalizer():
     methods = [Method(0), Method(1)]
-    ot = ObjectTrace(
+    ot = OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
         ]
     )
 
-    ot.update_method_statistics()
+    ot.identify_initializer_finalizer()
 
-    # assert 1 == methods[0].seen_in_head
-    # assert 1 == methods[0].seen_in_tail
-    # assert 1 == methods[1].seen_in_head
-    # assert 1 == methods[1].seen_in_tail
-    # assert methods[0].is_initializer
-    # assert methods[0].is_finalizer
-    # assert not methods[1].is_initializer
-    # assert not methods[1].is_finalizer
+    assert methods[0].is_initializer
+    assert methods[0].is_finalizer
+    assert not methods[1].is_initializer
+    assert not methods[1].is_finalizer
 
 
-def test_update_method_stats_empty():
-    ot = ObjectTrace([])
-    ot.update_method_statistics()
+def test_identify_initializer_finalizer_empty():
+    ot = OT([])
+    ot.identify_initializer_finalizer()
 
 
-def test_update_method_stats_medium():
+def test_identify_initializer_finalizer_medium():
     methods = [Method(0), Method(1), Method(2)]
-    ot = ObjectTrace(
+    ot = OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[2], True),
-            TraceEntry(methods[2], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[2], True),
+            TE(methods[2], False),
         ]
     )
-
-    ot.update_method_statistics()
-
-    assert 1 == methods[0].seen_in_head
-    assert 0 == methods[0].seen_in_tail
-    assert 1 == methods[1].seen_in_head
-    assert 0 == methods[1].seen_in_tail
-    assert 0 == methods[2].seen_in_head
-    assert 1 == methods[2].seen_in_tail
+    ot.identify_initializer_finalizer()
 
     assert methods[0].is_initializer
     assert not methods[0].is_finalizer
@@ -180,34 +160,36 @@ def test_update_method_stats_medium():
 
 def test_methods():
     methods = [Method(0), Method(1), Method(2)]
-    ot = ObjectTrace(
+    ot = OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[2], True),
-            TraceEntry(methods[2], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[2], True),
+            TE(methods[2], False),
         ]
     )
 
-    meth = set(ot.methods())
+    meth = ot.methods()
     assert 3 == len(meth)
-    assert set(methods) == meth
+    assert methods[0] in meth
+    assert methods[1] in meth
+    assert methods[2] in meth
 
 
 def test_split_empty():
-    ot = ObjectTrace([])
-    ot.update_method_statistics()
+    ot = OT([])
+    ot.identify_initializer_finalizer()
     split_traces = list(ot.split())
     assert [] == split_traces
 
 
 def test_split_no_split_required():
     ot = simple_ot()
-    ot.update_method_statistics()
+    ot.identify_initializer_finalizer()
     split_traces = list(ot.split())
     assert 1 == len(split_traces)
     assert ot == split_traces[0]
@@ -215,54 +197,200 @@ def test_split_no_split_required():
 
 def test_split_when_required():
     methods = [Method(0), Method(1), Method(2)]
-    ot = ObjectTrace(
+    ot = OT(
         [
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[2], True),
-            TraceEntry(methods[2], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[2], True),
+            TE(methods[2], False),
             #
-            TraceEntry(methods[0], True),
-            TraceEntry(methods[1], True),
-            TraceEntry(methods[1], False),
-            TraceEntry(methods[0], False),
-            TraceEntry(methods[2], True),
-            TraceEntry(methods[2], False),
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
+            TE(methods[2], True),
+            TE(methods[2], False),
         ]
     )
 
-    ot.update_method_statistics()
+    ot.identify_initializer_finalizer()
     split_traces = list(ot.split())
     assert 2 == len(split_traces)
     assert (
-        ObjectTrace(
+        OT(
             [
-                TraceEntry(methods[0], True),
-                TraceEntry(methods[1], True),
-                TraceEntry(methods[1], False),
-                TraceEntry(methods[0], False),
-                TraceEntry(methods[1], True),
-                TraceEntry(methods[1], False),
-                TraceEntry(methods[2], True),
-                TraceEntry(methods[2], False),
+                TE(methods[0], True),
+                TE(methods[1], True),
+                TE(methods[1], False),
+                TE(methods[0], False),
+                TE(methods[1], True),
+                TE(methods[1], False),
+                TE(methods[2], True),
+                TE(methods[2], False),
             ]
         )
         == split_traces[0]
     )
     assert (
-        ObjectTrace(
+        OT(
             [
-                TraceEntry(methods[0], True),
-                TraceEntry(methods[1], True),
-                TraceEntry(methods[1], False),
-                TraceEntry(methods[0], False),
-                TraceEntry(methods[2], True),
-                TraceEntry(methods[2], False),
+                TE(methods[0], True),
+                TE(methods[1], True),
+                TE(methods[1], False),
+                TE(methods[0], False),
+                TE(methods[2], True),
+                TE(methods[2], False),
             ]
         )
         == split_traces[1]
     )
+
+
+def test_update_head_tail_1():
+    methods = [Method(0)]
+
+    ot = OT(
+        [
+            TE(methods[0], True),
+            TE(methods[0], False),
+        ]
+    )
+
+    ot.update_head_tail()
+
+    head = ot.head()
+    tail = ot.tail()
+
+    assert [] == head
+    assert [] == tail
+
+
+def test_update_head_tail_2():
+    methods = [Method(0), Method(1)]
+
+    ot = OT(
+        [
+            TE(methods[0], True),
+            TE(methods[0], False),
+            TE(methods[1], True),
+            TE(methods[1], False),
+        ]
+    )
+
+    ot.update_head_tail()
+
+    head = [x.method for x in ot.head()]
+    tail = [x.method for x in ot.tail()]
+
+    assert [methods[0]] == head
+    assert [methods[1]] == tail
+
+
+def test_update_head_tail_3():
+    methods = [Method(0), Method(1), Method(2)]
+
+    ot = OT(
+        [
+            TE(methods[0], True),
+            TE(methods[0], False),
+            TE(methods[1], True),
+            TE(methods[2], True),
+            TE(methods[2], False),
+            TE(methods[1], False),
+        ]
+    )
+
+    ot.update_head_tail()
+
+    head = [x.method for x in ot.head()]
+    tail = [x.method for x in ot.tail()]
+
+    assert [methods[0]] == head
+    assert [methods[1]] == tail
+
+
+def test_update_head_tail_4():
+    methods = [Method(0), Method(1), Method(2)]
+
+    ot = OT(
+        [
+            TE(methods[1], True),
+            TE(methods[2], True),
+            TE(methods[2], False),
+            TE(methods[1], False),
+            TE(methods[0], True),
+            TE(methods[0], False),
+        ]
+    )
+
+    ot.update_head_tail()
+
+    head = [x.method for x in ot.head()]
+    tail = [x.method for x in ot.tail()]
+
+    assert [methods[1]] == head
+    assert [methods[0]] == tail
+
+
+def test_update_method_statistics_1():
+    methods = [Method(0), Method(1), Method(2)]
+
+    ot = OT(
+        [
+            TE(methods[0], True),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[0], False),
+            TE(methods[2], True),
+            TE(methods[2], False),
+        ]
+    )
+
+    ot.update_method_statistics()
+
+    assert 1 == methods[0].seen_count
+    assert 1 == methods[1].seen_count
+    assert 1 == methods[2].seen_count
+
+    assert 1 == methods[0].seen_in_head
+    assert 1 == methods[1].seen_in_head
+    assert 0 == methods[2].seen_in_head
+
+    assert 0 == methods[0].seen_in_tail
+    assert 0 == methods[1].seen_in_tail
+    assert 1 == methods[2].seen_in_tail
+
+
+def test_update_method_statistics_2():
+    methods = [Method(0), Method(1), Method(2)]
+
+    ot = OT(
+        [
+            TE(methods[0], True),
+            TE(methods[0], False),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[1], True),
+            TE(methods[1], False),
+            TE(methods[2], True),
+            TE(methods[2], False),
+        ]
+    )
+
+    ot.update_method_statistics()
+
+    assert 1 == methods[0].seen_count
+    assert 2 == methods[1].seen_count
+    assert 1 == methods[2].seen_count
+
+    assert 1 == methods[0].seen_in_head
+    assert 0 == methods[1].seen_in_head
+    assert 0 == methods[2].seen_in_head
+
+    assert 0 == methods[0].seen_in_tail
+    assert 0 == methods[1].seen_in_tail
+    assert 1 == methods[2].seen_in_tail
