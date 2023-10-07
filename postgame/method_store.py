@@ -8,11 +8,11 @@ from postgame.method import Method
 
 class MethodStore:
     def __init__(self):
-        self._methods: Dict[int, Method] = dict()  # map from address to method
+        self.__methods: Dict[int, Method] = dict()  # map from address to method
 
     def __copy__(self):
         result = MethodStore()
-        result._methods = copy(self._methods)
+        result.__methods = copy(self.__methods)
         return result
 
     def find_or_insert_method(
@@ -24,18 +24,18 @@ class MethodStore:
         Attempts to find the method in the global methods map. If the function fails
         to find a method, one will be inserted.
         """
-        if address not in self._methods:
-            self._methods[address] = Method(
+        if address not in self.__methods:
+            self.__methods[address] = Method(
                 address,
                 found_dynamically=found_dynamically,
             )
-        return self._methods[address]
+        return self.__methods[address]
 
-    def getMethod(self, address: int) -> Optional[Method]:
-        return self._methods[address] if address in self._methods else None
+    def get_method(self, address: int) -> Optional[Method]:
+        return self.__methods[address] if address in self.__methods else None
 
-    def insertMethodName(self, address: int, name: str):
-        meth = self.getMethod(address)
+    def insert_method_name(self, address: int, name: str):
+        meth = self.get_method(address)
         if meth is not None:
             meth.name = name
 
@@ -43,9 +43,9 @@ class MethodStore:
         """
         Merge the other store into this one, modifying self in-place.
         """
-        self._methods.update(other._methods)
+        self.__methods.update(other.__methods)
 
     def reset_all_method_statistics(self):
-        for method in self._methods.values():
+        for method in self.__methods.values():
             method.reset_method_statistics()
             method.reset_method_statistics()

@@ -52,7 +52,7 @@ def loadTraces():
             demangled_name = str(p1.stdout.read())
         except FileNotFoundError as _:
             demangled_name = splitlines[1]
-        methodStore.insertMethodName(int(splitlines[0]), demangled_name)
+        methodStore.insert_method_name(int(splitlines[0]), demangled_name)
 
     return traces, methodStore
 

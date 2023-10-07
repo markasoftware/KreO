@@ -1,15 +1,10 @@
-import sys
 from pathlib import Path
-from typing import List, Set, Tuple
 
+from parseconfig import Config
 from postgame.method_store import MethodStore
 from postgame.object_trace import ObjectTrace, TraceEntry
 
 SCRIPT_PATH = Path(__file__).parent.absolute()
-
-sys.path.append(str(SCRIPT_PATH / ".."))
-
-from parseconfig import Config  # noqa: E402
 
 
 def get_base_offset(config: Config) -> int:
@@ -19,16 +14,16 @@ def get_base_offset(config: Config) -> int:
 def parse_input(
     config: Config,
     method_store: MethodStore,
-) -> Tuple[int, Set[ObjectTrace]]:
-    traces: Set[ObjectTrace] = set()
+) -> tuple[int, set[ObjectTrace]]:
+    traces: set[ObjectTrace] = set()
     base_offset = get_base_offset(config)
 
     # parse blacklisted methods
-    blacklisted_methods: Set[int] = set()
+    blacklisted_methods: set[int] = set()
     for line in config.blacklisted_methods_path.open():
         blacklisted_methods.add(int(line, 16))
 
-    def add_if_valid(trace_entries: List[TraceEntry]):
+    def add_if_valid(trace_entries: list[TraceEntry]):
         # Adds the list of trace entries to set of collected traces, assuming
         # the list of entries isn't empty.
         if trace_entries != []:
@@ -45,20 +40,20 @@ def parse_input(
             if ot_stack_len == 0:
                 traces.add(ObjectTrace(trace_entries))
 
-    cur_trace: List[TraceEntry] = []
-    # there can be multiple object trace files...find all of them
+    cur_trace: list[TraceEntry] = []
     for line in config.object_traces_path.open():
         # each line ends with \n, empty line indicates new trace
         if line == "\n":
             add_if_valid(cur_trace)
             cur_trace = []
         else:
-            split_line = line.split()
+            split_line = line.split(" ", 2)
             addr = int(split_line[0], 16)
             if addr not in blacklisted_methods:
                 method = method_store.find_or_insert_method(addr)
-                # the trace entry being a call is identified by a trailing "1" after the address
-                is_call = len(split_line) == 2
+                # the trace entry being a call is identified by a trailing "1" after the
+                # address
+                is_call = len(split_line) == 2 and split_line[1] == "C"
                 cur_trace.append(TraceEntry(method, is_call))
 
     # finish the last trace
