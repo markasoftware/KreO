@@ -54,7 +54,7 @@ class AnalysisResults(BaseModel):
     filemd5: str = ""
     structures: dict[str, Structure] = Field(default_factory=dict)
     vcalls: dict[str, str] = Field(default_factory=dict)
-    version: str
+    version: str = ""
 
     def get_methods(self) -> list[Method]:
         meths = [x.methods.values() for x in self.structures.values()]
