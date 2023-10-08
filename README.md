@@ -144,19 +144,11 @@ and is located in the `base_directory` specified in the JSON configuration file.
 As a baseline, we re-implemented an approach called
 [Lego](https://research.cs.wisc.edu/wpis/papers/cc14.pdf). Additional static
 analysis features and other improvements are built on top of this
-re-implementation. All features will be enabled such that KreO is running by
-default. If you want to run Lego only, the following flags must be specified in
-the configuration JSON file:
-
-    "enable_static_alias_analysis": false,
-    "enable_calling_convention_analysis": false,
-    "heuristic_fingerprint_improvement": false,
-    "eliminate_object_traces_with_matching_initializer_and_finalizer_method": false
-
-If you want to run Lego+ (lego with improvements that don't include static
-analysis), the following flags must be specified:
-
-    "enable_static_alias_analysis": false
+re-implementation. To specify the tool to run, use the `analysis_tool` JSON key.
+Valid tools are `kreo`, `lego_plus`, and `lego`. `lego` is the base Lego re-implementation.
+`lego_plus` includes no additional static analysis, but does include some improvements
+during the rest of analysis. `kreo` includes the improvements in `lego_plus` as
+well as additional static analysis.
 
 ### Generating LaTeX results
 

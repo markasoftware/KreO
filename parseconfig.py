@@ -5,7 +5,6 @@
 import json
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel
 
@@ -15,7 +14,15 @@ class Isa(StrEnum):
     X86_64 = auto()
 
 
+class AnalysisTool(StrEnum):
+    KREO = auto()
+    LEGO = auto()
+    LEGO_PLUS = auto()
+
+
 class Config(BaseModel):
+    analysis_tool: AnalysisTool
+
     cfg_mode: str = "fast"
 
     pdb_file: Path
@@ -35,12 +42,6 @@ class Config(BaseModel):
     results_json: Path = Path("results.json")
     dump_file: Path = Path("project.dump")
     pdb_file: Path
-
-    enable_static_alias_analysis: bool = True
-    enable_calling_convention_analysis: bool = True
-    enable_symbol_procedure_detection: bool = False
-    heuristic_fingerprint_improvement: bool = True
-    eliminate_object_traces_with_matching_initializer_and_finalizer_method: bool = True
 
     debug_function: int | None = None
 

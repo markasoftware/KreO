@@ -1,4 +1,5 @@
 {
+    "analysis_tool": "lego",
     "isa": "x86",
 
     "binary_path": "../ser4cpp/ser4cpp_tests.exe",
@@ -7,9 +8,5 @@
     "results_path": "../../evaluation/results/in/ser4cpp-lego",
     "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/ser4cpp",
 
-    "base_directory": "lego-ser4cpp",
-
-    "enable_static_alias_analysis": false,
-    "enable_calling_convention_analysis": false,
-    "heuristic_fingerprint_improvement": false
+    "base_directory": "lego-ser4cpp"
 }

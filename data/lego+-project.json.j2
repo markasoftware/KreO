@@ -1,4 +1,5 @@
 {
+    "analysis_tool": "lego_plus",
     "isa": "x86",
 
     "binary_path": "../{{ name }}/ser4cpp_tests.exe",
@@ -7,8 +8,5 @@
     "results_path": "../../evaluation/results/in/{{ name }}-lego+",
     "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/{{ name }}",
 
-    "base_directory": "lego+-{{ name }}",
-
-    "enable_static_alias_analysis": false,
-    "enable_calling_convention_analysis": false
+    "base_directory": "lego+-{{ name }}"
 }

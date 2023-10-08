@@ -15,6 +15,9 @@ class MethodStore:
         result.__methods = copy(self.__methods)
         return result
 
+    def get_methods(self) -> list[Method]:
+        return list(self.__methods.values())
+
     def find_or_insert_method(
         self,
         address: int,

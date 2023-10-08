@@ -53,7 +53,7 @@ def parse_input(
                 method = method_store.find_or_insert_method(addr)
                 # the trace entry being a call is identified by a trailing "1" after the
                 # address
-                is_call = len(split_line) == 2 and split_line[1] == "C"
+                is_call = len(split_line) == 2 and split_line[1][0] == "1"
                 cur_trace.append(TraceEntry(method, is_call))
 
     # finish the last trace

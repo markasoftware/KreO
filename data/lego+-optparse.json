@@ -1,4 +1,5 @@
 {
+    "analysis_tool": "lego_plus",
     "isa": "x86",
 
     "binary_path": "../optparse/optparse.exe",
@@ -7,8 +8,5 @@
     "results_path": "../../evaluation/results/in/optparse-lego+",
     "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/optparse",
 
-    "base_directory": "lego+-optparse",
-
-    "enable_static_alias_analysis": false,
-    "enable_calling_convention_analysis": false
+    "base_directory": "lego+-optparse"
 }

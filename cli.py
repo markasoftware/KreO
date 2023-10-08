@@ -5,6 +5,7 @@ from pathlib import Path
 
 from typer import Typer
 
+import evaluation.evaluation
 from parseconfig import Config, Isa, parseconfig
 from postgame.postgame import Postgame
 
@@ -141,6 +142,12 @@ def demangle_all_names():
     with ot_name_map_path.open("w") as f:
         for addr, method in demangled_method_candidates.items():
             f.write(addr + " " + method + "\n")
+
+
+@APP.command()
+def eval():
+    assert cfg is not None
+    evaluation.evaluation.main(cfg)
 
 
 @APP.callback()

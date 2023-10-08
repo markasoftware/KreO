@@ -56,13 +56,13 @@ def test_object_trace_head_tail():
         ]
     )
 
-    head = ot.head()
+    head = ot.head_calls()
 
     assert 2 == len(head)
     assert methods[0] == head[0].method
     assert methods[1] == head[1].method
 
-    tail = ot.tail()
+    tail = ot.tail_returns()
 
     assert 2 == len(tail)
     assert methods[0] == tail[0].method
@@ -262,8 +262,8 @@ def test_update_head_tail_1():
 
     ot.update_head_tail()
 
-    head = ot.head()
-    tail = ot.tail()
+    head = ot.head_calls()
+    tail = ot.tail_returns()
 
     assert [] == head
     assert [] == tail
@@ -283,8 +283,8 @@ def test_update_head_tail_2():
 
     ot.update_head_tail()
 
-    head = [x.method for x in ot.head()]
-    tail = [x.method for x in ot.tail()]
+    head = [x.method for x in ot.head_calls()]
+    tail = [x.method for x in ot.tail_returns()]
 
     assert [methods[0]] == head
     assert [methods[1]] == tail
@@ -306,8 +306,8 @@ def test_update_head_tail_3():
 
     ot.update_head_tail()
 
-    head = [x.method for x in ot.head()]
-    tail = [x.method for x in ot.tail()]
+    head = [x.method for x in ot.head_calls()]
+    tail = [x.method for x in ot.tail_returns()]
 
     assert [methods[0]] == head
     assert [methods[1]] == tail
@@ -329,8 +329,8 @@ def test_update_head_tail_4():
 
     ot.update_head_tail()
 
-    head = [x.method for x in ot.head()]
-    tail = [x.method for x in ot.tail()]
+    head = [x.method for x in ot.head_calls()]
+    tail = [x.method for x in ot.tail_returns()]
 
     assert [methods[1]] == head
     assert [methods[0]] == tail

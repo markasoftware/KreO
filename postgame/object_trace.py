@@ -76,15 +76,21 @@ class ObjectTrace:
             if te_stack <= 0:
                 break
 
-    def head(self):
+    def head_calls(self):
         return self.trace_entries[: self.__head_calls]
 
-    def tail(self):
+    def tail_returns(self):
         return list(
             reversed(
                 self.trace_entries[len(self.trace_entries) - self.__tail_returns :],
             )
         )
+
+    def head(self):
+        return self.trace_entries[: self.__head_length]
+
+    def tail(self):
+        return self.trace_entries[-self.__tail_length :]
 
     def identify_initializer_finalizer(self):
         """

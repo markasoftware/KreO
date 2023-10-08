@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import itertools
+from enum import StrEnum, auto
 
 from pydantic import BaseModel, Field
+
+
+class MethodType(StrEnum):
+    dtor = auto()
+    ctor = auto()
+    meth = auto()
 
 
 class Member(BaseModel):
@@ -21,9 +28,16 @@ class Member(BaseModel):
 class Method(BaseModel):
     demangled_name: str
     ea: str
-    imprt: bool = False
+    imprt: bool = Field(alias="import", default=False)
     name: str
-    type: str
+    type: MethodType
+
+
+class VFTable(BaseModel):
+    ea: str
+    entries: dict[str, Method] = Field(default_factory=dict)
+    length: int
+    vftptr: str
 
 
 class Structure(BaseModel):
@@ -32,12 +46,12 @@ class Structure(BaseModel):
     members: dict[str, Member] = Field(default_factory=dict)
     methods: dict[str, Method] = Field(default_factory=dict)
     size: int = 0
-    vftables: list[str] = Field(default_factory=list)
+    vftables: dict[str, VFTable] = Field(default_factory=dict)
 
 
 class AnalysisResults(BaseModel):
-    filename: str
-    filemd5: str
+    filename: str = ""
+    filemd5: str = ""
     structures: dict[str, Structure] = Field(default_factory=dict)
     vcalls: dict[str, str] = Field(default_factory=dict)
     version: str

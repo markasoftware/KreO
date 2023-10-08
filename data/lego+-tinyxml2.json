@@ -1,4 +1,5 @@
 {
+    "analysis_tool": "lego_plus",
     "isa": "x86",
 
     "binary_path": "../tinyxml2/tinyxml2.exe",
@@ -7,8 +8,5 @@
     "results_path": "../../evaluation/results/in/tinyxml2-lego+",
     "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/tinyxml2",
 
-    "base_directory": "lego+-tinyxml2",
-
-    "enable_static_alias_analysis": false,
-    "enable_calling_convention_analysis": false
+    "base_directory": "lego+-tinyxml2"
 }
