@@ -1,5 +1,7 @@
+import time
 from dataclasses import dataclass
 from enum import StrEnum, auto
+from typing import Iterable
 
 from typing_extensions import Self
 
@@ -76,6 +78,16 @@ class ObjectTrace:
             if te_stack <= 0:
                 break
 
+        # TODO remove
+        for te in trace_entries:
+            if te.is_call:
+                te_stack += 1
+            else:
+                te_stack -= 1
+        if te_stack != 0:
+            msg = f"Failed to parse object trace, calls and returns don't match: {self}"
+            raise RuntimeError(msg)
+
     def head_calls(self):
         return self.trace_entries[: self.__head_calls]
 
@@ -146,42 +158,31 @@ class ObjectTrace:
             )
         )
 
-    def split(self):
+    def split(self) -> None | Iterable[Self]:
         """
         Given a set of destructors, return a list of traces created from this
         one. Returns just itself if no splitting is necessary.
         """
         split_traces: list[list[TraceEntry]] = []
-        cur_trace: list[TraceEntry] = []
 
-        entries_iter = iter(self.trace_entries)
+        trace_start_idx = 0
 
-        def iterate_and_insert() -> TraceEntry | None:
-            ce = next(entries_iter, None)
-            if ce is not None:
-                cur_trace.append(ce)
-            return ce
+        for i in range(len(self.trace_entries)):
+            cur_entry = self.trace_entries[i]
+            if (
+                cur_entry.method.is_finalizer
+                and not cur_entry.is_call
+                and i + 1 < len(self.trace_entries)
+                and self.trace_entries[i + 1].method.is_initializer
+                and self.trace_entries[i + 1].is_call
+            ):
+                split_traces.append(self.trace_entries[trace_start_idx : i + 1])
+                trace_start_idx = i + 1
 
-        cur_entry = iterate_and_insert()
-        while cur_entry is not None:
-            # If entry is a finalizer and we are returning from it, potentially split
-            # trace
-            if cur_entry.method.is_finalizer and not cur_entry.is_call:
-                # If next entry is an initializer, split the trace
-                cur_entry = iterate_and_insert()
-                if (
-                    cur_entry is not None
-                    and cur_entry.method.is_initializer
-                    and cur_entry.is_call
-                ):
-                    split_traces.append(cur_trace[:-1])
-                    cur_trace = [cur_entry]
+        if split_traces == []:
+            return None
 
-                # Otherwise don't split the trace
-            cur_entry = iterate_and_insert()
-
-        if len(cur_trace) > 0:
-            split_traces.append(cur_trace)
+        split_traces.append(self.trace_entries[trace_start_idx:])
 
         return map(ObjectTrace, split_traces)
 

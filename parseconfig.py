@@ -5,8 +5,9 @@
 import json
 from enum import StrEnum, auto
 from pathlib import Path
+from typing import Any, Self
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class Isa(StrEnum):
@@ -21,6 +22,8 @@ class AnalysisTool(StrEnum):
 
 
 class Config(BaseModel):
+    config_fname: Path
+
     analysis_tool: AnalysisTool
 
     cfg_mode: str = "fast"
@@ -41,7 +44,6 @@ class Config(BaseModel):
     object_traces_path: Path = Path("object-traces")
     results_json: Path = Path("results.json")
     dump_file: Path = Path("project.dump")
-    pdb_file: Path
 
     debug_function: int | None = None
 
@@ -49,33 +51,38 @@ class Config(BaseModel):
 
     isa: Isa = Isa.X86
 
+    def model_post_init(self, __context: Any):
+        # Set base_directory relative to config_path
+        self.base_directory = self.config_fname.parent / self.base_directory
+
+        # ensure it exists
+        self.base_directory.mkdir(exist_ok=True)
+
+        def path_rel_base(path: Path) -> Path:
+            return self.base_directory / path
+
+        self.method_candidates_path = path_rel_base(self.method_candidates_path)
+        self.blacklisted_methods_path = path_rel_base(self.blacklisted_methods_path)
+        self.gt_methods_path = path_rel_base(self.gt_methods_path)
+        self.gt_methods_instrumented_path = path_rel_base(
+            self.gt_methods_instrumented_path
+        )
+        self.base_offset_path = path_rel_base(self.base_offset_path)
+        self.static_traces_path = path_rel_base(self.static_traces_path)
+        self.object_traces_path = path_rel_base(self.object_traces_path)
+        self.results_json = path_rel_base(self.results_json)
+        self.dump_file = path_rel_base(self.dump_file)
+
+        self.gt_results_json = path_rel_base(self.gt_results_json)
+        self.pdb_file = path_rel_base(self.pdb_file)
+        self.binary_path = path_rel_base(self.binary_path)
+        self.results_path = path_rel_base(self.results_path)
+        self.results_instrumented_path = path_rel_base(self.results_instrumented_path)
+
+        super().model_post_init(__context)
+
 
 def parseconfig(config_fname: Path) -> Config:
-    cfg = Config(**json.load(config_fname.open()))
-
-    # Set base_directory relative to config_path
-    cfg.base_directory = config_fname.parent / cfg.base_directory
-
-    # ensure it exists
-    cfg.base_directory.mkdir(exist_ok=True)
-
-    def path_rel_base(path: Path) -> Path:
-        return cfg.base_directory / path
-
-    cfg.method_candidates_path = path_rel_base(cfg.method_candidates_path)
-    cfg.blacklisted_methods_path = path_rel_base(cfg.blacklisted_methods_path)
-    cfg.gt_methods_path = path_rel_base(cfg.gt_methods_path)
-    cfg.gt_methods_instrumented_path = path_rel_base(cfg.gt_methods_instrumented_path)
-    cfg.base_offset_path = path_rel_base(cfg.base_offset_path)
-    cfg.static_traces_path = path_rel_base(cfg.static_traces_path)
-    cfg.object_traces_path = path_rel_base(cfg.object_traces_path)
-    cfg.results_json = path_rel_base(cfg.results_json)
-    cfg.dump_file = path_rel_base(cfg.dump_file)
-
-    cfg.gt_results_json = path_rel_base(cfg.gt_results_json)
-    cfg.pdb_file = path_rel_base(cfg.pdb_file)
-    cfg.binary_path = path_rel_base(cfg.binary_path)
-    cfg.results_path = path_rel_base(cfg.results_path)
-    cfg.results_instrumented_path = path_rel_base(cfg.results_instrumented_path)
+    cfg = Config(config_fname=config_fname, **json.load(config_fname.open()))
 
     return cfg

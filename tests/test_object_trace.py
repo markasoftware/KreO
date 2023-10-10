@@ -183,16 +183,14 @@ def test_methods():
 def test_split_empty():
     ot = OT([])
     ot.identify_initializer_finalizer()
-    split_traces = list(ot.split())
-    assert [] == split_traces
+    assert None is ot.split()
 
 
 def test_split_no_split_required():
     ot = simple_ot()
     ot.identify_initializer_finalizer()
-    split_traces = list(ot.split())
-    assert 1 == len(split_traces)
-    assert ot == split_traces[0]
+    split_traces = ot.split()
+    assert None is split_traces
 
 
 def test_split_when_required():
@@ -218,7 +216,9 @@ def test_split_when_required():
     )
 
     ot.identify_initializer_finalizer()
-    split_traces = list(ot.split())
+    split_traces = ot.split()
+    assert split_traces is not None
+    split_traces = list(split_traces)
     assert 2 == len(split_traces)
     assert (
         OT(

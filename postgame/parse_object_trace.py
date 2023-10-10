@@ -15,6 +15,16 @@ def parse_input(
     config: Config,
     method_store: MethodStore,
 ) -> tuple[int, set[ObjectTrace]]:
+    """Parse object-trace related data.
+
+    Args:
+        config: Config data, pointing to files that must be parsed.
+        method_store: MethodStore that will be updated during parsing.
+
+    Returns:
+        Tuple whose first element is a base address offset, and whose
+        second is a set of parsed object traces.
+    """
     traces: set[ObjectTrace] = set()
     base_offset = get_base_offset(config)
 

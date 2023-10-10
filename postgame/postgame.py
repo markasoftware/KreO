@@ -125,22 +125,22 @@ class Postgame:
     def __init__(self, cfg: Config):
         self.__cfg = cfg
 
-        self.__traces: set[ObjectTrace] = set()
-        self.__static_traces: set[StaticTrace] = set()
-        self.__method_store = MethodStore()
+        self.traces: set[ObjectTrace] = set()
+        self.static_traces: set[StaticTrace] = set()
+        self.method_store = MethodStore()
 
-        self.__trie = pygtrie.StringTrie()
+        self.trie = pygtrie.StringTrie()
 
         # we need a way to know which trie nodes correspond to each method, so
         # that if a method gets mapped to multiple places we can reassign it to
         # the LCA.
-        self.__method_to_class: dict[Method, set[KreoClass]] = defaultdict(set)
+        self.method_to_class: dict[Method, set[KreoClass]] = defaultdict(set)
 
         # kreo_class_to_method_set_map does not need to be maintained manually -- it
         # will be populated all at once during the map_trie_nodes_to_methods step.
-        self.__class_to_method_set: dict[KreoClass, set[Method]] = defaultdict(set)
+        self.class_to_method_set: dict[KreoClass, set[Method]] = defaultdict(set)
 
-        self.__method_candidate_addresses: set[int] = set()
+        self.method_candidate_addresses: set[int] = set()
 
     def run_step(
         self,
@@ -159,56 +159,57 @@ class Postgame:
         LOGGER.info("%s (%.2fs)", end_msg, end_time - start_time)
 
     def parse_input(self):
-        self.__base_offset, self.__traces = parse_object_trace.parse_input(
+        self.base_offset, self.traces = parse_object_trace.parse_input(
             self.__cfg,
-            self.__method_store,
+            self.method_store,
         )
 
-    def parse_method_names(self):
+        # parse method names
         for line in Path(str(self.__cfg.object_traces_path) + "-name-map").open():
             addr, name = line.strip().split(" ", 1)
-            self.__method_store.insert_method_name(int(addr, 16), name)
+            self.method_store.insert_method_name(int(addr, 16), name)
 
     def parse_static_traces(self):
         cur_trace: list[StaticTraceEntry] = []
 
         def flush_cur_trace():
             if len(cur_trace) > 0:
-                self.__static_traces.add(StaticTrace(cur_trace))
+                self.static_traces.add(StaticTrace(cur_trace))
 
         for line in self.__cfg.static_traces_path.open():
             if line == "\n":
                 flush_cur_trace()
             elif line[0] != "#":
                 addr = int(line.split()[0], 16)
-                if addr in self.__method_candidate_addresses:
+                if addr in self.method_candidate_addresses:
                     cur_trace.append(
-                        StaticTraceEntry(
-                            line, self.__method_store.find_or_insert_method
-                        )
+                        StaticTraceEntry(line, self.method_store.find_or_insert_method)
                     )
 
         flush_cur_trace()
 
     def update_all_method_statistics(self):
-        self.__method_store.reset_all_method_statistics()
-        for trace in self.__traces:
+        self.method_store.reset_all_method_statistics()
+        for trace in self.traces:
             trace.update_method_statistics()
 
     def split_dynamic_traces(self):
-        self.__traces = set(
-            [
-                splitted_trace
-                for trace in self.__traces
-                for splitted_trace in trace.split()
-            ]
-        )
+        new_traces: set[ObjectTrace] = set()
+
+        for trace in self.traces:
+            split_trace = trace.split()
+            if split_trace:
+                new_traces.update(split_trace)
+            else:
+                new_traces.add(trace)
+
+        self.traces = new_traces
 
     def split_static_traces(self):
-        self.__static_traces = set(
+        self.static_traces = set(
             [
                 splitted_trace
-                for trace in self.__static_traces
+                for trace in self.static_traces
                 for splitted_trace in trace.split()
             ]
         )
@@ -226,12 +227,12 @@ class Postgame:
         # reorganization, so every dynamically detected method is already
         # assigned to a single class, not a set, but we write assuming it is
         # assigned to a set anyway to be safe (e.g., no next(iter(...)))
-        for static_trace in self.__static_traces:
+        for static_trace in self.static_traces:
             trace_entries = set(static_trace.entries)
 
             dynamic_entries: set[StaticTraceEntry] = set()
             for entry in trace_entries:
-                meth = self.__method_store.get_method(entry.method.address)
+                meth = self.method_store.get_method(entry.method.address)
                 if meth is not None and meth.found_dynamically:
                     dynamic_entries.add(entry)
 
@@ -244,13 +245,13 @@ class Postgame:
                 for dynamic_entry in dynamic_entries:
                     dynamic_method = dynamic_entry.method
 
-                    if dynamic_method in self.__method_to_class:
-                        self.__method_to_class[static_method].update(
-                            self.__method_to_class[dynamic_method]
+                    if dynamic_method in self.method_to_class:
+                        self.method_to_class[static_method].update(
+                            self.method_to_class[dynamic_method]
                         )
 
     def construct_trie(self):
-        for trace in self.__traces:
+        for trace in self.traces:
             tail_returns = trace.tail_returns()
 
             # Insert class and any parents into the trie using the trace's tail
@@ -260,18 +261,18 @@ class Postgame:
 
                 trie_keys = cast(
                     "set[str]",
-                    self.__trie.keys(),  # pyright: ignore[reportUnknownMemberType]
+                    self.trie.keys(),  # pyright: ignore[reportUnknownMemberType]
                 )
 
                 if partial_trace not in trie_keys:
-                    self.__trie[partial_trace] = KreoClass(
+                    self.trie[partial_trace] = KreoClass(
                         name=str(partial_tail[-1].method)
                     )
 
             # Map all methods in the trace to the class in the trie
-            cls = cast("KreoClass", self.__trie[KreoClass.to_trace(tail_returns)])
+            cls = cast("KreoClass", self.trie[KreoClass.to_trace(tail_returns)])
             for method in trace.methods():
-                self.__method_to_class[method].add(cls)
+                self.method_to_class[method].add(cls)
 
     def __trie_lca(self, classes: set[KreoClass]) -> KreoClass | None:
         """
@@ -299,7 +300,7 @@ class Postgame:
             return shortest_node_list
 
         cls_trie_node_lists: list[list[tuple[str, pygtrie._Node]]] = [
-            self.__trie._get_node(KreoClass.tail_str(cls.tail))[1] for cls in classes
+            self.trie._get_node(KreoClass.tail_str(cls.tail))[1] for cls in classes
         ]
 
         shared_node_list = find_lca(cls_trie_node_lists)
@@ -313,7 +314,7 @@ class Postgame:
     def swim_methods_in_multiple_classes(self):
         # ensure each method is associated with exactly one class by swimming
         # methods to higher trie nodes.
-        for method, cls_set in self.__method_to_class.items():
+        for method, cls_set in self.method_to_class.items():
             if len(cls_set) == 1:
                 # Don't have to reorganize if the method already belongs to exactly one class.
                 continue
@@ -324,7 +325,7 @@ class Postgame:
 
             if lca:
                 # LCA exists
-                self.__method_to_class[method] = set([lca])
+                self.method_to_class[method] = set([lca])
             else:
                 assert False
                 # LCA doesn't exist, have to add class to trie
@@ -365,14 +366,14 @@ class Postgame:
                     base_cls_tail = KreoClass.tail_str([cls.tail[0]])
                     if base_cls_tail not in tail_strs:
                         tail_strs.add(base_cls_tail)
-                        classes_to_update += self.__trie.items(prefix=base_cls_tail)
+                        classes_to_update += self.trie.items(prefix=base_cls_tail)
 
                 for key, cls in classes_to_update:
-                    assert self.__trie.has_key(key)
-                    if self.__trie.has_key(key):
-                        self.__trie.pop(key)
+                    assert self.trie.has_key(key)
+                    if self.trie.has_key(key):
+                        self.trie.pop(key)
                         cls.tail = new_cls_tail + cls.tail
-                        self.__trie[KreoClass.tail_str(cls.tail)] = cls
+                        self.trie[KreoClass.tail_str(cls.tail)] = cls
 
                 # Create class that will be inserted into the trie. This
                 # class must have a new tail that is the method
@@ -380,13 +381,13 @@ class Postgame:
                 # classes share.
                 new_cls = KreoClass(new_cls_tail)
 
-                self.__trie[KreoClass.tail_str(new_cls_tail)] = new_cls
+                self.trie[KreoClass.tail_str(new_cls_tail)] = new_cls
 
                 # Move method to new class in methodToKreoClassMap
-                self.__method_to_class[method] = set([new_cls])
+                self.method_to_class[method] = set([new_cls])
 
         # Each method is now associated with exactly one class
-        for cls_set in self.__method_to_class.values():
+        for cls_set in self.method_to_class.values():
             assert len(cls_set) == 1
 
     def swim_destructors(self):
@@ -394,18 +395,19 @@ class Postgame:
         # possibility that a parent object was never constructed but a child was. In
         # this case we know the destructor belongs to the parent but it currently
         # belongs to the child.
-        for ot in self.__traces:
+        for ot in self.traces:
             tail_returns = ot.tail_returns()
 
             trace = KreoClass.to_trace(tail_returns)
-            base_cls = cast("KreoClass", self.__trie[trace])
+            base_cls = cast("KreoClass", self.trie[trace])
 
             for i in range(len(tail_returns)):
                 trace = KreoClass.to_trace(tail_returns[: i + 1])
-                cls = cast("KreoClass", self.__trie[trace])
+                cls = cast("KreoClass", self.trie[trace])
                 tail_return_method = tail_returns[i].method
-                self.__method_to_class[tail_return_method].remove(base_cls)
-                self.__method_to_class[tail_return_method].add(cls)
+                if base_cls in self.method_to_class[tail_return_method]:
+                    self.method_to_class[tail_return_method].remove(base_cls)
+                self.method_to_class[tail_return_method].add(cls)
 
     def swim_constructors(self):
         """
@@ -415,19 +417,20 @@ class Postgame:
         the same class as the matching destructor into the correct place in the
         trie.
         """
-        for ot in self.__traces:
+        for ot in self.traces:
             head_calls = ot.head_calls()
             tail_returns = ot.tail_returns()
 
             trace = KreoClass.to_trace(tail_returns)
-            base_cls = cast("KreoClass", self.__trie[trace])
+            base_cls = cast("KreoClass", self.trie[trace])
 
             for i in range(len(tail_returns)):
                 trace = KreoClass.to_trace(tail_returns[: i + 1])
-                cls = cast("KreoClass", self.__trie[trace])
+                cls = cast("KreoClass", self.trie[trace])
                 head_call_method = head_calls[i].method
-                self.__method_to_class[head_call_method].remove(base_cls)
-                self.__method_to_class[head_call_method].add(cls)
+                if base_cls in self.method_to_class[head_call_method]:
+                    self.method_to_class[head_call_method].remove(base_cls)
+                self.method_to_class[head_call_method].add(cls)
 
     @staticmethod
     def __map_head_methods_to_dtors(
@@ -458,7 +461,7 @@ class Postgame:
         return meth_to_dtor
 
     def swim_methods_called_in_ctors_and_dtors(self):
-        for ot in self.__traces:
+        for ot in self.traces:
             head_calls = ot.head_calls()
             tail_returns = ot.tail_returns()
             head = ot.head()
@@ -490,16 +493,17 @@ class Postgame:
             )
 
             ot_trace = KreoClass.to_trace(tail_returns)
-            cur_cls = cast("KreoClass", self.__trie[ot_trace])
+            cur_cls = cast("KreoClass", self.trie[ot_trace])
 
             for method, trace in method_to_dtor_map.items():
-                cls = cast("KreoClass", self.__trie[trace])
-                self.__method_to_class[method].remove(cur_cls)
-                self.__method_to_class[method].add(cls)
+                cls = cast("KreoClass", self.trie[trace])
+                if cur_cls in self.method_to_class[method]:
+                    self.method_to_class[method].remove(cur_cls)
+                self.method_to_class[method].add(cls)
 
     def map_trie_nodes_to_methods(self):
         # map trie nodes to methods now that method locations are fixed
-        for method, cls_set in self.__method_to_class.items():
+        for method, cls_set in self.method_to_class.items():
             if len(cls_set) > 1:
                 LOGGER.info("Method mapped to multiple classes: %s", method)
             elif len(cls_set) == 0:
@@ -507,7 +511,7 @@ class Postgame:
 
             cls = next(iter(cls_set))
 
-            self.__class_to_method_set[cls].add(method)
+            self.class_to_method_set[cls].add(method)
 
     def generate_json(self):
         # Output json in OOAnalyzer format
@@ -518,11 +522,11 @@ class Postgame:
             version="kreo-0.1.0",
         )
 
-        for name, cls in cast("dict[str, KreoClass]", self.__trie).items():
+        for name, cls in cast("dict[str, KreoClass]", self.trie).items():
             trace = name.split("/")
             parent_cls: KreoClass | None = None
             if len(trace) > 2:
-                parent_cls = cast("KreoClass", self.__trie["/".join(trace[:-2])])
+                parent_cls = cast("KreoClass", self.trie["/".join(trace[:-2])])
 
             final_json.structures[str(cls)] = ar.Structure(name=str(cls))
 
@@ -537,9 +541,9 @@ class Postgame:
 
             # If there are no methods associated with the trie node there might not
             # be any methods in the set
-            if cls in self.__class_to_method_set:
-                for method in self.__class_to_method_set[cls]:
-                    method_addr_str = hex(method.address + self.__base_offset)
+            if cls in self.class_to_method_set:
+                for method in self.class_to_method_set[cls]:
+                    method_addr_str = hex(method.address + self.base_offset)
                     final_json.structures[str(cls)].methods[
                         method_addr_str
                     ] = ar.Method(
@@ -550,25 +554,25 @@ class Postgame:
                     )
 
         with self.__cfg.results_json.open("w") as f:
-            f.write(json.dumps(final_json.dict(), indent=4))
+            f.write(json.dumps(final_json.model_dump(), indent=4))
 
     def load_method_candidates(self) -> None:
         for line in self.__cfg.method_candidates_path.open():
-            self.__method_candidate_addresses.add(int(line, 16))
+            self.method_candidate_addresses.add(int(line, 16))
 
     def identify_initializer_finalizers(self) -> None:
-        for ot in self.__traces:
+        for ot in self.traces:
             ot.identify_initializer_finalizer()
 
     def update_head_tail(self) -> None:
-        for ot in self.__traces:
+        for ot in self.traces:
             ot.update_head_tail()
 
     def remove_ots_with_no_tail(self) -> None:
-        self.__traces = set([ot for ot in self.__traces if ot.tail_returns() != []])
+        self.traces = set([ot for ot in self.traces if ot.tail_returns() != []])
 
     def update_method_type(self) -> None:
-        for meth in self.__method_store.get_methods():
+        for meth in self.method_store.get_methods():
             meth.update_type()
 
     def analysis_tool_lego(self) -> bool:
@@ -582,13 +586,7 @@ class Postgame:
 
     def main(self):
         self.run_step(self.parse_input, "parsing input...", "input parsed")
-        LOGGER.info("Found %i traces", len(self.__traces))
-
-        self.run_step(
-            self.parse_method_names,
-            "parsing method names...",
-            "method names parsed",
-        )
+        LOGGER.info("Found %i traces", len(self.traces))
 
         self.run_step(
             self.identify_initializer_finalizers,
@@ -601,7 +599,7 @@ class Postgame:
             "splitting traces...",
             "traces split",
         )
-        LOGGER.info("after splitting there are now %i traces", len(self.__traces))
+        LOGGER.info("after splitting there are now %i traces", len(self.traces))
 
         if not self.analysis_tool_lego():
             self.run_step(
@@ -635,6 +633,8 @@ class Postgame:
             "trie constructed",
         )
 
+        TriePrinter(self.class_to_method_set, self.trie)
+
         self.run_step(
             self.swim_destructors,
             "moving destructors up in trie...",
@@ -654,11 +654,11 @@ class Postgame:
                 "methods moved up",
             )
 
-        # self.run_step(
-        #     self.swim_methods_in_multiple_classes,
-        #     "reorganizing trie...",
-        #     "trie reorganized",
-        # )
+        self.run_step(
+            self.swim_methods_in_multiple_classes,
+            "reorganizing trie...",
+            "trie reorganized",
+        )
 
         if self.analysis_tool_kreo():
             self.run_step(
@@ -703,6 +703,6 @@ class Postgame:
             "json generated",
         )
 
-        TriePrinter(self.__class_to_method_set, self.__trie)
+        # TriePrinter(self.__class_to_method_set, self.__trie)
 
         LOGGER.info("Done, Kreo exiting normally.")

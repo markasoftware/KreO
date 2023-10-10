@@ -1,0 +1,33 @@
+12560 public: __thiscall foo::~foo(void)
+129f0 public: void __thiscall foo::three(void)
+14b60 @_guard_check_icall_nop@4
+143d0 _atexit
+14b70 _ReadNoFence
+123f0 public: __thiscall bar::~bar(void)
+13640 _getMemBlockDataString
+12100 public: __thiscall foo::foo(void)
+15940 @__security_check_cookie@4
+12d40 @_RTC_CheckStackVars@8
+15de0 ___scrt_is_ucrt_dll_in_use
+11fa0 public: __thiscall bar::bar(void)
+15960 __except_handler4_noexcept
+14d40 ___castguard_set_user_handler
+12bf0 @_RTC_AllocaHelper@12
+12a70 public: void __thiscall baz::two(void)
+128f0 public: void __thiscall baz::one(void)
+14f00 __guard_icall_checks_enforced
+127a0 public: void __thiscall bar::five(void)
+12c30 @_RTC_CheckStackVars2@12
+12620 public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::sentry::~sentry(void)
+12320 public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::_Sentry_base::~_Sentry_base(void)
+124b0 public: __thiscall baz::~baz(void)
+144a0 ___security_init_cookie
+121d0 public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::sentry::sentry(class std::basic_ostream<char,struct std::char_traits<char> > &)
+12970 public: void __thiscall bar::six(void)
+12070 public: __thiscall baz::baz(void)
+11ef0 public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::_Sentry_base::_Sentry_base(class std::basic_ostream<char,struct std::char_traits<char> > &)
+12820 public: void __thiscall foo::four(void)
+118f0 class std::basic_ostream<char,struct std::char_traits<char> > & __cdecl std::operator<<<struct std::char_traits<char> >(class std::basic_ostream<char,struct std::char_traits<char> > &,char const *)
+132d0 public: static void __cdecl __scrt_file_policy::set_commode(void)
+146a0 ___scrt_is_user_matherr_present
+126c0 public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::sentry::operator bool(void)const 

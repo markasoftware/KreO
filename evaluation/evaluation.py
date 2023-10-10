@@ -1,32 +1,17 @@
+from __future__ import annotations
+
 import copy
 import json
 from collections import defaultdict
-from dataclasses import dataclass
-from io import TextIOWrapper
 from pathlib import Path
 from typing import Any, Callable
 
+from evaluation.evaluation_data import EvaluationResult, EvaluationResults
 from parseconfig import Config
 from postgame import analysis_results as ar
 from postgame.analysis_results import MethodType
 
 BASE_ADDR = 0x400000
-
-
-@dataclass
-class EvaluationResults:
-    """
-    Structure containing results associated with a particular generated class.
-    """
-
-    true_positives: int
-    false_positives: int
-    false_negatives: int
-
-    def __str__(self):
-        return "tp: {} fp: {} fn: {}".format(
-            self.true_positives, self.false_positives, self.false_negatives
-        )
 
 
 def get_gt_analysis_results_instrumented(
@@ -169,7 +154,7 @@ def nonempty_classes(analysis_results: ar.AnalysisResults) -> list[ar.Structure]
 def evaluate_classes(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
-) -> EvaluationResults:
+) -> EvaluationResult:
     """
     Computes and returns the precision and recall, comparing the ground
     truth and generated classes.
@@ -187,13 +172,13 @@ def evaluate_classes(
     fn = false_negatives(ground_truth_excluding_empty, tp)
     fp = false_positives(generated_data_excluding_empty, tp)
 
-    return EvaluationResults(tp, fp, fn)
+    return EvaluationResult(true_positives=tp, false_positives=fp, false_negatives=fn)
 
 
 def evaluate_methods(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
-) -> EvaluationResults:
+) -> EvaluationResult:
     """
     Computes and returns precision and recall of the methods in the
     ground truth and generated data.
@@ -211,14 +196,14 @@ def evaluate_methods(
     fn = false_negatives(gt_methods, tp)
     fp = false_positives(gen_methods, tp)
 
-    return EvaluationResults(tp, fp, fn)
+    return EvaluationResult(true_positives=tp, false_positives=fp, false_negatives=fn)
 
 
 def evaluate_specific_type(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
     t: MethodType,
-) -> EvaluationResults:
+) -> EvaluationResult:
     """
     Compares the set of methods that have the same type (t),
     returning the precision and recall.
@@ -231,13 +216,13 @@ def evaluate_specific_type(
     fn = false_negatives(ground_truth_type, tp)
     fp = false_positives(generated_data_type, tp)
 
-    return EvaluationResults(tp, fp, fn)
+    return EvaluationResult(true_positives=tp, false_positives=fp, false_negatives=fn)
 
 
 def evaluate_constructors(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
-) -> EvaluationResults:
+) -> EvaluationResult:
     return evaluate_specific_type(
         gt_analysis_results,
         gen_analysis_results,
@@ -248,7 +233,7 @@ def evaluate_constructors(
 def evaluate_destructors(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
-) -> EvaluationResults:
+) -> EvaluationResult:
     return evaluate_specific_type(
         gt_analysis_results,
         gen_analysis_results,
@@ -259,7 +244,7 @@ def evaluate_destructors(
 def evaluate_methods_assigned_correct_class(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
-) -> EvaluationResults:
+) -> EvaluationResult:
     """
     Computes the precision and recall, where for each generated class, compare
     the method set to all ground truth method sets. Compute the F-1 score for
@@ -276,7 +261,7 @@ def evaluate_methods_assigned_correct_class(
         gen_analysis_results,
     )
 
-    results: list[EvaluationResults] = []
+    results: list[EvaluationResult] = []
 
     for gen_cls, gt_cls in gen_to_gt_classes:
         gen_cls_addrs = set(map(lambda x: x.ea, gen_cls.methods.values()))
@@ -287,19 +272,23 @@ def evaluate_methods_assigned_correct_class(
         false_negatives = len(gt_cls_addrs) - true_positives
 
         results.append(
-            EvaluationResults(true_positives, false_positives, false_negatives),
+            EvaluationResult(
+                true_positives=true_positives,
+                false_positives=false_positives,
+                false_negatives=false_negatives,
+            ),
         )
 
-    return EvaluationResults(
-        sum(map(lambda x: x.true_positives, results)),
-        sum(map(lambda x: x.false_positives, results)),
-        sum(map(lambda x: x.false_negatives, results)),
+    return EvaluationResult(
+        true_positives=sum(map(lambda x: x.true_positives, results)),
+        false_positives=sum(map(lambda x: x.false_positives, results)),
+        false_negatives=sum(map(lambda x: x.false_negatives, results)),
     )
 
 
 def get_gen_gt_cls_pair(
     gen_cls_mangled_name: str,
-    matched_classes: set[tuple[ar.Structure, ar.Structure]],
+    matched_classes: list[tuple[ar.Structure, ar.Structure]],
 ) -> tuple[ar.Structure, ar.Structure] | None:
     for gen_gt_cls_pair in matched_classes:
         if gen_gt_cls_pair[0].name == gen_cls_mangled_name:
@@ -321,7 +310,7 @@ def get_cls_from_data(
 def evaluate_class_graph_ancestors(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
-) -> EvaluationResults:
+) -> EvaluationResult:
     """
     Computes the precision and recall, comparing class ancestors in the class
     hierarchy tree. If an ancestor exists in the generated class hierarchy and
@@ -358,7 +347,7 @@ def evaluate_class_graph_ancestors(
             gen_size += 1
             gt_size += 1
         else:
-            gen_ancestors: set[ar.Structure] = set()
+            gen_ancestors: set[str] = set()
 
             # List of ancestors that will be systematically removed from this
             # worklist and whose associated ClassInfo will be added to the set
@@ -370,8 +359,8 @@ def evaluate_class_graph_ancestors(
                 parent_cls_name = worklist.pop()
 
                 parent_cls = get_gen_cls(parent_cls_name)
-                if parent_cls is not None and parent_cls not in gen_ancestors:
-                    gen_ancestors.add(parent_cls)
+                if parent_cls is not None and parent_cls.name not in gen_ancestors:
+                    gen_ancestors.add(parent_cls.name)
                     worklist.extend(
                         [
                             x.name
@@ -381,18 +370,11 @@ def evaluate_class_graph_ancestors(
                         ]
                     )
 
-            # Find all gt parent classes for the given gt class
-            gt_parent_classes: set[ar.Structure] = set()
-            for cls_name in gt_parents:
-                parent_gt_cls = get_gt_cls(cls_name)
-                if parent_gt_cls is not None:
-                    gt_parent_classes.add(parent_gt_cls)
-
             # Check if any of the ancestors match the gt
             for gen_ancestor in gen_ancestors:
                 # Find the ground truth class associated with the ancestor.
                 gen_gt_pair = get_gen_gt_cls_pair(
-                    gen_ancestor.name,
+                    gen_ancestor,
                     matched_classes,
                 )
 
@@ -405,73 +387,77 @@ def evaluate_class_graph_ancestors(
     fn = gt_size - tp
     fp = gen_size - tp
 
-    return EvaluationResults(tp, fp, fn)
+    return EvaluationResult(true_positives=tp, false_positives=fp, false_negatives=fn)
 
 
 def evaluate_class_graph_edges(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
-) -> EvaluationResults:
+) -> EvaluationResult:
     """
     Similar to PrecisionAndRecallClassGraphAncestors, except instead of
     comparing ancestors in the class graph, directly compare edges in the graph.
     A true positive is if the generated and ground truth class graphs have a
     matching edge between two of the same classes.
     """
-    matched_classes = match_gen_to_gt_classes(gt_analysis_results, gen_analysis_results)
-
     tp = 0
-    gt_size = 0
-    gen_size = 0
+    fp = 0
+    fn = 0
+    return EvaluationResult(true_positives=tp, false_positives=fp, false_negatives=fn)
+    # matched_classes = match_gen_to_gt_classes(gt_analysis_results, gen_analysis_results)
 
-    for gen_cls, gt_cls in matched_classes:
-        # Count number of parents that the two classes share. The "ground truth"
-        # for this measure is the total number of inheritance relationships. A true
-        # positive would be when the generated and ground truth class share the
-        # same inheritance relationship
+    # tp = 0
+    # gt_size = 0
+    # gen_size = 0
 
-        # Note: we don't expect parent names to be the same - instead we expect the
-        # paired classes to be the same.
-        if (
-            len(gen_cls.parent_mangled_names) == 0
-            and len(gt_cls.parent_mangled_names) == 0
-        ):
-            # Both gen and ground truth share the "root" i.e. there are no
-            # inheritance relationships and that has been correctly identified.
-            tp += 1
+    # for gen_cls, gt_cls in matched_classes:
+    #     # Count number of parents that the two classes share. The "ground truth"
+    #     # for this measure is the total number of inheritance relationships. A true
+    #     # positive would be when the generated and ground truth class share the
+    #     # same inheritance relationship
 
-            gen_size += 1
-            gt_size += 1
-        else:
-            for parent_name in gen_cls.parent_mangled_names:
-                gen_gt_pair = get_gen_gt_cls_pair(parent_name, matched_classes)
-                if gen_gt_pair != None:
-                    # Find gt cls mangled name from gen_gt_pair in gt_cls.parent_mangled_names
-                    for name in gt_cls.parent_mangled_names:
-                        if name == gen_gt_pair[1].mangled_name:
-                            tp += 1
-                            break
-                else:
-                    # If gen_gt_pair is None, this indicates a failure to find
-                    # the class associated with the parent in the ground truth
-                    # data.
-                    print(
-                        f"Failed to find parent in generated data called {parent_name} because no ground truth class associated with the parent class."
-                    )
+    #     # Note: we don't expect parent names to be the same - instead we expect the
+    #     # paired classes to be the same.
+    #     if (
+    #         len(gen_cls.parent_mangled_names) == 0
+    #         and len(gt_cls.parent_mangled_names) == 0
+    #     ):
+    #         # Both gen and ground truth share the "root" i.e. there are no
+    #         # inheritance relationships and that has been correctly identified.
+    #         tp += 1
 
-        gen_size += len(gen_cls.parent_mangled_names)
-        gt_size += len(gt_cls.parent_mangled_names)
+    #         gen_size += 1
+    #         gt_size += 1
+    #     else:
+    #         for parent_name in gen_cls.parent_mangled_names:
+    #             gen_gt_pair = get_gen_gt_cls_pair(parent_name, matched_classes)
+    #             if gen_gt_pair != None:
+    #                 # Find gt cls mangled name from gen_gt_pair in gt_cls.parent_mangled_names
+    #                 for name in gt_cls.parent_mangled_names:
+    #                     if name == gen_gt_pair[1].mangled_name:
+    #                         tp += 1
+    #                         break
+    #             else:
+    #                 # If gen_gt_pair is None, this indicates a failure to find
+    #                 # the class associated with the parent in the ground truth
+    #                 # data.
+    #                 print(
+    #                     f"Failed to find parent in generated data called {parent_name} because no ground truth class associated with the parent class."
+    #                 )
 
-    fn = gt_size - tp
-    fp = gen_size - tp
+    #     gen_size += len(gen_cls.parent_mangled_names)
+    #     gt_size += len(gt_cls.parent_mangled_names)
 
-    return EvaluationResults(tp, fp, fn)
+    # fn = gt_size - tp
+    # fp = gen_size - tp
+
+    # return EvaluationResults(tp, fp, fn)
 
 
 def match_gen_to_gt_classes(
     gt_analysis_results: ar.AnalysisResults,
     gen_analysis_results: ar.AnalysisResults,
-) -> set[tuple[ar.Structure, ar.Structure]]:
+) -> list[tuple[ar.Structure, ar.Structure]]:
     """
     Helper method that attempts to match ground truth and generated classes.
     Method sets are used to determine which classes match. Two classes match if
@@ -484,9 +470,9 @@ def match_gen_to_gt_classes(
     gt_nonempty_classes = nonempty_classes(gt_analysis_results)
     gen_nonempty_classes = nonempty_classes(gen_analysis_results)
 
-    matched_classes: set[tuple[ar.Structure, ar.Structure]] = set()
+    matched_classes: list[tuple[ar.Structure, ar.Structure]] = []
 
-    gt_classes_referenced: set[ar.Structure] = set()
+    gt_classes_referenced: set[str] = set()
 
     for gen_cls in gen_nonempty_classes:
         # Find ground truth classes that have method sets
@@ -495,7 +481,7 @@ def match_gen_to_gt_classes(
         # method set intersection size, record the size.
         gen_gt_intersection_sizes: dict[int, list[ar.Structure]] = defaultdict(list)
         for gt_cls in gt_nonempty_classes:
-            if gt_cls in gt_classes_referenced:
+            if gt_cls.name in gt_classes_referenced:
                 continue
 
             gen_cls_method_set = set(map(lambda x: x.ea, gen_cls.methods.values()))
@@ -510,8 +496,8 @@ def match_gen_to_gt_classes(
         )
         if intersection_sizes != []:
             gt_cls = gen_gt_intersection_sizes[intersection_sizes[0]][0]
-            gt_classes_referenced.add(gt_cls)
-            matched_classes.add((gen_cls, gt_cls))
+            gt_classes_referenced.add(gt_cls.name)
+            matched_classes.append((gen_cls, gt_cls))
 
     return matched_classes
 
@@ -540,29 +526,22 @@ def run_evaluation(
         ),
     )
 
-    def run_all_tests(gt_analysis_results: ar.AnalysisResults, file: TextIOWrapper):
+    def run_all_tests(gt_analysis_results: ar.AnalysisResults) -> EvaluationResults:
         """
         Runs all tests and writes results to the given file.
         """
+        results = EvaluationResults()
 
         def run_test(
             name: str,
             test: Callable[
                 [ar.AnalysisResults, ar.AnalysisResults],
-                EvaluationResults,
+                EvaluationResult,
             ],
         ):
-            evaluation_results = test(
+            results.result_mapping[name] = test(
                 gt_analysis_results,
                 gen_analysis_results,
-            )
-            file.write(
-                "{}&{}&{}&{}\n".format(
-                    name,
-                    evaluation_results.true_positives,
-                    evaluation_results.false_positives,
-                    evaluation_results.false_negatives,
-                )
             )
 
         run_test(
@@ -576,16 +555,18 @@ def run_evaluation(
         run_test("Class Graph Edges", evaluate_class_graph_edges)
         run_test("Class Graph Ancestors", evaluate_class_graph_ancestors)
 
-    with results_path.open() as gt_out:
-        run_all_tests(gt_analysis_results, gt_out)
+        return results
 
-    gt_instrumented_analysis_results = get_gt_analysis_results_instrumented(
-        gt_methods_instrumented,
-        gt_analysis_results,
-    )
+    with results_path.open("w") as gt_out:
+        gt_out.write(json.dumps(run_all_tests(gt_analysis_results).dict(), indent=4))
 
-    with open(results_instrumented_path, "w") as gt_out_instrumented:
-        run_all_tests(gt_instrumented_analysis_results, gt_out_instrumented)
+    # gt_instrumented_analysis_results = get_gt_analysis_results_instrumented(
+    #     gt_methods_instrumented,
+    #     gt_analysis_results,
+    # )
+
+    # with open(results_instrumented_path, "w") as gt_out_instrumented:
+    #     run_all_tests(gt_instrumented_analysis_results, gt_out_instrumented)
 
 
 def main(cfg: Config):
