@@ -22,7 +22,7 @@ def get_gt_analysis_results_instrumented(
     Return an AnalysisResults model containing only methods in gt_methods_instrumented.
     Empty classes are removed from the results.
     """
-    gt_analysis_results_instrumented = gt_analysis_results.copy(deep=True)
+    gt_analysis_results_instrumented = gt_analysis_results.model_copy(deep=True)
 
     for cls_name, cls in gt_analysis_results_instrumented.structures.items():
         instrumented_methods = {
@@ -506,25 +506,13 @@ def run_evaluation(
     gt_class_info_path: Path,
     gen_class_info_path: Path,
     results_path: Path,
-    results_instrumented_path: Path,
-    gt_methods_instrumented_path: Path,
+    results_instrumented_path: Path | None,
+    gt_methods_instrumented_path: Path | None,
 ):
     with gt_class_info_path.open() as f:
         gt_analysis_results = ar.AnalysisResults(**json.load(f))
     with gen_class_info_path.open() as f:
         gen_analysis_results = ar.AnalysisResults(**json.load(f))
-    with gt_methods_instrumented_path.open() as f:
-        gt_methods_instrumented = get_gt_methods_instrumented_set(
-            gt_methods_instrumented_path,
-        )
-
-    load_and_record_gt_method_stats(
-        gt_methods_instrumented,
-        gt_analysis_results,
-        gt_methods_instrumented_path.with_name(
-            gt_methods_instrumented_path.name + ".stats"
-        ),
-    )
 
     def run_all_tests(gt_analysis_results: ar.AnalysisResults) -> EvaluationResults:
         """
@@ -558,15 +546,34 @@ def run_evaluation(
         return results
 
     with results_path.open("w") as gt_out:
-        gt_out.write(json.dumps(run_all_tests(gt_analysis_results).dict(), indent=4))
+        gt_out.write(
+            json.dumps(run_all_tests(gt_analysis_results).model_dump(), indent=4)
+        )
 
-    # gt_instrumented_analysis_results = get_gt_analysis_results_instrumented(
-    #     gt_methods_instrumented,
-    #     gt_analysis_results,
-    # )
+    if gt_methods_instrumented_path:
+        with gt_methods_instrumented_path.open() as f:
+            gt_methods_instrumented = get_gt_methods_instrumented_set(
+                gt_methods_instrumented_path,
+            )
 
-    # with open(results_instrumented_path, "w") as gt_out_instrumented:
-    #     run_all_tests(gt_instrumented_analysis_results, gt_out_instrumented)
+        load_and_record_gt_method_stats(
+            gt_methods_instrumented,
+            gt_analysis_results,
+            gt_methods_instrumented_path.with_name(
+                gt_methods_instrumented_path.name + ".stats"
+            ),
+        )
+
+        gt_instrumented_analysis_results = get_gt_analysis_results_instrumented(
+            gt_methods_instrumented,
+            gt_analysis_results,
+        )
+
+        if results_instrumented_path:
+            with open(results_instrumented_path, "w") as gt_out_instrumented:
+                gt_out_instrumented.write(
+                    json.dumps(run_all_tests(gt_instrumented_analysis_results))
+                )
 
 
 def main(cfg: Config):

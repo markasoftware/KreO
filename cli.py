@@ -156,5 +156,16 @@ def main(config: Path):
     cfg = parseconfig(config)
 
 
+@APP.command()
+def independent_evaluation(
+    results_json: Path,
+    results_path: Path,
+):
+    assert cfg is not None
+    evaluation.evaluation.run_evaluation(
+        cfg.gt_results_json, results_json, results_path, None, None
+    )
+
+
 if __name__ == "__main__":
     APP()

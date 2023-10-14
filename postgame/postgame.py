@@ -55,7 +55,7 @@ class KreoClass:
         name: Class name. The address of the constructor associated with the class.
     """
 
-    name: str
+    tail_returns: list[TraceEntry]
 
     _uuid: str = str(uuid.uuid4())
 
@@ -63,7 +63,12 @@ class KreoClass:
         # the address associated with this class is the hex address of
         # the last element in the tail, representing the destructor
         # associated with this class
-        return "KreoClass-" + self._uuid[0:5] + "@" + self.name
+        return (
+            "KreoClass-"
+            + self._uuid[0:5]
+            + "@"
+            + hex(self.tail_returns[-1].method.address)
+        )
 
     def __hash__(self) -> int:
         return hash(self._uuid)
@@ -260,14 +265,12 @@ class Postgame:
                 partial_trace = KreoClass.to_trace(partial_tail)
 
                 trie_keys = cast(
-                    "set[str]",
+                    "list[str]",
                     self.trie.keys(),  # pyright: ignore[reportUnknownMemberType]
                 )
 
                 if partial_trace not in trie_keys:
-                    self.trie[partial_trace] = KreoClass(
-                        name=str(partial_tail[-1].method)
-                    )
+                    self.trie[partial_trace] = KreoClass(tail_returns=partial_tail)
 
             # Map all methods in the trace to the class in the trie
             cls = cast("KreoClass", self.trie[KreoClass.to_trace(tail_returns)])
@@ -279,37 +282,30 @@ class Postgame:
         Finds the least common ancestor between the set of classes. The LCA is a
         KreoClass.
         """
+        class_traces: list[list[TraceEntry]] = [cls.tail_returns for cls in classes]
 
-        def find_lca(
-            cls_trie_node_lists: list[list[tuple[str, pygtrie._Node]]],
-        ) -> list[tuple[str, pygtrie._Node]]:
-            shortest_node_list = None
-            for node_list in cls_trie_node_lists:
-                if shortest_node_list is None or len(shortest_node_list) > len(
-                    node_list
-                ):
-                    shortest_node_list = node_list
-            assert shortest_node_list is not None
+        i = 0
+        while True:
+            try:
+                same = all(
+                    [
+                        class_traces[0][i].method.address == x[i].method.address
+                        for x in class_traces
+                    ]
+                )
+            except IndexError:
+                break
+            if not same:
+                break
 
-            # Check to see if other classes have identical starting nodes.
-            for i in range(len(shortest_node_list)):
-                for node_list in cls_trie_node_lists:
-                    if node_list[i][0] != shortest_node_list[i][0]:
-                        return node_list[:i]
+            i += 1
 
-            return shortest_node_list
+        shared_trace = class_traces[0][:i]
 
-        cls_trie_node_lists: list[list[tuple[str, pygtrie._Node]]] = [
-            self.trie._get_node(KreoClass.tail_str(cls.tail))[1] for cls in classes
-        ]
-
-        shared_node_list = find_lca(cls_trie_node_lists)
-
-        if len(shared_node_list) > 1:
-            # Shared class is KreoClass associated with the final node.
-            return shared_node_list[-1][1].value
-        else:
+        if shared_trace == []:
             return None
+
+        return cast("KreoClass", self.trie[KreoClass.to_trace(shared_trace)])
 
     def swim_methods_in_multiple_classes(self):
         # ensure each method is associated with exactly one class by swimming
@@ -319,15 +315,12 @@ class Postgame:
                 # Don't have to reorganize if the method already belongs to exactly one class.
                 continue
 
-            assert False
-
             lca = self.__trie_lca(cls_set)
 
             if lca:
                 # LCA exists
                 self.method_to_class[method] = set([lca])
             else:
-                assert False
                 # LCA doesn't exist, have to add class to trie
 
                 """
@@ -344,7 +337,7 @@ class Postgame:
                 |   | \
                 c   d  e
 
-                If d nd c share the same method, the LCA is the root and we must create
+                If d and c share the same method, the LCA is the root and we must create
                 a new node. While this is not necessarily accurate, resolve this issue
                 by placing c and d along with all the classes belonging to the same branch
                 of the tree under the newly created node:
@@ -358,30 +351,55 @@ class Postgame:
                 |   | \
                 c   d  e
                 """
-                new_cls_tail = [method]
-
-                classes_to_update: list[tuple[str, KreoClass]] = list()
+                classes_to_update: list[tuple[str, KreoClass]] = []
                 tail_strs: set[str] = set()
                 for cls in cls_set:
-                    base_cls_tail = KreoClass.tail_str([cls.tail[0]])
-                    if base_cls_tail not in tail_strs:
-                        tail_strs.add(base_cls_tail)
-                        classes_to_update += self.trie.items(prefix=base_cls_tail)
+                    base_cls_trace = KreoClass.to_trace([cls.tail_returns[0]])
+                    if base_cls_trace not in tail_strs:
+                        tail_strs.add(base_cls_trace)
+                        classes_to_update += cast(
+                            list[tuple[str, KreoClass]],
+                            self.trie.items(  # pyright: ignore[reportUnknownMemberType]
+                                prefix=base_cls_trace
+                            ),
+                        )
 
-                for key, cls in classes_to_update:
-                    assert self.trie.has_key(key)
-                    if self.trie.has_key(key):
-                        self.trie.pop(key)
-                        cls.tail = new_cls_tail + cls.tail
-                        self.trie[KreoClass.tail_str(cls.tail)] = cls
+                new_cls: KreoClass | None = None
+                cls_idx = 0
+                for i, (trace, cls) in zip(
+                    range(len(classes_to_update)),
+                    classes_to_update,
+                ):
+                    trace_as_list = KreoClass.from_trace(trace)
+                    method_str = "0x" + str(method)
+                    if method_str in trace_as_list:
+                        new_cls = cast(
+                            "KreoClass",
+                            self.trie[
+                                "/".join(
+                                    trace_as_list[: trace_as_list.index(method_str) + 1]
+                                )
+                            ],
+                        )
+                        cls_idx = i
 
-                # Create class that will be inserted into the trie. This
-                # class must have a new tail that is the method
-                # that will be assigned to the class that the two
-                # classes share.
-                new_cls = KreoClass(new_cls_tail)
+                if new_cls is None:
+                    new_cls = KreoClass([TraceEntry(method, False)])
+                    self.trie[KreoClass.to_trace(new_cls.tail_returns)] = new_cls
+                else:
+                    del classes_to_update[cls_idx]
 
-                self.trie[KreoClass.tail_str(new_cls_tail)] = new_cls
+                for trace, cls in classes_to_update:
+                    in_trie = (
+                        self.trie.has_key(  # pyright: ignore[reportUnknownMemberType]
+                            trace
+                        )
+                    )
+
+                    if in_trie:
+                        self.trie.pop(trace)  # pyright: ignore[reportUnknownMemberType]
+                        cls.tail_returns = new_cls.tail_returns + cls.tail_returns
+                        self.trie[KreoClass.to_trace(cls.tail_returns)] = cls
 
                 # Move method to new class in methodToKreoClassMap
                 self.method_to_class[method] = set([new_cls])
@@ -522,11 +540,11 @@ class Postgame:
             version="kreo-0.1.0",
         )
 
-        for name, cls in cast("dict[str, KreoClass]", self.trie).items():
-            trace = name.split("/")
+        for trace, cls in cast("dict[str, KreoClass]", self.trie).items():
+            trace_as_arr = trace.split("/")
             parent_cls: KreoClass | None = None
-            if len(trace) > 2:
-                parent_cls = cast("KreoClass", self.trie["/".join(trace[:-2])])
+            if len(trace_as_arr) > 2:
+                parent_cls = cast("KreoClass", self.trie["/".join(trace_as_arr[:-2])])
 
             final_json.structures[str(cls)] = ar.Structure(name=str(cls))
 
@@ -633,8 +651,6 @@ class Postgame:
             "trie constructed",
         )
 
-        TriePrinter(self.class_to_method_set, self.trie)
-
         self.run_step(
             self.swim_destructors,
             "moving destructors up in trie...",
@@ -703,6 +719,6 @@ class Postgame:
             "json generated",
         )
 
-        # TriePrinter(self.__class_to_method_set, self.__trie)
+        TriePrinter(self.class_to_method_set, self.trie)
 
         LOGGER.info("Done, Kreo exiting normally.")

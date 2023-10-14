@@ -12,6 +12,7 @@ class MethodType(StrEnum):
     dtor = auto()
     ctor = auto()
     meth = auto()
+    deldtor = auto()
 
 
 class Member(BaseModel):
