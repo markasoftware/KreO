@@ -2,182 +2,66 @@
     "filename": "Project3.exe",
     "filemd5": "f755d7292775ff0b2bb6b1c8ac40c759",
     "structures": {
-        "KreoClass-10c09@0x12a70": {
+        "KreoClass-bbcf9@12620": {
             "demangled_name": "",
-            "name": "KreoClass-10c09@0x12a70",
+            "name": "KreoClass-bbcf9@12620",
             "members": {},
             "methods": {
-                "0x412a70": {
-                    "demangled_name": "",
-                    "ea": "0x412a70",
+                "0x412620": {
+                    "demangled_name": "public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::sentry::~sentry(void)",
+                    "ea": "0x412620",
                     "imprt": false,
-                    "name": "dtor_0x412a70",
-                    "type": "dtor"
-                }
-            },
-            "size": 0,
-            "vftables": []
-        },
-        "KreoClass-596f3@0x124b0": {
-            "demangled_name": "",
-            "name": "KreoClass-596f3@0x124b0",
-            "members": {
-                "0x0": {
-                    "base": false,
-                    "name": "KreoClass-10c09@0x12a70_0x0",
-                    "offset": "0x0",
-                    "parent": true,
-                    "size": 4,
-                    "struc": "KreoClass-10c09@0x12a70",
-                    "type": "struc",
-                    "usages": []
-                }
-            },
-            "methods": {
-                "0x4124b0": {
-                    "demangled_name": "",
-                    "ea": "0x4124b0",
-                    "imprt": false,
-                    "name": "dtor_0x4124b0",
-                    "type": "dtor"
-                }
-            },
-            "size": 0,
-            "vftables": []
-        },
-        "KreoClass-dc5dd@0x12560": {
-            "demangled_name": "",
-            "name": "KreoClass-dc5dd@0x12560",
-            "members": {
-                "0x0": {
-                    "base": false,
-                    "name": "KreoClass-596f3@0x124b0_0x0",
-                    "offset": "0x0",
-                    "parent": true,
-                    "size": 4,
-                    "struc": "KreoClass-596f3@0x124b0",
-                    "type": "struc",
-                    "usages": []
-                }
-            },
-            "methods": {
-                "0x412560": {
-                    "demangled_name": "",
-                    "ea": "0x412560",
-                    "imprt": false,
-                    "name": "dtor_0x412560",
-                    "type": "dtor"
-                }
-            },
-            "size": 0,
-            "vftables": []
-        },
-        "KreoClass-e8028@0x123f0": {
-            "demangled_name": "",
-            "name": "KreoClass-e8028@0x123f0",
-            "members": {
-                "0x0": {
-                    "base": false,
-                    "name": "KreoClass-dc5dd@0x12560_0x0",
-                    "offset": "0x0",
-                    "parent": true,
-                    "size": 4,
-                    "struc": "KreoClass-dc5dd@0x12560",
-                    "type": "struc",
-                    "usages": []
-                }
-            },
-            "methods": {
-                "0x412070": {
-                    "demangled_name": "",
-                    "ea": "0x412070",
-                    "imprt": false,
-                    "name": "ctor_0x412070",
-                    "type": "ctor"
-                },
-                "0x412970": {
-                    "demangled_name": "",
-                    "ea": "0x412970",
-                    "imprt": false,
-                    "name": "meth_0x412970",
-                    "type": "meth"
-                },
-                "0x411fa0": {
-                    "demangled_name": "",
-                    "ea": "0x411fa0",
-                    "imprt": false,
-                    "name": "ctor_0x411fa0",
-                    "type": "ctor"
-                },
-                "0x4123f0": {
-                    "demangled_name": "",
-                    "ea": "0x4123f0",
-                    "imprt": false,
-                    "name": "dtor_0x4123f0",
-                    "type": "dtor"
-                },
-                "0x4128f0": {
-                    "demangled_name": "",
-                    "ea": "0x4128f0",
-                    "imprt": false,
-                    "name": "ctor_0x4128f0",
-                    "type": "ctor"
-                },
-                "0x4127a0": {
-                    "demangled_name": "",
-                    "ea": "0x4127a0",
-                    "imprt": false,
-                    "name": "meth_0x4127a0",
-                    "type": "meth"
-                },
-                "0x412100": {
-                    "demangled_name": "",
-                    "ea": "0x412100",
-                    "imprt": false,
-                    "name": "ctor_0x412100",
-                    "type": "ctor"
-                },
-                "0x412820": {
-                    "demangled_name": "",
-                    "ea": "0x412820",
-                    "imprt": false,
-                    "name": "meth_0x412820",
-                    "type": "meth"
-                },
-                "0x4129f0": {
-                    "demangled_name": "",
-                    "ea": "0x4129f0",
-                    "imprt": false,
-                    "name": "meth_0x4129f0",
+                    "name": "meth_0x412620",
                     "type": "meth"
                 }
             },
             "size": 0,
             "vftables": []
         },
-        "KreoClass-babdb@0x14b60": {
+        "KreoClass-bbcf9@12320": {
             "demangled_name": "",
-            "name": "KreoClass-babdb@0x14b60",
+            "name": "KreoClass-bbcf9@12320",
             "members": {},
             "methods": {
-                "0x414b60": {
-                    "demangled_name": "",
-                    "ea": "0x414b60",
+                "0x412320": {
+                    "demangled_name": "public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::_Sentry_base::~_Sentry_base(void)",
+                    "ea": "0x412320",
                     "imprt": false,
-                    "name": "meth_0x414b60",
+                    "name": "meth_0x412320",
+                    "type": "meth"
+                },
+                "0x411ef0": {
+                    "demangled_name": "public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::_Sentry_base::_Sentry_base(class std::basic_ostream<char,struct std::char_traits<char> > &)",
+                    "ea": "0x411ef0",
+                    "imprt": false,
+                    "name": "meth_0x411ef0",
+                    "type": "meth"
+                },
+                "0x4121d0": {
+                    "demangled_name": "public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::sentry::sentry(class std::basic_ostream<char,struct std::char_traits<char> > &)",
+                    "ea": "0x4121d0",
+                    "imprt": false,
+                    "name": "meth_0x4121d0",
+                    "type": "meth"
+                },
+                "0x4126c0": {
+                    "demangled_name": "public: __thiscall std::basic_ostream<char,struct std::char_traits<char> >::sentry::operator bool(void)const",
+                    "ea": "0x4126c0",
+                    "imprt": false,
+                    "name": "meth_0x4126c0",
                     "type": "meth"
                 }
             },
             "size": 0,
             "vftables": []
         },
-        "KreoClass-7244b@0x12d40": {
+        "KreoClass-bbcf9@12d40": {
             "demangled_name": "",
-            "name": "KreoClass-7244b@0x12d40",
+            "name": "KreoClass-bbcf9@12d40",
             "members": {},
             "methods": {
                 "0x412d40": {
-                    "demangled_name": "",
+                    "demangled_name": "@_RTC_CheckStackVars@8",
                     "ea": "0x412d40",
                     "imprt": false,
                     "name": "meth_0x412d40",
@@ -187,13 +71,171 @@
             "size": 0,
             "vftables": []
         },
-        "KreoClass-21900@0x143d0": {
+        "KreoClass-bbcf9@123f0": {
             "demangled_name": "",
-            "name": "KreoClass-21900@0x143d0",
+            "name": "KreoClass-bbcf9@123f0",
+            "members": {},
+            "methods": {
+                "0x4123f0": {
+                    "demangled_name": "public: __thiscall bar::~bar(void)",
+                    "ea": "0x4123f0",
+                    "imprt": false,
+                    "name": "meth_0x4123f0",
+                    "type": "meth"
+                }
+            },
+            "size": 0,
+            "vftables": []
+        },
+        "KreoClass-bbcf9@12560": {
+            "demangled_name": "",
+            "name": "KreoClass-bbcf9@12560",
+            "members": {},
+            "methods": {
+                "0x412560": {
+                    "demangled_name": "public: __thiscall foo::~foo(void)",
+                    "ea": "0x412560",
+                    "imprt": false,
+                    "name": "meth_0x412560",
+                    "type": "meth"
+                }
+            },
+            "size": 0,
+            "vftables": []
+        },
+        "KreoClass-bbcf9@124b0": {
+            "demangled_name": "",
+            "name": "KreoClass-bbcf9@124b0",
+            "members": {
+                "0x0": {
+                    "base": false,
+                    "name": "KreoClass-bbcf9@123f0_0x0",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 4,
+                    "struc": "KreoClass-bbcf9@123f0",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
+            "methods": {
+                "0x4124b0": {
+                    "demangled_name": "public: __thiscall baz::~baz(void)",
+                    "ea": "0x4124b0",
+                    "imprt": false,
+                    "name": "meth_0x4124b0",
+                    "type": "meth"
+                }
+            },
+            "size": 0,
+            "vftables": []
+        },
+        "KreoClass-bbcf9@12a70": {
+            "demangled_name": "",
+            "name": "KreoClass-bbcf9@12a70",
+            "members": {
+                "0x0": {
+                    "base": false,
+                    "name": "KreoClass-bbcf9@12560_0x0",
+                    "offset": "0x0",
+                    "parent": true,
+                    "size": 4,
+                    "struc": "KreoClass-bbcf9@12560",
+                    "type": "struc",
+                    "usages": []
+                }
+            },
+            "methods": {
+                "0x411fa0": {
+                    "demangled_name": "public: __thiscall bar::bar(void)",
+                    "ea": "0x411fa0",
+                    "imprt": false,
+                    "name": "meth_0x411fa0",
+                    "type": "meth"
+                },
+                "0x412100": {
+                    "demangled_name": "public: __thiscall foo::foo(void)",
+                    "ea": "0x412100",
+                    "imprt": false,
+                    "name": "meth_0x412100",
+                    "type": "meth"
+                },
+                "0x412820": {
+                    "demangled_name": "public: void __thiscall foo::four(void)",
+                    "ea": "0x412820",
+                    "imprt": false,
+                    "name": "meth_0x412820",
+                    "type": "meth"
+                },
+                "0x4127a0": {
+                    "demangled_name": "public: void __thiscall bar::five(void)",
+                    "ea": "0x4127a0",
+                    "imprt": false,
+                    "name": "meth_0x4127a0",
+                    "type": "meth"
+                },
+                "0x4129f0": {
+                    "demangled_name": "public: void __thiscall foo::three(void)",
+                    "ea": "0x4129f0",
+                    "imprt": false,
+                    "name": "meth_0x4129f0",
+                    "type": "meth"
+                },
+                "0x4128f0": {
+                    "demangled_name": "public: void __thiscall baz::one(void)",
+                    "ea": "0x4128f0",
+                    "imprt": false,
+                    "name": "meth_0x4128f0",
+                    "type": "meth"
+                },
+                "0x412070": {
+                    "demangled_name": "public: __thiscall baz::baz(void)",
+                    "ea": "0x412070",
+                    "imprt": false,
+                    "name": "meth_0x412070",
+                    "type": "meth"
+                },
+                "0x412970": {
+                    "demangled_name": "public: void __thiscall bar::six(void)",
+                    "ea": "0x412970",
+                    "imprt": false,
+                    "name": "meth_0x412970",
+                    "type": "meth"
+                },
+                "0x412a70": {
+                    "demangled_name": "public: void __thiscall baz::two(void)",
+                    "ea": "0x412a70",
+                    "imprt": false,
+                    "name": "meth_0x412a70",
+                    "type": "meth"
+                }
+            },
+            "size": 0,
+            "vftables": []
+        },
+        "KreoClass-bbcf9@144a0": {
+            "demangled_name": "",
+            "name": "KreoClass-bbcf9@144a0",
+            "members": {},
+            "methods": {
+                "0x4144a0": {
+                    "demangled_name": "___security_init_cookie",
+                    "ea": "0x4144a0",
+                    "imprt": false,
+                    "name": "meth_0x4144a0",
+                    "type": "meth"
+                }
+            },
+            "size": 0,
+            "vftables": []
+        },
+        "KreoClass-bbcf9@143d0": {
+            "demangled_name": "",
+            "name": "KreoClass-bbcf9@143d0",
             "members": {},
             "methods": {
                 "0x4143d0": {
-                    "demangled_name": "",
+                    "demangled_name": "_atexit",
                     "ea": "0x4143d0",
                     "imprt": false,
                     "name": "meth_0x4143d0",
@@ -203,80 +245,16 @@
             "size": 0,
             "vftables": []
         },
-        "KreoClass-cdfd7@0x12320": {
+        "KreoClass-bbcf9@14b60": {
             "demangled_name": "",
-            "name": "KreoClass-cdfd7@0x12320",
+            "name": "KreoClass-bbcf9@14b60",
             "members": {},
             "methods": {
-                "0x412320": {
-                    "demangled_name": "",
-                    "ea": "0x412320",
+                "0x414b60": {
+                    "demangled_name": "@_guard_check_icall_nop@4",
+                    "ea": "0x414b60",
                     "imprt": false,
-                    "name": "dtor_0x412320",
-                    "type": "dtor"
-                }
-            },
-            "size": 0,
-            "vftables": []
-        },
-        "KreoClass-37b4c@0x12620": {
-            "demangled_name": "",
-            "name": "KreoClass-37b4c@0x12620",
-            "members": {
-                "0x0": {
-                    "base": false,
-                    "name": "KreoClass-cdfd7@0x12320_0x0",
-                    "offset": "0x0",
-                    "parent": true,
-                    "size": 4,
-                    "struc": "KreoClass-cdfd7@0x12320",
-                    "type": "struc",
-                    "usages": []
-                }
-            },
-            "methods": {
-                "0x411ef0": {
-                    "demangled_name": "",
-                    "ea": "0x411ef0",
-                    "imprt": false,
-                    "name": "ctor_0x411ef0",
-                    "type": "ctor"
-                },
-                "0x4121d0": {
-                    "demangled_name": "",
-                    "ea": "0x4121d0",
-                    "imprt": false,
-                    "name": "ctor_0x4121d0",
-                    "type": "ctor"
-                },
-                "0x4126c0": {
-                    "demangled_name": "",
-                    "ea": "0x4126c0",
-                    "imprt": false,
-                    "name": "meth_0x4126c0",
-                    "type": "meth"
-                },
-                "0x412620": {
-                    "demangled_name": "",
-                    "ea": "0x412620",
-                    "imprt": false,
-                    "name": "dtor_0x412620",
-                    "type": "dtor"
-                }
-            },
-            "size": 0,
-            "vftables": []
-        },
-        "KreoClass-ec5e0@0x144a0": {
-            "demangled_name": "",
-            "name": "KreoClass-ec5e0@0x144a0",
-            "members": {},
-            "methods": {
-                "0x4144a0": {
-                    "demangled_name": "",
-                    "ea": "0x4144a0",
-                    "imprt": false,
-                    "name": "meth_0x4144a0",
+                    "name": "meth_0x414b60",
                     "type": "meth"
                 }
             },

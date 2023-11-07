@@ -158,7 +158,7 @@ After running the evaluation pipeline, all results should be in the
 following results are from running the evaluation on libbmp, optparse, ser4cpp,
 and tinyxml2:
 
-<img src="results_with_projects.png" width="300px">
+<img src="images/results_with_projects.png" width="300px">
 
 To compile the results into usable LaTeX tables, run
 `evaluation/results/generate_result_tables.py`.

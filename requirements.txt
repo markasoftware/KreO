@@ -22,3 +22,4 @@ rich==13.5.3
 ruff==0.0.291
 typer==0.9.0
 typing_extensions==4.8.0
+pdbparse==1.5.0

@@ -1,0 +1,39 @@
+{
+    "result_mapping": {
+        "Methods Assigned to Correct Class": {
+            "true_positives": 436,
+            "false_positives": 2,
+            "false_negatives": 0
+        },
+        "Individual Classes": {
+            "true_positives": 32,
+            "false_positives": 0,
+            "false_negatives": 0
+        },
+        "Constructors": {
+            "true_positives": 37,
+            "false_positives": 0,
+            "false_negatives": 0
+        },
+        "Destructors": {
+            "true_positives": 30,
+            "false_positives": 0,
+            "false_negatives": 0
+        },
+        "Methods": {
+            "true_positives": 436,
+            "false_positives": 2,
+            "false_negatives": 0
+        },
+        "Class Graph Edges": {
+            "true_positives": 18,
+            "false_positives": 14,
+            "false_negatives": 14
+        },
+        "Class Graph Ancestors": {
+            "true_positives": 18,
+            "false_positives": 0,
+            "false_negatives": 14
+        }
+    }
+}

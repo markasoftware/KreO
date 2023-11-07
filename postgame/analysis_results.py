@@ -47,14 +47,17 @@ class Structure(BaseModel):
     members: dict[str, Member] = Field(default_factory=dict)
     methods: dict[str, Method] = Field(default_factory=dict)
     size: int = 0
-    vftables: dict[str, VFTable] = Field(default_factory=dict)
+    vftables: dict[str, int] = Field(default_factory=dict)
+
+    def __hash__(self) -> int:
+        return hash(self.model_dump_json())
 
 
 class AnalysisResults(BaseModel):
     filename: str = ""
     filemd5: str = ""
     structures: dict[str, Structure] = Field(default_factory=dict)
-    vcalls: dict[str, str] = Field(default_factory=dict)
+    vcalls: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
     version: str = ""
 
     def get_methods(self) -> list[Method]:

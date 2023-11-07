@@ -6,6 +6,8 @@ from pathlib import Path
 from typer import Typer
 
 import evaluation.evaluation
+import evaluation.extract_gt
+import evaluation.pdb_parser
 from parseconfig import Config, Isa, parseconfig
 from postgame.postgame import Postgame
 
@@ -150,12 +152,6 @@ def eval():
     evaluation.evaluation.main(cfg)
 
 
-@APP.callback()
-def main(config: Path):
-    global cfg
-    cfg = parseconfig(config)
-
-
 @APP.command()
 def independent_evaluation(
     results_json: Path,
@@ -165,6 +161,24 @@ def independent_evaluation(
     evaluation.evaluation.run_evaluation(
         cfg.gt_results_json, results_json, results_path, None, None
     )
+
+
+@APP.command()
+def extract_gt():
+    assert cfg is not None
+    evaluation.extract_gt.main(cfg.pdb_file)
+
+
+@APP.command()
+def pdb_parser():
+    assert cfg is not None
+    evaluation.pdb_parser.main(cfg.dump_file, cfg.gt_results_json)
+
+
+@APP.callback()
+def main(config: Path):
+    global cfg
+    cfg = parseconfig(config)
 
 
 if __name__ == "__main__":

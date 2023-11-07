@@ -56,3 +56,22 @@ def test_update_all_method_statistics():
     assert meth3.seen_in_head == 1
     assert meth3.seen_in_tail == 1
     assert meth3.seen_count == 1
+
+
+def test_split_dynamic_traces():
+    dut = Postgame(LEGO_CFG)
+    dut.parse_input()
+
+    assert 7 == len(dut.traces)
+
+    dut.split_dynamic_traces()
+
+    assert 6 == len(dut.traces)
+
+
+def test_remove_ots_with_no_tail():
+    dut = Postgame(LEGO_CFG)
+    dut.split_dynamic_traces()
+    dut.remove_ots_with_no_tail()
+
+    assert 3 == len(dut.traces)

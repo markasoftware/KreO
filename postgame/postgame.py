@@ -199,6 +199,8 @@ class Postgame:
             trace.update_method_statistics()
 
     def split_dynamic_traces(self):
+        self.__identify_initializer_finalizers()
+
         new_traces: set[ObjectTrace] = set()
 
         for trace in self.traces:
@@ -578,15 +580,17 @@ class Postgame:
         for line in self.__cfg.method_candidates_path.open():
             self.method_candidate_addresses.add(int(line, 16))
 
-    def identify_initializer_finalizers(self) -> None:
+    def __identify_initializer_finalizers(self) -> None:
         for ot in self.traces:
             ot.identify_initializer_finalizer()
 
-    def update_head_tail(self) -> None:
+    def __update_head_tail(self) -> None:
         for ot in self.traces:
             ot.update_head_tail()
 
     def remove_ots_with_no_tail(self) -> None:
+        self.__update_head_tail()
+
         self.traces = set([ot for ot in self.traces if ot.tail_returns() != []])
 
     def update_method_type(self) -> None:
@@ -607,12 +611,6 @@ class Postgame:
         LOGGER.info("Found %i traces", len(self.traces))
 
         self.run_step(
-            self.identify_initializer_finalizers,
-            "identifying initializers and finalizers...",
-            "initializers and finalizers identified",
-        )
-
-        self.run_step(
             self.split_dynamic_traces,
             "splitting traces...",
             "traces split",
@@ -620,12 +618,6 @@ class Postgame:
         LOGGER.info("after splitting there are now %i traces", len(self.traces))
 
         if not self.analysis_tool_lego():
-            self.run_step(
-                self.update_head_tail,
-                "updating head and tail...",
-                "head and tail updated",
-            )
-
             self.run_step(
                 self.remove_ots_with_no_tail,
                 "removing object traces with no tail...",
@@ -638,12 +630,11 @@ class Postgame:
             "method statistics updated",
         )
 
-        if not self.analysis_tool_lego():
-            self.run_step(
-                self.update_method_type,
-                "updating method type...",
-                "method type removed",
-            )
+        self.run_step(
+            self.update_method_type,
+            "updating method type...",
+            "method type removed",
+        )
 
         self.run_step(
             self.construct_trie,
