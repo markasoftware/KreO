@@ -175,6 +175,48 @@ def pdb_parser():
     evaluation.pdb_parser.main(cfg.dump_file, cfg.gt_results_json)
 
 
+@APP.command()
+def run_pipeline():
+    assert cfg is not None
+    game()
+    postgame()
+
+
+@APP.command()
+def generate_dump():
+    assert cfg is not None
+
+    cvdump_exe = SCRIPT_PATH / "evaluation" / "cvdump.exe"
+
+    pdb_to_dump = cfg.pdb_file
+
+    with cfg.dump_file.open("wb") as outfile:
+        _ = subprocess.check_call(
+            [cvdump_exe, pdb_to_dump],
+            shell=True,
+            stdout=outfile,
+            stderr=subprocess.STDOUT,
+        )
+
+
+@APP.command()
+def run_pipeline_evaluation():
+    assert cfg is not None
+    generate_dump()
+    pdb_parser()
+    extract_gt()
+    game()
+    postgame()
+    eval()
+
+
+@APP.command()
+def run_pipeline_after_game():
+    assert cfg is not None
+    postgame()
+    eval()
+
+
 @APP.callback()
 def main(config: Path):
     global cfg
