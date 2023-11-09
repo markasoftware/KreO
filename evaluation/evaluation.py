@@ -196,12 +196,6 @@ def evaluate_methods(
         gt_methods,
     )
 
-    f = list(gt_methods.difference(gen_methods)) + list(
-        gen_methods.difference(gt_methods)
-    )
-    print(len(gt_methods), len(gen_methods))
-    print(f)
-
     fn = false_negatives(gt_methods, tp)
     fp = false_positives(gen_methods, tp)
 
@@ -295,16 +289,6 @@ def evaluate_methods_assigned_correct_class(
     )
 
 
-def get_gen_gt_cls_pair(
-    gen_cls_mangled_name: str,
-    matched_classes: list[tuple[ar.Structure, ar.Structure]],
-) -> tuple[ar.Structure, ar.Structure] | None:
-    for gen_gt_cls_pair in matched_classes:
-        if gen_gt_cls_pair[0].name == gen_cls_mangled_name:
-            return gen_gt_cls_pair
-    return None
-
-
 def get_cls_from_data(
     data: ar.AnalysisResults, mangled_name: str
 ) -> ar.Structure | None:
@@ -340,10 +324,10 @@ def evaluate_class_graph_ancestors(
 
     for gen_cls, gt_cls in matched_classes:
         gen_parents = [
-            x.name for x in list(filter(lambda x: x.parent, gen_cls.members.values()))
+            x.struc for x in list(filter(lambda x: x.parent, gen_cls.members.values()))
         ]
         gt_parents = [
-            x.name for x in list(filter(lambda x: x.parent, gt_cls.members.values()))
+            x.struc for x in list(filter(lambda x: x.parent, gt_cls.members.values()))
         ]
 
         if len(gen_parents) == 0 and len(gt_parents) == 0:
@@ -365,6 +349,7 @@ def evaluate_class_graph_ancestors(
                 parent_cls_name = worklist.pop()
 
                 parent_cls = get_gen_cls(parent_cls_name)
+
                 if parent_cls is not None and parent_cls.name not in gen_ancestors:
                     gen_ancestors.add(parent_cls.name)
                     worklist.extend(
@@ -379,30 +364,27 @@ def evaluate_class_graph_ancestors(
             # Check if any of the ancestors match the gt
             for gen_ancestor in gen_ancestors:
                 # Find the ground truth class associated with the ancestor.
-                gen_gt_pair = get_gen_gt_cls_pair(
-                    gen_ancestor,
-                    matched_classes,
+                gen_gt_pairs = list(
+                    filter(lambda x: x[0].name == gen_ancestor, matched_classes)
                 )
 
-                if gen_gt_pair is not None:
-                    if gen_gt_pair[1].name in gt_parents:
-                        tp += 1
-                    else:
-                        fp += 1
-                else:
+                if len(gen_gt_pairs) > 1:
+                    msg = f"Multiple gen gt pairs associated with gen ancestor {gen_ancestor}"
+                    raise RuntimeError(msg)
+
+                if gen_gt_pairs == []:
                     LOGGER.error(
                         "Failed to find gt class that matches gen class %s",
                         gen_ancestor,
                     )
-
-            if len(gen_ancestors) > 1:
-                print(gen_ancestors)
+                else:
+                    if gen_gt_pairs != []:
+                        tp += 1
 
             gen_size += len(gen_ancestors)
             gt_size += len(gt_parents)
 
     fn = gt_size - tp
-    print(gt_size, gen_size, tp)
     fp = gen_size - tp
 
     return EvaluationResult(true_positives=tp, false_positives=fp, false_negatives=fn)
@@ -433,8 +415,8 @@ def evaluate_class_graph_edges(
         # Note: we don't expect parent names to be the same - instead we expect the
         # paired classes to be the same.
 
-        gen_cls_parents = [x.name for x in gen_cls.members.values() if x.parent]
-        gt_cls_parents = [x.name for x in gt_cls.members.values() if x.parent]
+        gen_cls_parents = [x.struc for x in gen_cls.members.values() if x.parent]
+        gt_cls_parents = [x.struc for x in gt_cls.members.values() if x.parent]
 
         if gen_cls_parents == [] and gt_cls_parents == []:
             # Both gen and ground truth share the "root" i.e. there are no
@@ -445,13 +427,15 @@ def evaluate_class_graph_edges(
             gt_size += 1
         else:
             for gen_parent_name in gen_cls_parents:
-                gen_gt_pair = get_gen_gt_cls_pair(gen_parent_name, matched_classes)
-                if gen_gt_pair is not None:
-                    # Find gt cls mangled name from gen_gt_pair in gt_cls.parent_mangled_names
-                    gt_name = gen_gt_pair[1].name
-                    if list(filter(lambda x: x == gt_name, gt_cls_parents)) != []:
-                        tp += 1
-                else:
+                gen_gt_pairs = list(
+                    filter(lambda x: x[0].name == gen_parent_name, matched_classes)
+                )
+
+                if len(gen_gt_pairs) > 1:
+                    msg = f"multiple matching gen gt pairs: {gen_gt_pairs}"
+                    raise RuntimeError(msg)
+
+                if gen_gt_pairs == []:
                     # If gen_gt_pair is None, this indicates a failure to find
                     # the class associated with the parent in the ground truth
                     # data.
@@ -459,6 +443,11 @@ def evaluate_class_graph_edges(
                         "Failed to find parent in generated data called %s because no ground truth class associated with the parent class.",
                         gen_parent_name,
                     )
+                else:
+                    # Find gt cls mangled name from gen_gt_pair in gt_cls.parent_mangled_names
+                    gt_name = gen_gt_pairs[0][1].name
+                    if list(filter(lambda x: x == gt_name, gt_cls_parents)) != []:
+                        tp += 1
 
             gen_size += len(gen_cls_parents)
             gt_size += len(gt_cls_parents)
@@ -486,8 +475,16 @@ def match_gen_to_gt_classes(
     method set, the ground truth class with more matching methods in its method
     set is chosen as the matched class.
     """
-    gt_nonempty_classes = nonempty_classes(gt_analysis_results)
-    gen_nonempty_classes = nonempty_classes(gen_analysis_results)
+    gt_nonempty_classes = sorted(
+        nonempty_classes(gt_analysis_results),
+        key=lambda x: x.demangled_name,
+        reverse=True,
+    )
+    gen_nonempty_classes = sorted(
+        nonempty_classes(gen_analysis_results),
+        key=lambda x: x.demangled_name,
+        reverse=True,
+    )
 
     matched_classes: list[tuple[ar.Structure, ar.Structure]] = []
 

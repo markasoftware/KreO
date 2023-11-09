@@ -1,4 +1,3 @@
-import json
 from collections import defaultdict
 from enum import Enum, auto
 from pathlib import Path
@@ -122,7 +121,7 @@ class FieldListTypeData(TypeData):
             identifier = line_split[0].split("=")[1].strip()
             if identifier == "LF_BCLASS":
                 type = utils.get_hex_after(line_split[2], "type = ")
-                members["base_classes"].add(type)
+                cast("set[int]", members["base_classes"]).add(type)
 
             identifier = utils.get_nth_str(line, 2)
 
@@ -600,20 +599,5 @@ def main(pdb_file: Path, results_file: Path):
 
         results.structures[forward_ref.unique_name] = structure
 
-    print(results.model_dump_json(indent=4))
-
-    # with results_file.open("w") as f:
-    #     f.write(results.model_dump_json(indent=4))
-    # print(results.model_dump_json(indent=4))
-
-
-"""
-For each procedure:
-    find symbol associated with the procedure
-    find this type associated
-    because this type is a forward ref, find actual class
-    get name of class and map name to the symbol
-
-
-    virtual functions are not found in list of symbols
-"""
+    with results_file.open("w") as f:
+        f.write(results.model_dump_json(indent=4))
