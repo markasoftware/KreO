@@ -5,9 +5,9 @@
 import json
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Any, Self
+from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel
 
 
 class Isa(StrEnum):

@@ -12,31 +12,6 @@ import postgame.analysis_results as ar
 BASE_ADDR = 0x400000
 
 
-class TypeId(Enum):
-    MEMBER_FUNCTION = (auto(), ["LF_MFUNCTION"])
-    CLASS = (auto(), ["LF_CLASS", "LF_STRUCTURE"])
-    FIELD_LIST = (auto(), ["LF_FIELDLIST"])
-    MODIFIER = (auto(), ["LF_MODIFIER"])
-    ENUM = (auto(), ["LF_ENUM"])
-    POINTER = (auto(), ["LF_POINTER"])
-    ARRAY = (auto(), ["LF_ARRAY"])
-    UNION = (auto(), ["LF_UNION"])
-    VTSHAPE = (auto(), ["LF_VTSHAPE"])
-    ARGLIST = (auto(), ["LF_ARGLIST"])
-    METHOD_ILST = (auto(), ["LF_METHODLIST"])
-    UNKNOWN = (auto(), ["LF_MFUNCTION"])
-    PROCEDURE = (auto(), ["LF_PROCEDURE"])
-    BITFIELD = (auto(), ["LF_BITFIELD"])
-
-    @classmethod
-    def from_str(cls, s: str) -> Self:
-        for type_id in cls.__members__.values():
-            if s in cast("Self", type_id).value[1]:
-                return type_id
-        msg = f"failed to convert string {s} to a type id"
-        raise ValueError(msg)
-
-
 class TypeData(BaseModel):
     type: int
     length: int
@@ -49,6 +24,55 @@ class TypeData(BaseModel):
             "length": utils.get_dec_btwn(line, "Length = ", ","),
             "leaf": utils.get_hex_btwn(line, "Leaf = ", " "),
         }
+
+
+class UnionTypeData(TypeData):
+    members: int
+    field_list_type: int
+    size: int
+    class_name: str
+    unique_name: str
+    forward_ref: bool
+
+    @classmethod
+    def model_validate_lines(
+        cls: type[Self],
+        lines: list[str],
+        *,
+        strict: bool | None = None,
+        from_attributes: bool | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> Self:
+        members = cast("dict[str, Any]", TypeData.parse_first_line(lines[0]))
+        members["members"] = utils.get_dec_btwn(lines[1], "members = ", ",  ")
+        members["field_list_type"] = utils.get_hex_btwn(
+            lines[1],
+            "field list type ",
+            ", ",
+        )
+        members["size"] = utils.get_dec_btwn(
+            lines[1],
+            "Size = ",
+            "\t,",
+        )
+        members["class_name"] = utils.get_str_btwn(
+            lines[1],
+            "class name = ",
+            ", unique name",
+        )
+        members["unique_name"] = utils.get_str_btwn(
+            lines[1],
+            "unique name = ",
+            ", UDT",
+        )
+        members["forward_ref"] = "FORWARD REF" in lines[1]
+
+        return super().model_validate(
+            members,
+            strict=strict,
+            from_attributes=from_attributes,
+            context=context,
+        )
 
 
 class ClassTypeData(TypeData):
@@ -185,6 +209,28 @@ class MethodListTypeData(TypeData):
         )
 
 
+class ProcedureTypeData(TypeData):
+    @classmethod
+    def model_validate_lines(
+        cls: type[Self],
+        lines: list[str],
+        *,
+        strict: bool | None = None,
+        from_attributes: bool | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> Self:
+        members = TypeData.parse_first_line(lines[0])
+
+        # TODO
+
+        return super().model_validate(
+            members,
+            strict=strict,
+            from_attributes=from_attributes,
+            context=context,
+        )
+
+
 class FuncAttr(Enum):
     """Enum, types associated wtih function attribute in dump file of LF_MFUNCTION."""
 
@@ -205,28 +251,6 @@ class FuncAttr(Enum):
             return FuncAttr.INSTANCE_CONSTRUCTOR
         elif s == "****Warning**** unused field non-zero!":
             return FuncAttr.UNUSED_NONZERO
-
-
-class ProcedureData(TypeData):
-    @classmethod
-    def model_validate_lines(
-        cls: type[Self],
-        lines: list[str],
-        *,
-        strict: bool | None = None,
-        from_attributes: bool | None = None,
-        context: dict[str, Any] | None = None,
-    ) -> Self:
-        members = TypeData.parse_first_line(lines[0])
-
-        # TODO
-
-        return super().model_validate(
-            members,
-            strict=strict,
-            from_attributes=from_attributes,
-            context=context,
-        )
 
 
 class MethodTypeData(TypeData):
@@ -271,8 +295,36 @@ class MethodTypeData(TypeData):
         members["this_adjust"] = utils.get_dec_after(lines[3], "This adjust = ")
 
         return super().model_validate(
-            members, strict=strict, from_attributes=from_attributes, context=context
+            members,
+            strict=strict,
+            from_attributes=from_attributes,
+            context=context,
         )
+
+
+class TypeId(Enum):
+    MEMBER_FUNCTION = (auto(), ["LF_MFUNCTION"], MethodTypeData)
+    CLASS = (auto(), ["LF_CLASS", "LF_STRUCTURE"], ClassTypeData)
+    FIELD_LIST = (auto(), ["LF_FIELDLIST"], FieldListTypeData)
+    MODIFIER = (auto(), ["LF_MODIFIER"], None)
+    ENUM = (auto(), ["LF_ENUM"], None)
+    POINTER = (auto(), ["LF_POINTER"], None)
+    ARRAY = (auto(), ["LF_ARRAY"], None)
+    UNION = (auto(), ["LF_UNION"], UnionTypeData)
+    VTSHAPE = (auto(), ["LF_VTSHAPE"], None)
+    ARGLIST = (auto(), ["LF_ARGLIST"], None)
+    METHOD_ILST = (auto(), ["LF_METHODLIST"], None)
+    UNKNOWN = (auto(), ["LF_MFUNCTION"], None)
+    PROCEDURE = (auto(), ["LF_PROCEDURE"], ProcedureTypeData)
+    BITFIELD = (auto(), ["LF_BITFIELD"], None)
+
+    @classmethod
+    def from_str(cls, s: str) -> Self:
+        for type_id in cls.__members__.values():
+            if s in cast("Self", type_id).value[1]:
+                return type_id
+        msg = f"failed to convert string {s} to a type id"
+        raise ValueError(msg)
 
 
 class SectionHeaderInfo(BaseModel):
@@ -347,23 +399,19 @@ class PdbParser(BaseModel):
         type_lines = [x for x in type_lines if x != [""]]
 
         for lines in type_lines:
+            collapsed_lines: list[str] = []
+            for line in lines:
+                if line.startswith("\t\t"):
+                    collapsed_lines[-1] += line
+                else:
+                    collapsed_lines.append(line)
+            lines = collapsed_lines
+
             type_id = TypeId.from_str(utils.get_nth_str(lines[0], 8))
 
             type_data = None
-            if type_id == TypeId.MEMBER_FUNCTION:
-                type_data = MethodTypeData.model_validate_lines(lines)
-            if type_id == TypeId.PROCEDURE:
-                type_data = ProcedureData.model_validate_lines(lines)
-            elif type_id == TypeId.CLASS:
-                type_data = ClassTypeData.model_validate_lines(lines)
-            elif type_id == TypeId.FIELD_LIST:
-                type_data = FieldListTypeData.model_validate_lines(lines)
-            # elif type_id == TypeId.UNKNOWN:
-            #     msg = f"Unknown type id {type_id}"
-            #     raise RuntimeError(msg)
-            # else:
-            #     msg = f"Invalid type id {type_id}"
-            #     raise RuntimeError(msg)
+            if type_id.value[2] is not None:
+                type_data = type_id.value[2].model_validate_lines(lines)
 
             if type_data is not None:
                 type_id_to_type_data_map[type_data.type] = type_data
@@ -519,10 +567,12 @@ def main(pdb_file: Path, results_file: Path):
 
     results = ar.AnalysisResults()
 
-    unique_name_to_class: dict[str, ClassTypeData] = {}
+    unique_name_to_class: dict[str, ClassTypeData | UnionTypeData] = {}
 
     for cls in parser.type_to_typedata_map.values():
-        if isinstance(cls, ClassTypeData) and not cls.forward_ref:
+        if (
+            isinstance(cls, ClassTypeData) or isinstance(cls, UnionTypeData)
+        ) and not cls.forward_ref:
             unique_name_to_class[cls.unique_name] = cls
 
     for cls_key, methods in class_to_procedure_list_map.items():
@@ -535,7 +585,9 @@ def main(pdb_file: Path, results_file: Path):
 
         members: dict[str, ar.Member] = {}
 
-        if isinstance(forward_ref, ClassTypeData):
+        if isinstance(forward_ref, ClassTypeData) or isinstance(
+            forward_ref, UnionTypeData
+        ):
             if forward_ref.forward_ref:
                 field_list = parser.type_to_typedata_map[
                     unique_name_to_class[forward_ref.unique_name].field_list_type
@@ -563,7 +615,7 @@ def main(pdb_file: Path, results_file: Path):
                 msg = f"Expected forward ref class, {forward_ref}"
                 raise RuntimeError(msg)
         else:
-            msg = f"Type incorrect, expected ClassTypeData: {forward_ref}"
+            msg = f"Type incorrect, expected ClassTypeData or UnionTypeData: {forward_ref}"
             raise RuntimeError(msg)
 
         structure = ar.Structure(

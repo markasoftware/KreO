@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import itertools
 from enum import StrEnum, auto
+from typing import Any
 
 from pydantic import BaseModel, Field
+from typing_extensions import Self
 
 
 class MethodType(StrEnum):
@@ -47,7 +49,6 @@ class Structure(BaseModel):
     members: dict[str, Member] = Field(default_factory=dict)
     methods: dict[str, Method] = Field(default_factory=dict)
     size: int = 0
-    vftables: dict[str, int] = Field(default_factory=dict)
 
     def __hash__(self) -> int:
         return hash(self.model_dump_json())

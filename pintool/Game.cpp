@@ -309,11 +309,8 @@ void ParsePregame() {
     exit(EXIT_FAILURE);
   }
 
-  cout << "###" << methodCandidatesPath.Value() << endl;
-
   ADDRINT methodCandidate{};
   while (methodCandidatesStream >> hex >> methodCandidate >> ws) {
-    cout << methodCandidate << endl;
     methodCandidateAddrs.insert(methodCandidate);
   }
 
