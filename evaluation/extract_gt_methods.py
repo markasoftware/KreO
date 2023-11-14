@@ -4,25 +4,11 @@ the configuration file passed in as an argument to this script.
 """
 
 import json
-import os
-import sys
-from pathlib import Path
 
-from typer import Typer
-
-SCRIPT_PATH = Path(__file__).parent.absolute()
-
-sys.path.append(str(SCRIPT_PATH / ".."))
-
-from parseconfig import parseconfig  # noqa: E402
-
-CLI = Typer()
+from parseconfig import Config
 
 
-@CLI.command()
-def main(config: Path):
-    cfg = parseconfig(config)
-
+def main(cfg: Config):
     base_addr = int(cfg.base_offset_path.open().readline(), 16)
 
     structures = json.load(cfg.gt_results_json.open())["structures"]
@@ -37,7 +23,3 @@ def main(config: Path):
     with cfg.gt_methods_path.open("w") as f:
         for method in method_addrs:
             f.write(hex(method)[2:] + "\n")
-
-
-if __name__ == "__main__":
-    CLI()

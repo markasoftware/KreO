@@ -82,7 +82,7 @@ class Config(BaseModel):
         super().model_post_init(__context)
 
 
-def parseconfig(config_fname: Path) -> Config:
-    cfg = Config(config_fname=config_fname, **json.load(config_fname.open()))
+def parseconfig(config_fname: Path, test_key: str) -> Config:
+    cfg = Config(config_fname=config_fname, **json.load(config_fname.open())[test_key])
 
     return cfg

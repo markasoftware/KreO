@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -6,7 +7,7 @@ from pathlib import Path
 from typer import Typer
 
 import evaluation.evaluation
-import evaluation.extract_gt
+import evaluation.extract_gt_methods
 import evaluation.pdb_parser
 from parseconfig import Config, Isa, parseconfig
 from postgame.postgame import Postgame
@@ -164,12 +165,6 @@ def independent_evaluation(
 
 
 @APP.command()
-def extract_gt():
-    assert cfg is not None
-    evaluation.extract_gt.main(cfg.pdb_file)
-
-
-@APP.command()
 def pdb_parser():
     assert cfg is not None
     evaluation.pdb_parser.main(cfg.dump_file, cfg.gt_results_json)
@@ -200,11 +195,17 @@ def generate_dump():
 
 
 @APP.command()
+def extract_gt_methods():
+    assert cfg is not None
+    evaluation.extract_gt_methods.main(cfg)
+
+
+@APP.command()
 def run_pipeline_evaluation():
     assert cfg is not None
     generate_dump()
+    extract_gt_methods()
     pdb_parser()
-    extract_gt()
     game()
     postgame()
     eval()
@@ -218,9 +219,9 @@ def run_pipeline_after_game():
 
 
 @APP.callback()
-def main(config: Path):
+def main(config: Path, test: str):
     global cfg
-    cfg = parseconfig(config)
+    cfg = parseconfig(config, test)
 
 
 if __name__ == "__main__":
