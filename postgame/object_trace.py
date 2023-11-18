@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from enum import StrEnum, auto
 from typing import Iterable
@@ -5,6 +6,8 @@ from typing import Iterable
 from typing_extensions import Self
 
 from postgame.method import Method
+
+LOGGER = logging.getLogger(__name__)
 
 
 class TEType(StrEnum):
@@ -77,7 +80,6 @@ class ObjectTrace:
             if te_stack <= 0:
                 break
 
-        # TODO remove
         for te in trace_entries:
             if te.is_call:
                 te_stack += 1
@@ -85,7 +87,7 @@ class ObjectTrace:
                 te_stack -= 1
         if te_stack != 0:
             msg = f"Failed to parse object trace, calls and returns don't match: {self}"
-            raise RuntimeError(msg)
+            LOGGER.error(msg)
 
     def head_calls(self):
         return self.trace_entries[: self.__head_calls]

@@ -29,7 +29,7 @@ class Method:
         """Update method type based on method statistics."""
         if self.seen_in_head != 0 and self.seen_in_tail != 0:
             LOGGER.warning(
-                "failed to update method type. method is seen in both the head and tail."
+                "Failed to update method type. Method is seen in both the head and tail. Defaulting to destructor."
             )
 
         if self.seen_in_tail > 0:

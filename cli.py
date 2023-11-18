@@ -3,8 +3,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 from typer import Typer
+from typing_extensions import Any
 
 import evaluation.evaluation
 import evaluation.extract_gt_methods
@@ -12,10 +14,11 @@ import evaluation.pdb_parser
 from parseconfig import Config, Isa, parseconfig
 from postgame.postgame import Postgame
 
-APP = Typer()
+APP = Typer(pretty_exceptions_show_locals=False)
 SCRIPT_PATH = Path(__file__).parent.absolute()
 
 cfg: Config | None = None
+cfgs: list[Config] = []
 
 
 def bool_lowercase(b: bool):
@@ -87,10 +90,6 @@ def game():
         msg = f"Unsupported operating system: {sys.platform}"
         raise Exception(msg)
 
-    print(cfg.method_candidates_path.open().read())
-    for line in cfg.method_candidates_path.open():
-        print(line)
-
     process = subprocess.Popen(
         [
             str(pin_executable_path),
@@ -119,6 +118,7 @@ def postgame():
     assert cfg is not None
 
     Postgame(cfg).main()
+    evaluation.evaluation.main(cfg)
 
 
 @APP.command()
@@ -219,9 +219,27 @@ def run_pipeline_after_game():
 
 
 @APP.callback()
-def main(config: Path, test: str):
+def main(config: Path, test: str = ""):
     global cfg
-    cfg = parseconfig(config, test)
+    if test != "":
+        cfg = parseconfig(config, test)
+    else:
+        names: list[str] = []
+        with config.open() as f:
+            names = list(cast("dict[str, Any]", json.load(f)).keys())
+
+        for name in names:
+            cfgs.append(parseconfig(config, name))
+
+
+@APP.command()
+def run_all_pipelines_with_evaluation():
+    global cfg
+    assert cfgs != []
+    for c in cfgs:
+        cfg = c
+        print(f"Running evaluation {c.base_directory}")
+        run_pipeline_evaluation()
 
 
 if __name__ == "__main__":
