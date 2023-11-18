@@ -1,12 +1,12 @@
 /pintool/obj-*
 pin.log
-.venv
 *~*
 *\#*
 oop/
 __pycache__
 pintool.log
-.vscode
+
+.*
 
 resources/*
 xmltest.cpp

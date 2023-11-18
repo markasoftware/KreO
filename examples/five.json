@@ -1,0 +1,10 @@
+{
+    "analysis_tool": "lego_plus",
+    
+    "isa": "x86",
+    "binary_path": "../Project3.exe",
+    "pdb_file": "../Project3.pdb",
+    "results_path": ".",
+    "results_instrumented_path": ".",
+    "base_directory": "example-5"
+}

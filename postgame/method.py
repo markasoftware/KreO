@@ -1,62 +1,46 @@
-from typing import Optional
+import logging
+from dataclasses import dataclass
 
+from postgame.analysis_results import MethodType
+
+LOGGER = logging.getLogger(__name__)
+
+
+@dataclass
 class Method:
-    def __init__(self, address: int, found_dynamically: bool=True, name: Optional[str]=None):
-        self.address = address
-        self.type = ''
+    address: int
+    found_dynamically: bool = True
+    name: str = ""
 
-        # How many times the method has been seen in different parts of a trace
-        self.resetMethodStatistics()
+    type: MethodType = MethodType.meth
+    is_initializer: bool = False
+    is_finalizer: bool = False
 
-        self.is_initializer = False
-        self.is_finalizer = False
-        self.name = name
+    seen_in_head: int = 0
+    seen_in_tail: int = 0
+    seen_count: int = 0
 
-        self.found_dynamically = found_dynamically
+    def reset_method_statistics(self):
+        self.seen_in_head = 0
+        self.seen_in_tail = 0
+        self.seen_count = 0
 
-        self._dtor_tail_to_torso_ratio_max = 4
-        self._ctor_head_to_torso_ratio_max = 4
+    def update_type(self):
+        """Update method type based on method statistics."""
+        if self.seen_in_head != 0 and self.seen_in_tail != 0:
+            LOGGER.warning(
+                "Failed to update method type. Method is seen in both the head and tail. Defaulting to destructor."
+            )
 
-    def resetMethodStatistics(self):
-        self.seen_in_head = int(0)
-        self.seen_in_tail = int(0)
-        self.seen_in_torso = int(0)
-
-    def isInHead(self) -> bool:
-        return self.seen_in_head > 0
-
-    def isInTail(self) -> bool:
-        return self.seen_in_tail > 0
-
-    def isProbablyConstructor(self) -> bool:
-        '''
-        Returns true if method believed to be a destructor. While a method is
-        likely a constructor if it appears in the head, we make the assumption
-        that it cannot be a constructor if it appears in the fingerprint. Also,
-        if the method is not found mostly in the head but instead is found
-        somewhat regularly in the body of traces, it is likely not a constructor
-        either.
-        '''
-        return self.isInHead() and \
-               not self.isInTail() and \
-               self._ctor_head_to_torso_ratio_max * self.seen_in_torso <= self.seen_in_head
-
-    def isProbablyDestructor(self) -> bool:
-        '''
-        @see isProbablyConstructor. The same idea here but for destructors.
-        '''
-        return self.isInTail() and \
-               not self.isInHead() and \
-               self._dtor_tail_to_torso_ratio_max * self.seen_in_torso <= self.seen_in_tail
-
-    def updateType(self) -> None:
-        # TODO other types may be viable options (virtual methods for example), but for now we don't care about them
-        if self.isProbablyDestructor():
-            self.type = 'dtor'
-        elif self.isProbablyConstructor():
-            self.type = 'ctor'
+        if self.seen_in_tail > 0:
+            self.type = MethodType.dtor
+        elif self.seen_in_head > 0:
+            self.type = MethodType.ctor
         else:
-            self.type = 'meth'
+            self.type = MethodType.meth
 
     def __str__(self) -> str:
         return hex(self.address)[2:]
+
+    def __hash__(self) -> int:
+        return self.address

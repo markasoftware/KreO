@@ -137,26 +137,18 @@ argument, the path to the JSON file that contains user specified parameters.
 Also make sure `PIN_ROOT` is set as described in the setup above.
 
 The final output is a JSON file containing OO features in a structured format
-and is located in the `baseDirectory` specified in the JSON configuration file.
+and is located in the `base_directory` specified in the JSON configuration file.
 
 ### Running Lego re-implementation vs. KreO
 
 As a baseline, we re-implemented an approach called
 [Lego](https://research.cs.wisc.edu/wpis/papers/cc14.pdf). Additional static
 analysis features and other improvements are built on top of this
-re-implementation. All features will be enabled such that KreO is running by
-default. If you want to run Lego only, the following flags must be specified in
-the configuration JSON file:
-
-    "enableAliasAnalysis": false,
-    "enableCallingConventionAnalysis": false,
-    "heuristicFingerprintImprovement": false,
-    "eliminateObjectTracesWithMatchingInitializerAndFinalizerMethod": false
-
-If you want to run Lego+ (lego with improvements that don't include static
-analysis), the following flags must be specified:
-
-    "enableAliasAnalysis": false
+re-implementation. To specify the tool to run, use the `analysis_tool` JSON key.
+Valid tools are `kreo`, `lego_plus`, and `lego`. `lego` is the base Lego re-implementation.
+`lego_plus` includes no additional static analysis, but does include some improvements
+during the rest of analysis. `kreo` includes the improvements in `lego_plus` as
+well as additional static analysis.
 
 ### Generating LaTeX results
 
@@ -166,7 +158,7 @@ After running the evaluation pipeline, all results should be in the
 following results are from running the evaluation on libbmp, optparse, ser4cpp,
 and tinyxml2:
 
-<img src="results_with_projects.png" width="300px">
+<img src="images/results_with_projects.png" width="300px">
 
 To compile the results into usable LaTeX tables, run
 `evaluation/results/generate_result_tables.py`.

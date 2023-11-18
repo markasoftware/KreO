@@ -1,0 +1,13 @@
+{
+    "isa": "x86",
+
+    "binary_path": "C:/Users/matth/source/repos/Project2/Debug/Project2.exe",
+    "pdb_file": "C:/Users/matth/source/repos/Project2/Debug/Project2.pdb",
+
+    "results_path": "results",
+    "results_instrumented_path": "results2",
+
+    "base_directory": "four",
+
+    "enable_static_alias_analysis": false
+}

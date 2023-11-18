@@ -1,40 +1,72 @@
-from object_trace import TraceEntry, ObjectTrace
-from typing import Set, List, Tuple
-from method_store import MethodStore
+from pathlib import Path
 
-def getBaseOffset(config) -> int:
-    return int(next(iter(open(config['baseOffsetPath']))), 16)
+from parseconfig import Config
+from postgame.method_store import MethodStore
+from postgame.object_trace import ObjectTrace, TraceEntry
 
-def parseInput(config, method_store: MethodStore) -> Tuple[int, Set[ObjectTrace]]:
-    traces: Set[ObjectTrace] = set()
-    base_offset = getBaseOffset(config)
+SCRIPT_PATH = Path(__file__).parent.absolute()
+
+
+def get_base_offset(config: Config) -> int:
+    return int(next(iter(config.base_offset_path.open())), 16)
+
+
+def parse_input(
+    config: Config,
+    method_store: MethodStore,
+) -> tuple[int, set[ObjectTrace]]:
+    """Parse object-trace related data.
+
+    Args:
+        config: Config data, pointing to files that must be parsed.
+        method_store: MethodStore that will be updated during parsing.
+
+    Returns:
+        Tuple whose first element is a base address offset, and whose
+        second is a set of parsed object traces.
+    """
+    traces: set[ObjectTrace] = set()
+    base_offset = get_base_offset(config)
 
     # parse blacklisted methods
-    blacklisted_methods: Set[int] = set()
-    for line in open(config['blacklistedMethodsPath']):
+    blacklisted_methods: set[int] = set()
+    for line in config.blacklisted_methods_path.open():
         blacklisted_methods.add(int(line, 16))
 
-    def addIfValid(trace_entries: List[TraceEntry]):
+    def add_if_valid(trace_entries: list[TraceEntry]):
         # Adds the list of trace entries to set of collected traces, assuming
         # the list of entries isn't empty.
         if trace_entries != []:
-            traces.add(ObjectTrace(trace_entries))
+            ot_stack_len = 0
+            for trace in trace_entries:
+                if trace.is_call:
+                    ot_stack_len += 1
+                else:
+                    ot_stack_len -= 1
 
-    cur_trace: List[TraceEntry] = []
-    # there can be multiple object trace files...find all of them
-    for line in open(config['objectTracesPath']):
+                if ot_stack_len <= 0:
+                    break
+
+            if ot_stack_len == 0:
+                traces.add(ObjectTrace(trace_entries))
+
+    cur_trace: list[TraceEntry] = []
+    for line in config.object_traces_path.open():
         # each line ends with \n, empty line indicates new trace
-        if line == '\n':
-            addIfValid(cur_trace)
+        if line == "\n":
+            add_if_valid(cur_trace)
             cur_trace = []
         else:
-            split_line = line.split()
+            split_line = line.split(" ", 2)
             addr = int(split_line[0], 16)
             if addr not in blacklisted_methods:
-                method = method_store.findOrInsertMethod(addr)
-                is_call = len(split_line) == 2  # the trace entry being a call is identified by a trailing "1" after the address
+                method = method_store.find_or_insert_method(addr)
+                # the trace entry being a call is identified by a trailing "1" after the
+                # address
+                is_call = len(split_line) == 2 and split_line[1][0] == "1"
                 cur_trace.append(TraceEntry(method, is_call))
+
     # finish the last trace
-    addIfValid(cur_trace)
+    add_if_valid(cur_trace)
 
     return base_offset, traces

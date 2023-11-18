@@ -12,8 +12,8 @@
 #include "pin.H"
 
 /// Uncomment these to log messages of various levels
-/// #define LOG_INFO
-/// #define LOG_WARN
+#define LOG_INFO
+#define LOG_WARN
 
 using namespace std;
 

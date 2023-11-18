@@ -92,8 +92,8 @@ static const char description[] =
 
 class Settings {
  public:
-  bool enableAliasAnalysis{true};
-  bool enableCallingConventionAnalysis{true};
+  bool enable_static_alias_analysis{true};
+  bool enable_calling_convention_analysis{true};
   bool enableSymbolProcedureDetection{true};
   std::string methodCandidatesPath{};
   std::string staticTracesPath{};
@@ -643,11 +643,11 @@ int main(int argc, char *argv[]) {
 
   Sawyer::CommandLine::SwitchGroup kreoSwitchGroup("Kreo Pregame Options");
   kreoSwitchGroup.insert(Switch("enable-alias-analysis")
-                             .argument("enable", booleanParser(Kreo::settings.enableAliasAnalysis), "true")
+                             .argument("enable", booleanParser(Kreo::settings.enable_static_alias_analysis), "true")
                              .doc("Whether to output static traces."));
 
   kreoSwitchGroup.insert(Switch("enable-calling-convention-analysis")
-                             .argument("enable", booleanParser(Kreo::settings.enableCallingConventionAnalysis), "true")
+                             .argument("enable", booleanParser(Kreo::settings.enable_calling_convention_analysis), "true")
                              .doc("Whether to try and determine which procedures actually use the "
                                   "\"this\" argument register, to narrow down the method "
                                   "candidate list."));
@@ -733,7 +733,7 @@ int main(int argc, char *argv[]) {
   std::ofstream methodCandidatesStream(Kreo::settings.methodCandidatesPath);
 
   std::ofstream staticTracesStream;
-  if (Kreo::settings.enableAliasAnalysis) {
+  if (Kreo::settings.enable_static_alias_analysis) {
     staticTracesStream = std::ofstream(Kreo::settings.staticTracesPath, std::ios_base::out | std::ios_base::binary);
   }
 
@@ -760,10 +760,10 @@ int main(int argc, char *argv[]) {
     bool usesThisPointer(true);  // assume it uses this pointer, possible set to false if static analysis is enabled and
                                  // finds that the register is not in fact used.
 
-    if (Kreo::settings.enableAliasAnalysis || Kreo::settings.enableCallingConventionAnalysis) {
+    if (Kreo::settings.enable_static_alias_analysis || Kreo::settings.enable_calling_convention_analysis) {
       auto analysisResult(Kreo::analyzeProcedure(partitioner, disassembler, proc, baseOffset));
 
-      if (Kreo::settings.enableAliasAnalysis) {
+      if (Kreo::settings.enable_static_alias_analysis) {
 #pragma omp critical(printStaticTrace)
         {
           size_t meaningfulTraces{};
@@ -776,7 +776,7 @@ int main(int argc, char *argv[]) {
         }
       }
 
-      if (Kreo::settings.enableCallingConventionAnalysis) {
+      if (Kreo::settings.enable_calling_convention_analysis) {
         usesThisPointer = analysisResult.usesThisPointer;
       }
     }
