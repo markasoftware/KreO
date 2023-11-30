@@ -51,7 +51,7 @@ def parse_input(
                 traces.add(ObjectTrace(trace_entries))
 
     cur_trace: list[TraceEntry] = []
-    for line in config.object_traces_path.open():
+    for line in Path("ots").open():
         # each line ends with \n, empty line indicates new trace
         if line == "\n":
             add_if_valid(cur_trace)

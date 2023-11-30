@@ -29,7 +29,10 @@ class Method:
         """Update method type based on method statistics."""
         if self.seen_in_head != 0 and self.seen_in_tail != 0:
             LOGGER.warning(
-                "Failed to update method type. Method is seen in both the head and tail. Defaulting to destructor."
+                "Failed to update method type for method %s %s. Method is seen in both the"
+                " head and tail. Defaulting to destructor.",
+                str(self),
+                f"({self.name})",
             )
 
         if self.seen_in_tail > 0:

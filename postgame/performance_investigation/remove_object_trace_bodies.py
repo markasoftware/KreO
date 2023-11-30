@@ -26,7 +26,7 @@ def remove_object_trace_bodies(config: Config):
             trace_entries_head: list[TraceEntry] = []
             ot_stack_len = 0
             head_len = 0
-            for entry in ot.trace_entries:
+            for entry in ot.get_trace_entries():
                 head_len += 1
 
                 if entry.is_call:
@@ -41,7 +41,7 @@ def remove_object_trace_bodies(config: Config):
 
             assert ot_stack_len == 0
 
-            trace_entries_without_head = ot.trace_entries[head_len:]
+            trace_entries_without_head = ot.get_trace_entries()[head_len:]
 
             trace_entries_tail: list[TraceEntry] = []
             for entry in reversed(trace_entries_without_head):

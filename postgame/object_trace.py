@@ -30,6 +30,10 @@ class TraceEntry:
     def __eq__(self, other: Self) -> bool:
         return self.method is other.method and self.is_call == other.is_call
 
+    def __hash__(self) -> int:
+        # we only care about the method's address and is_call
+        return self.method.address | (int(self.is_call) << 31)
+
 
 class ObjectTrace:
     """
@@ -38,13 +42,15 @@ class ObjectTrace:
     """
 
     def __init__(self, trace_entries: list[TraceEntry]):
-        self.trace_entries = trace_entries
+        self.__trace_entries = trace_entries
 
         self.__head_calls = 0
         self.__tail_returns = 0
 
         self.__head_length = 0
         self.__tail_length = 0
+
+        self.__hash_value: int | None = None
 
         i = 0
         te_stack = 0
@@ -89,21 +95,24 @@ class ObjectTrace:
             msg = f"Failed to parse object trace, calls and returns don't match: {self}"
             LOGGER.error(msg)
 
+    def get_trace_entries(self):
+        return self.__trace_entries
+
     def head_calls(self):
-        return self.trace_entries[: self.__head_calls]
+        return self.__trace_entries[: self.__head_calls]
 
     def tail_returns(self):
         return list(
             reversed(
-                self.trace_entries[len(self.trace_entries) - self.__tail_returns :],
+                self.__trace_entries[len(self.__trace_entries) - self.__tail_returns :],
             )
         )
 
     def head(self):
-        return self.trace_entries[: self.__head_length]
+        return self.__trace_entries[: self.__head_length]
 
     def tail(self):
-        return self.trace_entries[-self.__tail_length :]
+        return self.__trace_entries[-self.__tail_length :]
 
     def identify_initializer_finalizer(self):
         """
@@ -111,9 +120,9 @@ class ObjectTrace:
         with the first trace entry is an initializer and the method associated with the
         last trace entry is a finalizer.
         """
-        if self.trace_entries != []:
-            self.trace_entries[0].method.is_initializer = True
-            self.trace_entries[-1].method.is_finalizer = True
+        if self.__trace_entries != []:
+            self.__trace_entries[0].method.is_initializer = True
+            self.__trace_entries[-1].method.is_finalizer = True
 
     def update_head_tail(self):
         """
@@ -126,7 +135,7 @@ class ObjectTrace:
         This is not something that the original Lego paper does, and should not be
         called when running Lego.
         """
-        if self.__tail_length + self.__head_length > len(self.trace_entries):
+        if self.__tail_length + self.__head_length > len(self.__trace_entries):
             # Head and tail overlap.
             self.__head_calls = 0
             self.__tail_returns = 0
@@ -139,12 +148,14 @@ class ObjectTrace:
 
     def update_method_statistics(self):
         for i in range(self.__head_calls):
-            self.trace_entries[i].method.seen_in_head += 1
+            self.__trace_entries[i].method.seen_in_head += 1
 
         for i in range(self.__tail_returns):
-            self.trace_entries[len(self.trace_entries) - i - 1].method.seen_in_tail += 1
+            self.__trace_entries[
+                len(self.__trace_entries) - i - 1
+            ].method.seen_in_tail += 1
 
-        for te in self.trace_entries:
+        for te in self.__trace_entries:
             if te.is_call:
                 te.method.seen_count += 1
 
@@ -155,7 +166,7 @@ class ObjectTrace:
         return set(
             map(
                 lambda entry: entry.method,
-                filter(lambda entry: entry.is_call, self.trace_entries),
+                filter(lambda entry: entry.is_call, self.__trace_entries),
             )
         )
 
@@ -168,30 +179,33 @@ class ObjectTrace:
 
         trace_start_idx = 0
 
-        for i in range(len(self.trace_entries)):
-            cur_entry = self.trace_entries[i]
+        for i in range(len(self.__trace_entries)):
+            cur_entry = self.__trace_entries[i]
             if (
                 cur_entry.method.is_finalizer
                 and not cur_entry.is_call
-                and i + 1 < len(self.trace_entries)
-                and self.trace_entries[i + 1].method.is_initializer
-                and self.trace_entries[i + 1].is_call
+                and i + 1 < len(self.__trace_entries)
+                and self.__trace_entries[i + 1].method.is_initializer
+                and self.__trace_entries[i + 1].is_call
             ):
-                split_traces.append(self.trace_entries[trace_start_idx : i + 1])
+                split_traces.append(self.__trace_entries[trace_start_idx : i + 1])
                 trace_start_idx = i + 1
 
         if split_traces == []:
             return None
 
-        split_traces.append(self.trace_entries[trace_start_idx:])
+        split_traces.append(self.__trace_entries[trace_start_idx:])
 
         return map(ObjectTrace, split_traces)
 
     def __str__(self) -> str:
-        return "\n".join(map(str, self.trace_entries))
+        return "\n".join(map(str, self.__trace_entries))
 
     def __hash__(self):
-        return hash(self.__str__())
+        # when hashing we only care about self.trace_entries
+        if not self.__hash_value:
+            self.__hash_value = hash(tuple([hash(x) for x in self.__trace_entries]))
+        return self.__hash_value
 
     def __eq__(self, other: Self) -> bool:
-        return self.trace_entries == other.trace_entries
+        return self.__trace_entries == other.__trace_entries

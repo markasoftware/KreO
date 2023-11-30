@@ -496,11 +496,13 @@ def match_gen_to_gt_classes(
         # For each ground truth class that does have a nonzero
         # method set intersection size, record the size.
         gen_gt_intersection_sizes: dict[int, list[ar.Structure]] = defaultdict(list)
+
+        gen_cls_method_set = set(map(lambda x: x.ea, gen_cls.methods.values()))
+
         for gt_cls in gt_nonempty_classes:
             if hash(gt_cls) in gt_classes_referenced:
                 continue
 
-            gen_cls_method_set = set(map(lambda x: x.ea, gen_cls.methods.values()))
             gt_cls_method_set = set(map(lambda x: x.ea, gt_cls.methods.values()))
             intersect_size = intersection_size(gen_cls_method_set, gt_cls_method_set)
             if intersect_size != 0:
@@ -560,7 +562,6 @@ def run_evaluation(
         run_test("Destructors", evaluate_destructors)
         run_test("Methods", evaluate_methods)
         run_test("Class Graph Edges", evaluate_class_graph_edges)
-        run_test("Class Graph Ancestors", evaluate_class_graph_ancestors)
 
         return results
 

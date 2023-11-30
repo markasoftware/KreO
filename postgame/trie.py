@@ -67,11 +67,8 @@ class Trie(Generic[T]):
     def insert_value(self, trace: list[int], value: T):
         success = self.__insert_value(self.root, trace, value)
         if success:
-            msg = f"Inserted node with trace {trace} into trie"
+            msg = f"Inserted node with trace {[hex(x) for x in trace]} into trie"
             LOGGER.debug(msg)
-        else:
-            msg = f"Failed to insert node with trace {trace} into trie because already exists"
-            LOGGER.warning(msg)
 
     def __insert_value(self, node: Node[T], trace: list[int], value: T) -> bool:
         if len(trace) == 1:

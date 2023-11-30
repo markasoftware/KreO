@@ -11,6 +11,7 @@ from typing_extensions import Any
 import evaluation.evaluation
 import evaluation.extract_gt_methods
 import evaluation.pdb_parser
+import evaluation.results.generate_result_tables
 from parseconfig import Config, Isa, parseconfig
 from postgame.postgame import Postgame
 
@@ -240,6 +241,11 @@ def run_all_pipelines_with_evaluation():
         cfg = c
         print(f"Running evaluation {c.base_directory}")
         run_pipeline_evaluation()
+
+
+@APP.command()
+def generate_result_tables():
+    evaluation.results.generate_result_tables.main()
 
 
 if __name__ == "__main__":

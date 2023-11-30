@@ -266,10 +266,7 @@ class Postgame:
                 )
 
             # Map all methods in the trace to the class in the trie
-            node = self.trie.get_node(KreoClass.to_trace(tail_returns))
-            assert node is not None
-            cls = node.value
-            assert cls is not None
+            cls = self.get_cls(self.trie.get_node(KreoClass.to_trace(tail_returns)))
             for method in ot.methods():
                 self.method_to_class_map[method].add(cls)
 
@@ -324,7 +321,7 @@ class Postgame:
             lca = self.__trie_lca(cls_set)
 
             if lca:
-                LOGGER.debug(f"Found LCA for method {method.address}, LCA = {lca}")
+                LOGGER.debug(f"Found LCA for method {method}, LCA = {lca}")
                 # LCA exists
                 self.method_to_class_map[method] = set([lca])
             else:
@@ -527,7 +524,11 @@ class Postgame:
         # map trie nodes to methods now that method locations are fixed
         for method, cls_set in self.method_to_class_map.items():
             if len(cls_set) > 1:
-                LOGGER.info("Method mapped to multiple classes: %s", method)
+                LOGGER.info(
+                    "Method mapped to multiple classes: %s (cls tails = %s)",
+                    method,
+                    [[hex(y.method.address) for y in x.tail_returns] for x in cls_set],
+                )
             elif len(cls_set) == 0:
                 LOGGER.fatal("Method not mapped to any classes: %s", method)
 
@@ -541,37 +542,32 @@ class Postgame:
         parent_node: Node[KreoClass],
         node: Node[KreoClass],
     ):
-        for child in node.children.values():
-            if child.value:
-                analysis_results.structures[str(child.value)] = ar.Structure(
-                    name=str(child.value)
+        if node.value:
+            analysis_results.structures[str(node.value)] = ar.Structure(
+                name=str(node.value)
+            )
+
+            if parent_node.value:
+                analysis_results.structures[str(node.value)].members["0x0"] = ar.Member(
+                    name=str(parent_node.value) + "_0x0",
+                    struc=str(parent_node.value),
                 )
 
-                if parent_node.value:
-                    # For now, while we only detect direct parent relationships, only
-                    # add a member if we have a parent, and don't actually know anything
-                    # about its size
-                    analysis_results.structures[str(child.value)].members[
-                        "0x0"
-                    ] = ar.Member(
-                        name=str(parent_node.value) + "_0x0",
-                        struc=str(parent_node.value),
+            # If there are no methods associated with the trie node there might not
+            # be any methods in the set
+            if node.value in self.class_to_method_set:
+                for method in self.class_to_method_set[node.value]:
+                    method_addr_str = hex(method.address + self.base_offset)
+                    analysis_results.structures[str(node.value)].methods[
+                        method_addr_str
+                    ] = ar.Method(
+                        demangled_name=method.name if method.name else "",
+                        ea=method_addr_str,
+                        name=method.type + "_" + method_addr_str,
+                        type=method.type,
                     )
 
-                # If there are no methods associated with the trie node there might not
-                # be any methods in the set
-                if child.value in self.class_to_method_set:
-                    for method in self.class_to_method_set[child.value]:
-                        method_addr_str = hex(method.address + self.base_offset)
-                        analysis_results.structures[str(child.value)].methods[
-                            method_addr_str
-                        ] = ar.Method(
-                            demangled_name=method.name if method.name else "",
-                            ea=method_addr_str,
-                            name=method.type + "_" + method_addr_str,
-                            type=method.type,
-                        )
-
+        for child in node.children.values():
             self.__generate_json(analysis_results, node, child)
 
     def generate_json(self):
@@ -623,11 +619,11 @@ class Postgame:
         self.run_step(self.parse_input, "parsing input...", "input parsed")
         LOGGER.info("Found %i traces", len(self.traces))
 
-        self.run_step(
-            self.split_dynamic_traces,
-            "splitting traces...",
-            "traces split",
-        )
+        # self.run_step(
+        #     self.split_dynamic_traces,
+        #     "splitting traces...",
+        #     "traces split",
+        # )
         LOGGER.info("after splitting there are now %i traces", len(self.traces))
 
         if not self.analysis_tool_lego():
@@ -712,6 +708,18 @@ class Postgame:
             # reorganization complete')
 
         self.run_step(
+            self.update_all_method_statistics,
+            "updating method statistics...",
+            "method statistics updated",
+        )
+
+        self.run_step(
+            self.update_method_type,
+            "updating method type...",
+            "method type updated",
+        )
+
+        self.run_step(
             self.map_trie_nodes_to_methods,
             "mapping trie nodes to methods...",
             "trie nodes mapped",
@@ -722,5 +730,7 @@ class Postgame:
             "generating json...",
             "json generated",
         )
+
+        print(self.trie)
 
         LOGGER.info("Done, Kreo exiting normally.")

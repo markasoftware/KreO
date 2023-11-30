@@ -1,15 +1,18 @@
+import json
 import os
-
-from typing import List, Tuple, Dict
 from collections import defaultdict
+from pathlib import Path
 
-SCRIPT_PATH = os.path.split(os.path.realpath(__file__))[0]
+from evaluation.evaluation_data import EvaluationResult, EvaluationResults
 
-PRF_DESCRIPTOR = '''(P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.'')'''
-ANALYSIS_TOOL_NAMES = ['Lego', 'Lego+', 'KreO', 'OOAnalyzer']
-ANALYSIS_TOOL_KEYS = ['lego', 'lego+', 'kreo', 'ooa']
+SCRIPT_PATH = Path(__file__).parent
+
+PRF_DESCRIPTOR = """(P indicates ``precision,'' R indicates ``recall,'' and F indicates ``F-Score.'')"""
+ANALYSIS_TOOL_NAMES = ["Lego", "Lego+", "KreO", "OOAnalyzer"]
+ANALYSIS_TOOL_KEYS = ["lego", "lego+", "kreo", "ooa"]
 
 assert len(ANALYSIS_TOOL_NAMES) == len(ANALYSIS_TOOL_KEYS)
+
 
 class PRF:
     def __init__(self, p: float, r: float, f: float):
@@ -18,118 +21,91 @@ class PRF:
         self.f = f
 
     def __str__(self):
-        return f'{self.p} {self.r} {self.f}'
+        return f"{self.p} {self.r} {self.f}"
 
-class RawData:
-    def __init__(self, tp: str='0', fp: str='0', fn: str='0'):
-        self.tp = int(tp)
-        self.fp = int(fp)
-        self.fn = int(fn)
 
-    def ComputePrecision(self) -> float:
-        '''
-        Calculate and return precision.
-        '''
-        if self.tp + self.fp == 0:
-            return 0.0
-        return float(self.tp) / float(self.tp + self.fp)
+def sum_evaluation_results(data: list[EvaluationResult]) -> EvaluationResult:
+    """
+    Get average EvaluationResult given data, a list of EvaluationResult
+    """
+    avg = EvaluationResult(
+        true_positives=sum(list(map(lambda x: x.true_positives, data))),
+        false_positives=sum(list(map(lambda x: x.false_positives, data))),
+        false_negatives=sum(list(map(lambda x: x.false_negatives, data))),
+    )
 
-    def ComputeRecall(self) -> float:
-        '''
-        Calculate and return recall.
-        '''
-        if self.tp + self.fn == 0:
-            return 0.0
-        return float(self.tp) / float(self.tp + self.fn)
-
-    def ComputeF(self):
-        '''
-        Calculate and return the F-1 score (combination of precision and recall).
-        '''
-        p = self.ComputePrecision()
-        r = self.ComputeRecall()
-        if p + r == 0.0:
-            return 0.0
-        return (2.0 * p * r) / (p + r)
-
-    def __str__(self):
-        return f'tp: {self.tp} fp: {self.fp} fn: {self.fn}'
-
-def ParseLine(line: str) -> Tuple[str, RawData]:
-    line = line.split('&')
-    return line[0], RawData(line[1], line[2], line[3])
-
-def SumRawData(data: List[RawData]) -> RawData:
-    '''
-    Get average RawData given data, a list of RawData
-    '''
-    avg = RawData()
-    avg.tp = sum(list(map(lambda x: x.tp, data)))
-    avg.fp = sum(list(map(lambda x: x.fp, data)))
-    avg.fn = sum(list(map(lambda x: x.fn, data)))
     return avg
 
-def RawDataToPRF(data: RawData) -> PRF:
-    return PRF(data.ComputePrecision(), data.ComputeRecall(), data.ComputeF())
 
-def GetMaxPrf(data: List[RawData]) -> PRF:
-    '''
-    Given a list of RawData, find the max precision, recall, and F-score and return it.
-    '''
+def evaluation_result_to_prf(data: EvaluationResult) -> PRF:
+    return PRF(data.get_precision(), data.get_recall(), data.get_fscore())
+
+
+def get_max_prf(data: list[EvaluationResult]) -> PRF:
+    """
+    Given a list of EvaluationResult, find the max precision, recall, and F-score and return it.
+    """
     max_prf = PRF(0, 0, 0)
     for x in data:
-        max_prf.p = max(max_prf.p, x.ComputePrecision())
-        max_prf.r = max(max_prf.r, x.ComputeRecall())
-        max_prf.f = max(max_prf.f, x.ComputeF())
+        max_prf.p = max(max_prf.p, x.get_precision())
+        max_prf.r = max(max_prf.r, x.get_recall())
+        max_prf.f = max(max_prf.f, x.get_fscore())
     return max_prf
 
-def GetPrfStr(data: RawData, max_prf: PRF=None):
-    '''
-    Given RawData, return LaTeX string representation of the data, string
+
+def GetPrfStr(data: EvaluationResult, max_prf: PRF | None = None):
+    """
+    Given EvaluationResult, return LaTeX string representation of the data, string
     contains precision, recall, F-Score. Elements bolded if they are equal
     to the max_prf.
-    '''
-    if max_prf == None:
+    """
+    if max_prf is None:
         max_prf = PRF(-1, -1, -1)
 
-    def get_str_val(value, max_value):
+    def get_str_val(value: float, max_value: float):
         if abs(value - max_value) < 0.005:
-            return '\\textbf{{{0:0.2f}}}'.format(value)
-        return '{0:0.2f}'.format(value)
+            return "\\textbf{{{0:0.2f}}}".format(value)
+        return "{0:0.2f}".format(value)
 
-    return f'{get_str_val(data.ComputePrecision(), max_prf.p)} & {get_str_val(data.ComputeRecall(), max_prf.r)} & {get_str_val(data.ComputeF(), max_prf.f)}'
+    p = get_str_val(data.get_precision(), max_prf.p)
+    r = get_str_val(data.get_recall(), max_prf.r)
+    f = get_str_val(data.get_fscore(), max_prf.f)
+    return f"{p} & {r} & {f}"
 
-def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str, RawData]]):
-    '''Generates table given instrumented results'''
+
+def get_table_instrumented(
+    analysis_tool: str,
+    instrumented_results: dict[str, EvaluationResults],
+):
+    """Generates table given instrumented results"""
 
     def GetTableStart():
         nonlocal analysis_tool
 
-        program = ''
-        evaluation_category = ''
-        tabular = ''
+        program = ""
+        evaluation_category = ""
+        tabular = ""
 
-        def AddEvaluationCategory(name, last=False):
+        def add_evaluation_category(name: str, last: bool = False):
             nonlocal evaluation_category
             nonlocal program
             nonlocal tabular
 
-            evaluation_category += r' & \multicolumn{3}{|c}{\begin{tabular}{@{}c@{}}'
+            evaluation_category += r" & \multicolumn{3}{|c}{\begin{tabular}{@{}c@{}}"
             evaluation_category += name
-            evaluation_category += r'\end{tabular}}'
+            evaluation_category += r"\end{tabular}}"
 
-            program += '& P & R & F '
-            tabular += '|ccc'
+            program += "& P & R & F "
+            tabular += "|ccc"
 
-        AddEvaluationCategory(r'Class Graph\\Edges')
-        AddEvaluationCategory(r'Class Graph\\Ancestors')
-        AddEvaluationCategory(r'Individual Classes')
-        AddEvaluationCategory(r'Constructors')
-        AddEvaluationCategory(r'Destructors')
-        AddEvaluationCategory(r'Methods')
-        AddEvaluationCategory(r'Methods Assigned\\to Correct Class')
+        add_evaluation_category(r"Class Graph\\Edges")
+        add_evaluation_category(r"Individual Classes")
+        add_evaluation_category(r"Constructors")
+        add_evaluation_category(r"Destructors")
+        add_evaluation_category(r"Methods")
+        add_evaluation_category(r"Methods Assigned\\to Correct Class")
 
-        start = f'''
+        start = f"""
 \\begin{{table*}}
   \caption{{Evaluation of {analysis_tool} on the Covered Ground Truth {PRF_DESCRIPTOR}}}
   \label{{tab:{analysis_tool}-cgt}}
@@ -139,85 +115,91 @@ def GetTableInstrumented(analysis_tool, instrumented_results: Dict[str, Dict[str
     Evaluation Category{evaluation_category} \\\\
     Program {program}\\\\
     \\midrule
-'''
+"""
 
         return start
 
-    out = ''
-    sums: Dict[str, List[RawData]] = defaultdict(list)
+    out = ""
+    sums: dict[str, list[EvaluationResult]] = defaultdict(list)
 
-    for project, result in sorted(instrumented_results.items(), key=lambda x: x[0].lower()):
-        class_graph_edges = result['Class Graph Edges']
-        class_graph_ancestors = result['Class Graph Ancestors']
-        individual_classes = result['Individual Classes']
-        constructors = result['Constructors']
-        destructors = result['Destructors']
-        methods = result['Methods']
-        methods_assigned_to_correct_class = result['Methods Assigned to Correct Class']
+    for evaluated_project, results in sorted(
+        instrumented_results.items(), key=lambda x: x[0].lower()
+    ):
+        class_graph_edges = results.result_mapping["Class Graph Edges"]
+        individual_classes = results.result_mapping["Individual Classes"]
+        constructors = results.result_mapping["Constructors"]
+        destructors = results.result_mapping["Destructors"]
+        methods = results.result_mapping["Methods"]
+        methods_assigned_to_correct_class = results.result_mapping[
+            "Methods Assigned to Correct Class"
+        ]
 
-        out += f'    {project} & '
-        out += GetPrfStr(class_graph_edges) + ' & '
-        out += GetPrfStr(class_graph_ancestors) + ' & '
-        out += GetPrfStr(individual_classes) + ' & '
-        out += GetPrfStr(constructors) + ' & '
-        out += GetPrfStr(destructors) + ' & '
-        out += GetPrfStr(methods) + ' & '
+        out += f"    {evaluated_project} & "
+        out += GetPrfStr(class_graph_edges) + " & "
+        out += GetPrfStr(individual_classes) + " & "
+        out += GetPrfStr(constructors) + " & "
+        out += GetPrfStr(destructors) + " & "
+        out += GetPrfStr(methods) + " & "
         out += GetPrfStr(methods_assigned_to_correct_class)
-        out += '\\\\\n'
+        out += "\\\\\n"
 
-        sums['Class Graph Edges'].append(result['Class Graph Edges'])
-        sums['Class Graph Ancestors'].append(result['Class Graph Ancestors'])
-        sums['Individual Classes'].append(result['Individual Classes'])
-        sums['Constructors'].append(result['Constructors'])
-        sums['Destructors'].append(result['Destructors'])
-        sums['Methods'].append(result['Methods'])
-        sums['Methods Assigned to Correct Class'].append(result['Methods Assigned to Correct Class'])
+        sums["Class Graph Edges"].append(results.result_mapping["Class Graph Edges"])
+        sums["Individual Classes"].append(results.result_mapping["Individual Classes"])
+        sums["Constructors"].append(results.result_mapping["Constructors"])
+        sums["Destructors"].append(results.result_mapping["Destructors"])
+        sums["Methods"].append(results.result_mapping["Methods"])
+        sums["Methods Assigned to Correct Class"].append(
+            results.result_mapping["Methods Assigned to Correct Class"]
+        )
 
-    out += '    \\midrule\n'
-    out += '    Average & '
-    out += GetPrfStr(SumRawData(sums['Class Graph Edges'])) + ' & '
-    out += GetPrfStr(SumRawData(sums['Class Graph Ancestors'])) + ' & '
-    out += GetPrfStr(SumRawData(sums['Individual Classes'])) + ' & '
-    out += GetPrfStr(SumRawData(sums['Constructors'])) + ' & '
-    out += GetPrfStr(SumRawData(sums['Destructors'])) + ' & '
-    out += GetPrfStr(SumRawData(sums['Methods'])) + ' & '
-    out += GetPrfStr(SumRawData(sums['Methods Assigned to Correct Class']))
-    out += '\\\\\n'
+    out += "    \\midrule\n"
+    out += "    Average & "
+    out += GetPrfStr(sum_evaluation_results(sums["Class Graph Edges"])) + " & "
+    out += GetPrfStr(sum_evaluation_results(sums["Individual Classes"])) + " & "
+    out += GetPrfStr(sum_evaluation_results(sums["Constructors"])) + " & "
+    out += GetPrfStr(sum_evaluation_results(sums["Destructors"])) + " & "
+    out += GetPrfStr(sum_evaluation_results(sums["Methods"])) + " & "
+    out += GetPrfStr(sum_evaluation_results(sums["Methods Assigned to Correct Class"]))
+    out += "\\\\\n"
 
-    TABLE_END = r'''    \bottomrule
+    TABLE_END = r"""    \bottomrule
   \end{tabular}
 \end{table*}
-'''
+"""
 
     return GetTableStart() + out + TABLE_END
 
-def GetFullTable(caption: str, results: Dict[str, Dict[str, RawData]]):
-    '''Generate table with all results (not averaged).
-    results maps evaluated project to a dict that maps the analysis tool to the results'''
 
-    def GetTableStart(floating=False):
+def get_full_table(caption: str, results: dict[str, dict[str, EvaluationResult]]):
+    """Generate table with all results (not averaged).
+
+    `results` maps evaluated project to a dict that maps the analysis tool to an
+    EvaluationResult model.
+    """
+
+    def get_table_start(floating: bool = False):
         nonlocal caption
 
-        label = '-'.join(caption.split(' '))
-        floating_str = '[H]' if floating else ''
+        label = "-".join(caption.split(" "))
+        floating_str = "[H]" if floating else ""
 
-        tools = ''
-        project = ''
-        tabular = ''
+        tools = ""
+        project = ""
+        tabular = ""
 
         def AddEvaluationTool(tool: str):
             nonlocal tools
             nonlocal project
             nonlocal tabular
 
-            tools += f' & \multicolumn{{3}}{{|c}}{{{tool}}}'
-            project += ' & P & R & F'
-            tabular += '|ccc'
+            tools += f" & \multicolumn{{3}}{{|c}}{{{tool}}}"
+            project += " & P & R & F"
+            tabular += "|ccc"
 
         for tool in ANALYSIS_TOOL_NAMES:
             AddEvaluationTool(tool)
-        
-        return f'''
+
+        return f"""
 \\begin{{table}}{floating_str}
   \centering
   \caption{{Evaluation of Various Projects, {caption}}}
@@ -227,78 +209,84 @@ def GetFullTable(caption: str, results: Dict[str, Dict[str, RawData]]):
     Program{tools}\\\\
     Project{project}\\\\
     \midrule
-'''
+"""
 
-    TABLE_END = r'''    \bottomrule
+    TABLE_END = r"""    \bottomrule
   \end{tabular}
-\end{table}'''
+\end{table}"""
 
-    result_list: Dict[str, List[RawData]] = defaultdict(list)
+    result_list: dict[str, list[EvaluationResult]] = defaultdict(list)
 
-    out = ''
+    out = ""
     # sort by evaluated project name
-    for evaluated_project, result in sorted(results.items(), key=lambda x: x[0].lower()):
-        max_prf = GetMaxPrf(result.values())
+    for evaluated_project, result in sorted(
+        results.items(), key=lambda x: x[0].lower()
+    ):
+        max_prf = get_max_prf(list(result.values()))
 
-        out += f'    {evaluated_project}'
+        out += f"    {evaluated_project}"
         for tool_key in ANALYSIS_TOOL_KEYS:
-            out += f' & {GetPrfStr(result[tool_key], max_prf)}'
+            out += f" & {GetPrfStr(result[tool_key], max_prf)}"
             result_list[tool_key].append(result[tool_key])
-        out += '\\\\\n'
-    out += '    \\midrule\n'
+        out += "\\\\\n"
+    out += "    \\midrule\n"
 
-    result_avg: Dict[str, RawData] = dict()
+    result_avg: dict[str, EvaluationResult] = dict()
 
     for tool in ANALYSIS_TOOL_KEYS:
-        result_avg[tool] = SumRawData(result_list[tool])
+        result_avg[tool] = sum_evaluation_results(result_list[tool])
 
-    max_prf_avg = GetMaxPrf(result_avg.values())
+    max_prf_avg = get_max_prf(list(result_avg.values()))
 
-    out_avg = '    Average'
+    out_avg = "    Average"
     for tool in ANALYSIS_TOOL_KEYS:
-        out_avg += f' & {GetPrfStr(result_avg[tool], max_prf_avg)}'
-    out_avg += '\\\\\n'
+        out_avg += f" & {GetPrfStr(result_avg[tool], max_prf_avg)}"
+    out_avg += "\\\\\n"
 
     out += out_avg
 
-    return GetTableStart(True) + out + TABLE_END
+    return get_table_start(True) + out + TABLE_END
 
-def GetAverageTable(results: Dict[str, Dict[str, Dict[str, RawData]]]):
-    '''Generate table with all results, averaged'''
 
-    out = ''
-    # Maps evaluation type to dict that maps analysis tool to a list of RawData
-    sums: Dict[str, Dict[str, List[RawData]]] = defaultdict(lambda: defaultdict(list))
+def get_average_table(results: dict[str, EvaluationResults]):
+    """Generate table with all results, averaged"""
 
-    for evaluation_type in results:
-        for evaluated_project in results[evaluation_type]:
-            for analysis_tool in results[evaluation_type][evaluated_project]:
-                data = results[evaluation_type][evaluated_project][analysis_tool]
-                sums[evaluation_type][analysis_tool].append(data)
+    out = ""
+    # Maps evaluated project to dict that maps evaluation tool to a list of EvaluationResult
+    sums: dict[str, dict[str, list[EvaluationResult]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+
+    for evaluation_name, result in results.items():
+        _, evaluation_tool = evaluation_name.split("-")
+        for category in result.result_mapping:
+            sums[category][evaluation_tool].append(result.result_mapping[category])
 
     for evaluation_type, result in sums.items():
         # Get average from result for each analysis tool
-        result = dict(list(map(lambda x: (x[0], SumRawData(x[1])), result.items())))
-        max_prf = GetMaxPrf(result.values())
+        result = dict(
+            list(map(lambda x: (x[0], sum_evaluation_results(x[1])), result.items()))
+        )
+        max_prf = get_max_prf(list(result.values()))
 
-        out += f'    {evaluation_type}'
+        out += f"    {evaluation_type}"
         for tool in ANALYSIS_TOOL_KEYS:
-            out += f'& {GetPrfStr(result[tool], max_prf)}'
-        out += '\\\\\n'
+            out += f"& {GetPrfStr(result[tool], max_prf)}"
+        out += "\\\\\n"
 
     def GetTableStart():
-        tabular = ''
-        program = ''
-        evaluation_category = ''
+        tabular = ""
+        program = ""
+        evaluation_category = ""
         for idx, tool in zip(range(len(ANALYSIS_TOOL_NAMES)), ANALYSIS_TOOL_NAMES):
-            tabular += '|ccc'
+            tabular += "|ccc"
             if idx + 1 == len(ANALYSIS_TOOL_NAMES):
-                program += f' & \multicolumn{{3}}{{c}}{{{tool}}}'
+                program += f" & \multicolumn{{3}}{{c}}{{{tool}}}"
             else:
-                program += f' & \multicolumn{{3}}{{c|}}{{{tool}}}'
-            evaluation_category += ' & P & R & F'
+                program += f" & \multicolumn{{3}}{{c|}}{{{tool}}}"
+            evaluation_category += " & P & R & F"
 
-        return f'''\\begin{{table*}}
+        return f"""\\begin{{table*}}
 \centering
 \caption{{Evaluation of Various Projects, Average Results {PRF_DESCRIPTOR}}}
 \label{{tab:averaged_results}}
@@ -307,53 +295,71 @@ def GetAverageTable(results: Dict[str, Dict[str, Dict[str, RawData]]]):
     Program{program}\\\\
     Evaluation Category{evaluation_category}\\\\
     \midrule
-'''
+"""
 
-    TABLE_END = r'''    \bottomrule
+    TABLE_END = r"""    \bottomrule
   \end{tabular}
-\end{table*}'''
+\end{table*}"""
 
     return GetTableStart() + out + TABLE_END
 
-def GetOverallResults(results: Dict[str, Dict[str, Dict[str, RawData]]]) -> str:
-    '''
+
+def get_overall_results(results: dict[str, EvaluationResults]) -> str:
+    """
     Averages PRF for all evaluation metrics for each tool
-    '''
-    # maps tool to list of PRF scores for that tool
-    overall: Dict[str, List[PRF]] = defaultdict(list)
+    """
+    # map evaluation tool to list of evaluation results
+    evaluation_tool_to_evaluation_results_map: dict[
+        str, list[EvaluationResults]
+    ] = defaultdict(list)
 
-    for evaluation_type in results:
-        # Maps analysis tool to list of raw data, each data point belonging to a different project
-        evaluation_sum: Dict[str, List[RawData]] = defaultdict(list)
+    for evaluation_name, result in results.items():
+        _, evaluation_tool = evaluation_name.split("-")
+        evaluation_tool_to_evaluation_results_map[evaluation_tool].append(result)
 
-        for project_name in results[evaluation_type]:
-            for analysis_tool in results[evaluation_type][project_name]:
-                data = results[evaluation_type][project_name][analysis_tool]
-                evaluation_sum[analysis_tool].append(data)
+    evaluation_tool_to_sum_map: dict[str, list[EvaluationResult]] = {}
 
-        evaluation_sum_new: Dict[str, RawData] = dict([(x, SumRawData(evaluation_sum[x])) for x in evaluation_sum])
-        for x in evaluation_sum_new:
-            overall[x].append(evaluation_sum_new[x])
+    # sum evaluation results for each evaluation category
+    for (
+        evaluation_tool,
+        result_list,
+    ) in evaluation_tool_to_evaluation_results_map.items():
+        category_to_evaluation_result_map: dict[
+            str, list[EvaluationResult]
+        ] = defaultdict(list)
 
-    def AveragePRF(l: List[RawData]) -> PRF:
-        p = sum(list(map(lambda x: x.ComputePrecision(), l)))
-        r = sum(list(map(lambda x: x.ComputeRecall(), l)))
-        f = sum(list(map(lambda x: x.ComputeF(), l)))
-        return PRF(p / len(l), r / len(l), f / len(l))
+        for result in result_list:
+            for category in result.result_mapping:
+                category_to_evaluation_result_map[category].append(
+                    result.result_mapping[category]
+                )
 
-    overall_avg: Dict[str, PRF] = dict([(x, AveragePRF(overall[x])) for x in overall])
+        evaluation_tool_to_sum_map[evaluation_tool] = [
+            sum_evaluation_results(x)
+            for x in category_to_evaluation_result_map.values()
+        ]
 
-    out = ''
+    def average_prf(ll: list[EvaluationResult]) -> PRF:
+        p = sum(list(map(lambda x: x.get_precision(), ll)))
+        r = sum(list(map(lambda x: x.get_recall(), ll)))
+        f = sum(list(map(lambda x: x.get_fscore(), ll)))
+        return PRF(p / len(ll), r / len(ll), f / len(ll))
 
-    def GenAvgStr(tool_key: str, tool_name: str):
+    overall_avg: dict[str, PRF] = dict(
+        [(k, average_prf(v)) for k, v in evaluation_tool_to_sum_map.items()]
+    )
+
+    out = ""
+
+    def gen_avg_str(tool_key: str, tool_name: str):
         nonlocal overall_avg
         avg_prf = overall_avg[tool_key]
-        return f'    {tool_name} & {avg_prf.p:0.2f} & {avg_prf.r:0.2f} & {avg_prf.f:0.2f}\\\\\n'
+        return f"    {tool_name} & {avg_prf.p:0.2f} & {avg_prf.r:0.2f} & {avg_prf.f:0.2f}\\\\\n"
 
     for tool_key, tool_name in zip(ANALYSIS_TOOL_KEYS, ANALYSIS_TOOL_NAMES):
-        out += GenAvgStr(tool_key, tool_name)
+        out += gen_avg_str(tool_key, tool_name)
 
-    TABLE_START = r'''\begin{table*}
+    TABLE_START = r"""\begin{table*}
   \centering
   \caption{Evaluation of Various Projects, Summarized Results}
   \label{tab:summarized_results}
@@ -361,85 +367,129 @@ def GetOverallResults(results: Dict[str, Dict[str, Dict[str, RawData]]]) -> str:
     \toprule
     Analysis Tool & Precision & Recall & F-Score\\
     \midrule
-'''
+"""
 
-    TABLE_END = r'''    \bottomrule
+    TABLE_END = r"""    \bottomrule
   \end{tabular}
-\end{table*}'''
+\end{table*}"""
 
     return TABLE_START + out + TABLE_END
 
+
+def collect_evaluation_result(
+    evaluation_category: str,
+    results: dict[str, EvaluationResults],
+) -> dict[str, dict[str, EvaluationResult]]:
+    out: dict[str, dict[str, EvaluationResult]] = defaultdict(dict)
+    for name, result in results.items():
+        evaluated_project, evaluation_tool = name.split("-")
+        out[evaluated_project][evaluation_tool] = result.result_mapping[
+            evaluation_category
+        ]
+    return out
+
+
 def main():
-    # Maps evaluation type to a dict. The inner dict maps evaluated project
-    # name to another dict that maps evaluated project to another dict that
-    # maps analysis tool to raw data
-    results: Dict[str, Dict[str, Dict[str, RawData]]] = defaultdict(lambda: defaultdict(dict))
+    # Maps file name (without suffix) to EvaluationResults
+    results: dict[str, EvaluationResults] = {}
 
-    for directory, _, files in os.walk(os.path.join(SCRIPT_PATH, 'in')):
-        for file in files:
-            if file == '.gitignore':
-                continue
+    for analysis_result_file in (SCRIPT_PATH / "in").glob("*.json"):
+        with analysis_result_file.open() as f:
+            results[
+                analysis_result_file.with_suffix("").name
+            ] = EvaluationResults.model_validate_json(f.read())
 
-            filepath = os.path.join(directory, file)
-            splitfilename = file.split('-')
-            evaluated_project = splitfilename[0]
-            analysis_tool = splitfilename[1]
+    with (SCRIPT_PATH / "full-results.tex").open("w") as f:
+        f.write(
+            get_full_table(
+                "Class Graph Edges",
+                collect_evaluation_result("Class Graph Edges", results),
+            )
+            + "\n"
+        )
 
-            with open(filepath, 'r') as f:
-                data = f.read().splitlines()
-                data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
+        f.write(
+            get_full_table(
+                "Individual Classes",
+                collect_evaluation_result("Individual Classes", results),
+            )
+            + "\n"
+        )
 
-                def map_to_results(evaluation_type: str):
-                    results[evaluation_type][evaluated_project][analysis_tool] = data[evaluation_type]
+        f.write(
+            get_full_table(
+                "Constructors",
+                collect_evaluation_result("Constructors", results),
+            )
+            + "\n"
+        )
 
-                map_to_results('Class Graph Edges')
-                map_to_results('Class Graph Ancestors')
-                map_to_results('Individual Classes')
-                map_to_results('Constructors')
-                map_to_results('Destructors')
-                map_to_results('Methods')
-                map_to_results('Methods Assigned to Correct Class')
+        f.write(
+            get_full_table(
+                "Destructors",
+                collect_evaluation_result("Destructors", results),
+            )
+            + "\n"
+        )
 
-    with open(os.path.join(SCRIPT_PATH, 'full-results.tex'), 'w') as f:
-        f.write(GetFullTable('Class Graph Edges', results['Class Graph Edges']) + '\n')
-        f.write(GetFullTable('Class Graph Ancestors', results['Class Graph Ancestors']) + '\n')
-        f.write(GetFullTable('Individual Classes', results['Individual Classes']) + '\n')
-        f.write(GetFullTable('Constructors', results['Constructors']) + '\n')
-        f.write(GetFullTable('Destructors', results['Destructors']) + '\n')
-        f.write(GetFullTable('Methods', results['Methods']) + '\n')
-        f.write(GetFullTable('Methods Assigned to Correct Class', results['Methods Assigned to Correct Class']) + '\n')
+        f.write(
+            get_full_table(
+                "Methods",
+                collect_evaluation_result("Methods", results),
+            )
+            + "\n"
+        )
 
-    with open(os.path.join(SCRIPT_PATH, 'average-results.tex'), 'w') as f:
-        f.write(GetAverageTable(results))
+        f.write(
+            get_full_table(
+                "Methods",
+                collect_evaluation_result("Methods", results),
+            )
+            + "\n"
+        )
 
-    def GetInstrumentedResults(instrumented_results_fpath):
-        instrumented_results: Dict[str, Dict[str, RawData]] = {}
+        f.write(
+            get_full_table(
+                "Methods Assigned to Correct Class",
+                collect_evaluation_result("Methods Assigned to Correct Class", results),
+            )
+            + "\n"
+        )
 
-        for directory, _, files in os.walk(instrumented_results_fpath):
-            for evaluated_project in files:
-                if evaluated_project == '.gitignore':
-                    continue
+    with (SCRIPT_PATH / "average-results.tex").open("w") as f:
+        f.write(get_average_table(results))
 
-                filepath = os.path.join(directory, evaluated_project)
+    def get_instrumented_results(instrumented_results_fpath: Path):
+        instrumented_results: dict[str, EvaluationResults] = {}
 
-                with open(filepath, 'r') as f:
-                    data = f.read().splitlines()
-                    data: Dict[str, List[RawData]] = dict([ParseLine(x) for x in data])
-                    instrumented_results[evaluated_project] = data
+        for file in instrumented_results_fpath.glob("*.json"):
+            with file.open() as f:
+                instrumented_results[
+                    file.with_suffix("").name
+                ] = EvaluationResults.model_validate_json(f.read())
 
         return instrumented_results
 
-    with open(os.path.join(SCRIPT_PATH, 'lego-instrumented-results.tex'), 'w') as f:
-        f.write(GetTableInstrumented('lego', GetInstrumentedResults('in-instrumented-lego')))
+    with (SCRIPT_PATH / "lego-instrumented-results.tex").open("w") as f:
+        f.write(
+            get_table_instrumented(
+                "lego", get_instrumented_results(SCRIPT_PATH / "in-instrumented-lego")
+            )
+        )
 
-    with open(os.path.join(SCRIPT_PATH, 'lego+-instrumented-results.tex'), 'w') as f:
-        f.write(GetTableInstrumented('lego+', GetInstrumentedResults('in-instrumented-lego+')))
+    with (SCRIPT_PATH / "lego+-instrumented-results.tex").open("w") as f:
+        f.write(
+            get_table_instrumented(
+                "lego+", get_instrumented_results(SCRIPT_PATH / "in-instrumented-lego+")
+            )
+        )
 
-    with open(os.path.join(SCRIPT_PATH, 'kreo-instrumented-results.tex'), 'w') as f:
-        f.write(GetTableInstrumented('kreo', GetInstrumentedResults('in-instrumented-kreo')))
+    with (SCRIPT_PATH / "kreo-instrumented-results.tex").open("w") as f:
+        f.write(
+            get_table_instrumented(
+                "kreo", get_instrumented_results(SCRIPT_PATH / "in-instrumented-kreo")
+            )
+        )
 
-    with open(os.path.join(SCRIPT_PATH, 'overall-results.tex'), 'w') as f:
-        f.write(GetOverallResults(results))
-
-if __name__ == '__main__':
-    main()
+    with (SCRIPT_PATH / "overall-results.tex").open("w") as f:
+        f.write(get_overall_results(results))
