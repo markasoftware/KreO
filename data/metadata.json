@@ -1,13 +1,4 @@
 {
-    "kreo-catch2": {
-        "analysis_tool": "kreo",
-        "isa": "x86",
-        "binary_path": "../catch2/catch2.exe",
-        "pdb_file": "../catch2/catch2.pdb",
-        "results_path": "../../evaluation/results/in/catch2-kreo.json",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-kreo/catch2.json",
-        "base_directory": "kreo-catch2"
-    },
     "kreo-libbmp": {
         "analysis_tool": "kreo",
         "isa": "x86",
@@ -50,26 +41,17 @@
         "isa": "x86",
         "binary_path": "../libbmp/libbmp.exe",
         "pdb_file": "../libbmp/libbmp.pdb",
-        "results_path": "../../evaluation/results/in/libbmp-lego",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/libbmp",
+        "results_path": "../../evaluation/results/in/libbmp-lego.json",
+        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/libbmp.json",
         "base_directory": "lego-libbmp"
-    },
-    "lego-catch2": {
-        "analysis_tool": "lego",
-        "isa": "x86",
-        "binary_path": "../catch2/catch2.exe",
-        "pdb_file": "../catch2/catch2.pdb",
-        "results_path": "../../evaluation/results/in/catch2-lego.json",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/catch2.json",
-        "base_directory": "lego-catch2"
     },
     "lego-optparse": {
         "analysis_tool": "lego",
         "isa": "x86",
         "binary_path": "../optparse/optparse.exe",
         "pdb_file": "../optparse/optparse.pdb",
-        "results_path": "../../evaluation/results/in/optparse-lego",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/optparse",
+        "results_path": "../../evaluation/results/in/optparse-lego.json",
+        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/optparse.json",
         "base_directory": "lego-optparse"
     },
     "lego-ser4cpp": {
@@ -77,8 +59,8 @@
         "isa": "x86",
         "binary_path": "../ser4cpp/ser4cpp_tests.exe",
         "pdb_file": "../ser4cpp/ser4cpp_tests.pdb",
-        "results_path": "../../evaluation/results/in/ser4cpp-lego",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/ser4cpp",
+        "results_path": "../../evaluation/results/in/ser4cpp-lego.json",
+        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/ser4cpp.json",
         "base_directory": "lego-ser4cpp"
     },
     "lego-tinyxml2": {
@@ -86,26 +68,17 @@
         "isa": "x86",
         "binary_path": "../tinyxml2/tinyxml2.exe",
         "pdb_file": "../tinyxml2/tinyxml2.pdb",
-        "results_path": "../../evaluation/results/in/tinyxml2-lego",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/tinyxml2",
+        "results_path": "../../evaluation/results/in/tinyxml2-lego.json",
+        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego/tinyxml2.json",
         "base_directory": "lego-tinyxml2"
-    },
-    "lego+-catch2": {
-        "analysis_tool": "lego_plus",
-        "isa": "x86",
-        "binary_path": "../catch2/ser4cpp_tests.exe",
-        "pdb_file": "../catch2/ser4cpp_tests.pdb",
-        "results_path": "../../evaluation/results/in/catch2-lego+",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/catch2",
-        "base_directory": "lego+-catch2"
     },
     "lego+-libbmp": {
         "analysis_tool": "lego_plus",
         "isa": "x86",
         "binary_path": "../libbmp/libbmp.exe",
         "pdb_file": "../libbmp/libbmp.pdb",
-        "results_path": "../../evaluation/results/in/libbmp-lego+",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/libbmp",
+        "results_path": "../../evaluation/results/in/libbmp-lego+.json",
+        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/libbmp.json",
         "base_directory": "lego+-libbmp"
     },
     "lego+-optparse": {
@@ -113,8 +86,8 @@
         "isa": "x86",
         "binary_path": "../optparse/optparse.exe",
         "pdb_file": "../optparse/optparse.pdb",
-        "results_path": "../../evaluation/results/in/optparse-lego+",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/optparse",
+        "results_path": "../../evaluation/results/in/optparse-lego+.json",
+        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/optparse.json",
         "base_directory": "lego+-optparse"
     },
     "lego+-ser4cpp": {
@@ -122,8 +95,8 @@
         "isa": "x86",
         "binary_path": "../ser4cpp/ser4cpp_tests.exe",
         "pdb_file": "../ser4cpp/ser4cpp_tests.pdb",
-        "results_path": "../../evaluation/results/in/ser4cpp-lego+",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/ser4cpp",
+        "results_path": "../../evaluation/results/in/ser4cpp-lego+.json",
+        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/ser4cpp.json",
         "base_directory": "lego+-ser4cpp"
     },
     "lego+-tinyxml2": {
@@ -131,8 +104,8 @@
         "isa": "x86",
         "binary_path": "../tinyxml2/tinyxml2.exe",
         "pdb_file": "../tinyxml2/tinyxml2.pdb",
-        "results_path": "../../evaluation/results/in/tinyxml2-lego+",
-        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/tinyxml2",
+        "results_path": "../../evaluation/results/in/tinyxml2-lego+.json",
+        "results_instrumented_path": "../../evaluation/results/in-instrumented-lego+/tinyxml2.json",
         "base_directory": "lego+-tinyxml2"
     }
 }
