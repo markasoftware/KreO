@@ -619,11 +619,11 @@ class Postgame:
         self.run_step(self.parse_input, "parsing input...", "input parsed")
         LOGGER.info("Found %i traces", len(self.traces))
 
-        # self.run_step(
-        #     self.split_dynamic_traces,
-        #     "splitting traces...",
-        #     "traces split",
-        # )
+        self.run_step(
+            self.split_dynamic_traces,
+            "splitting traces...",
+            "traces split",
+        )
         LOGGER.info("after splitting there are now %i traces", len(self.traces))
 
         if not self.analysis_tool_lego():

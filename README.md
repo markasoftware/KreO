@@ -8,7 +8,7 @@ compiled C++ binaries.
 Most of the components must run on Windows; however, the static analysis
 component must be run on Linux because ROSE is only [supported on
 Linux](https://github.com/rose-compiler/rose/wiki/How-to-Set-Up-ROSE). KreO has
-been tested on a Ubuntu 20.04 host machine with a Windows VirtualBox VM. The
+been tested on a Ubuntu 20.04 host machine with a Windows 10 VirtualBox VM. The
 host and VM have a shared memory location, which is where KreO is located. The
 install instructions assume you are running a similar setup; however, any
 Windows/Linux combination with shared memory should work. If shared memory is
@@ -60,27 +60,6 @@ Pin is required for dynamic analysis.
 
 #### Evaluation (optional)
 
-If you wish to evaluate KreO, you must build the evaluation tools. cmake must be
-installed. You *must* use cmake installed with MSVC and not cywin. If `which
-cmake` returns `/usr/bin/cmake.exe` or similar, you should specify the MSVC
-cmake using it's full path (something like `"C:\Program Files\Microsoft Visual
-Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"`).
-
-Install the latset boost version. Note that you should run [additional
-steps](https://stackoverflow.com/a/72696051) in Visual Studio after
-downloading/unzipping Boost to ensure libraries are built. After installing,
-ensure the environment variable `BOOST_ROOT` is set to the root of your Boost
-installation.
-
-In the `evaluation` directory, run:
-
-```mkdir build && cd build && cmake ..```
-
-Next, open the `build` directory in explorer and open the
-`analyze_pdb_dump.vcxproj` file with Microsoft Visual Studio. Build the project
-in Visual Studio (<kbd>ctrl</kbd>+<kbd>shift</kbd>+<kbd>B</kbd>). When building,
-ensure the file `build\Debug\analyze_pdb_dump.exe` exists.
-
 ### Linux
 
 #### ROSE
@@ -117,27 +96,32 @@ There are three steps:
 
 A few more steps exist when performing evaluation.
 
-Configuration is controlled by a JSON file instead of command-line arguments.
-All three parts take as their only argument a path to the JSON configuration,
-which in turn contains paths to other intermediate files created by stages 1 and
-2.
-
-An example configuration file with commented documentation is available at
-`arguments.example.json`.
-
-Now, for how to actually run the stages:
+Configuration is controlled by a JSON file. All three parts take as their only
+argument a path to the JSON configuration, which in turn contains paths to other
+intermediate files created by stages 1 and 2. All configuration data currently
+resides in `./data/metadata.json`. 
 
 When running on Windows, you first **must** run `pregame.py` on Linux (after
-running `make` in the `pregame` directory), then on Windows run
-`run_pipeline_evaluation.bat` to run dynamic analysis and the final postgame
-analysis. `run_pipeline_evaluation.bat` will run all the evaluation steps in
-addition to just running KreO. If you just want to run KreO without evaluation,
-run `run_pipline.bat` after running `pregame.py`. These scripts take in a single
-argument, the path to the JSON file that contains user specified parameters.
+running `make` in the `pregame` directory), then on Windows run the
+`run_pipeline_evaluation` command in `cli.py`, or just the `run_pipeline`
+command. Specifically, run:
+
+```
+python cli.py --test TEST .\data\metadata.json run-pipeline-evaluation
+```
+
+to run the test with key `TEST`. Also you can run:
+
+```
+python cli.py .\data\metadata.json run-all-pipelines-with-evaluation
+```
+
+to run the pipeline for each specification in `./data/metadata.json`
+
 Also make sure `PIN_ROOT` is set as described in the setup above.
 
-The final output is a JSON file containing OO features in a structured format
-and is located in the `base_directory` specified in the JSON configuration file.
+The final output is a JSON file containing OO features in a structured format in
+`./data`.
 
 ### Running Lego re-implementation vs. KreO
 
@@ -145,10 +129,10 @@ As a baseline, we re-implemented an approach called
 [Lego](https://research.cs.wisc.edu/wpis/papers/cc14.pdf). Additional static
 analysis features and other improvements are built on top of this
 re-implementation. To specify the tool to run, use the `analysis_tool` JSON key.
-Valid tools are `kreo`, `lego_plus`, and `lego`. `lego` is the base Lego re-implementation.
-`lego_plus` includes no additional static analysis, but does include some improvements
-during the rest of analysis. `kreo` includes the improvements in `lego_plus` as
-well as additional static analysis.
+Valid tools are `kreo`, `lego_plus`, and `lego`. `lego` is the base Lego
+re-implementation. `lego_plus` includes no additional static analysis, but does
+include some improvements during the rest of analysis. `kreo` includes the
+improvements in `lego_plus` as well as additional static analysis.
 
 ### Generating LaTeX results
 
@@ -160,8 +144,8 @@ and tinyxml2:
 
 <img src="images/results_with_projects.png" width="300px">
 
-To compile the results into usable LaTeX tables, run
-`evaluation/results/generate_result_tables.py`.
+To compile the results into usable LaTeX tables, run `python cli.py
+data\metadata.json generate-result-tables`
 
 ### Reproducing Results
 
